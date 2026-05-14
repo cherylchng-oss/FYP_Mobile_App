@@ -9,6 +9,7 @@ import '../admin/admin_dashboard.dart';
 import '../moderator/moderator_dashboard.dart';
 import '../owner/owner_dashboard.dart';
 import '../customer/customer_rooms.dart';
+import 'mfa_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -200,6 +201,18 @@ class _LoginScreenState extends State<LoginScreen> {
       // Validate response data
       if (response.statusCode != 200 || data['success'] != true) {
         throw Exception(data['message'] ?? 'Login failed');
+      }
+
+      // MFA required — navigate to verification screen
+      if (data['requiresMFA'] == true) {
+        final tempToken = data['tempToken'] as String;
+        if (!mounted) return;
+        setState(() => _loading = false);
+        FocusScope.of(context).unfocus();
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => MfaScreen(tempToken: tempToken)),
+        );
+        return;
       }
 
       final userid = (data['userid'] as num).toInt();

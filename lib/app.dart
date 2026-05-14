@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'customer/customer_rooms.dart';
 import 'customer/customer_cart.dart';
 import 'customer/customer_bookings.dart';
@@ -43,6 +44,14 @@ import 'services/rbac_service.dart';
 
 // Global navigator key (kept inside app.dart as requested)
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
+// Wraps a widget with Outfit font theme for admin/moderator pages
+Widget _outfit(BuildContext context, Widget child) => Theme(
+  data: Theme.of(context).copyWith(
+    textTheme: GoogleFonts.outfitTextTheme(Theme.of(context).textTheme),
+  ),
+  child: child,
+);
 
 class CamsApp extends StatefulWidget {
   const CamsApp({super.key});
@@ -165,45 +174,35 @@ class _CamsAppState extends State<CamsApp> {
         '/after-login': (context) => const _PostLoginRedirect(),
         '/home': (context) => const RoomsPage(),
         '/profile': (context) => const ProfilePage(),
-        '/admin': (context) => const AdminDashboard(),
-        '/moderator': (context) => const ModeratorDashboard(),
+        '/admin': (context) => _outfit(context, const AdminDashboard()),
+        '/moderator': (context) => _outfit(context, const ModeratorDashboard()),
         '/owner': (context) => const OwnerDashboard(),
         '/customer': (context) => const RoomsPage(),
-        '/manage-services': (context) => const ManageServicesPage(),
+        '/manage-services': (context) => _outfit(context, const ManageServicesPage()),
         '/user-management': (context) {
-          // Get role from route arguments or determine from current user
           final args = ModalRoute.of(context)?.settings.arguments;
           AppRole role;
           if (args is AppRole) {
             role = args;
           } else {
-            // Default based on route - will be set when navigating
             role = AppRole.admin;
           }
-          return AdminUserManagementPage(viewerRole: role);
+          return _outfit(context, AdminUserManagementPage(viewerRole: role));
         },
-// Customer routes
+        // Customer routes
         '/customer-cart': (context) => const CustomerCart(),
         '/customer-bookings': (context) => const CustomerBookings(),
         '/customer-notifications': (context) => const CustomerNotifications(),
         // Admin routes
-        '/admin-notifications': (context) => const AdminNotifications(),
-        '/admin-customers': (context) =>
-            const AdminUserManagementPage(viewerRole: AppRole.admin),
-
-        '/admin-moderators': (context) =>
-            const AdminUserManagementPage(viewerRole: AppRole.admin),
-
-          '/admin-stock-manager': (context) => const AdminStockManagerPage(),
-
-          '/admin-activity-logs': (context) => const AdminActivityLogsPage(),
-
-          '/admin-ledger': (context) => const AdminLedgerPage(),
-
-          '/admin-customer-reviews': (context) => const AdminCustomerReviewsPage(),
-          
+        '/admin-notifications': (context) => _outfit(context, const AdminNotifications()),
+        '/admin-customers': (context) => _outfit(context, const AdminUserManagementPage(viewerRole: AppRole.admin)),
+        '/admin-moderators': (context) => _outfit(context, const AdminUserManagementPage(viewerRole: AppRole.admin)),
+        '/admin-stock-manager': (context) => _outfit(context, const AdminStockManagerPage()),
+        '/admin-activity-logs': (context) => _outfit(context, const AdminActivityLogsPage()),
+        '/admin-ledger': (context) => _outfit(context, const AdminLedgerPage()),
+        '/admin-customer-reviews': (context) => _outfit(context, const AdminCustomerReviewsPage()),
         // Moderator routes
-        '/moderator-notifications': (context) => const ModeratorNotifications(),
+        '/moderator-notifications': (context) => _outfit(context, const ModeratorNotifications()),
         // Owner routes
         '/owner-property-listing': (context) => const OwnerPropertyListingPage(),
         '/owner-reservation': (context) => const OwnerReservationPage(),
@@ -212,14 +211,14 @@ class _CamsAppState extends State<CamsApp> {
         '/owner-audit-trails': (context) => const OwnerAuditTrails(),
         '/owner-book-and-pay': (context) => const OwnerBooknPayLog(),
         '/owner-cluster': (context) => const OwnerClusterPage(),
-        '/admin-audit-trails': (context) => const AdminAuditTrails(),
-        '/admin-book-and-pay': (context) => const AdminBooknPayLog(),
-        '/moderator-audit-trails': (context) => const ModeratorAuditTrails(),
-        '/moderator-book-and-pay': (context) => const ModeratorBooknPayLog(),
-        '/moderator-ledger': (context) => const ModeratorLedger(),
-        '/moderator-activity-logs': (context) => const ModeratorActivityLogsPage(),
-        '/moderator-stock-manager': (context) => const ModeratorStockManagerPage(),
-        '/moderator-customer-reviews': (context) => const ModeratorCustomerReview(),
+        '/admin-audit-trails': (context) => _outfit(context, const AdminAuditTrails()),
+        '/admin-book-and-pay': (context) => _outfit(context, const AdminBooknPayLog()),
+        '/moderator-audit-trails': (context) => _outfit(context, const ModeratorAuditTrails()),
+        '/moderator-book-and-pay': (context) => _outfit(context, const ModeratorBooknPayLog()),
+        '/moderator-ledger': (context) => _outfit(context, const ModeratorLedger()),
+        '/moderator-activity-logs': (context) => _outfit(context, const ModeratorActivityLogsPage()),
+        '/moderator-stock-manager': (context) => _outfit(context, const ModeratorStockManagerPage()),
+        '/moderator-customer-reviews': (context) => _outfit(context, const ModeratorCustomerReview()),
         '/rbac-test': (context) => const RBACTestScreen(),
       },
     );

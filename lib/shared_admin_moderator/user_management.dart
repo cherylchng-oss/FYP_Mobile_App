@@ -43,7 +43,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
   String? _errorMessage;
 
   // ===== Theme =====
-  Color get kBg => AdminColors.cream;
+  Color get kBg => Colors.white;
   Color get kPrimary => AdminColors.primary;
   Color get kPrimaryDeep => AdminColors.primaryLight;
   Color get kCardBg => AdminColors.cardBg;
@@ -461,16 +461,16 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
             gradient: selected
-                ? LinearGradient(colors: [kPrimary, kPrimaryDeep])
+                ? const LinearGradient(colors: [AdminColors.secondary, AdminColors.secondaryLight])
                 : LinearGradient(colors: [Colors.white, Colors.white.withOpacity(.9)]),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: selected ? Colors.transparent : kPrimary.withOpacity(.2),
+              color: selected ? Colors.transparent : AdminColors.secondary.withOpacity(.2),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: selected ? kPrimary.withOpacity(.22) : Colors.black.withOpacity(.03),
+                color: selected ? AdminColors.secondary.withOpacity(.22) : Colors.black.withOpacity(.03),
                 blurRadius: selected ? 12 : 6,
                 offset: const Offset(0, 3),
               ),
@@ -487,7 +487,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                         ? Icons.verified_user
                         : Icons.person,
                 size: 15,
-                color: selected ? Colors.white : kPrimaryDeep,
+                color: selected ? Colors.white : AdminColors.secondary,
               ),
               const SizedBox(width: 6),
               Text(
@@ -495,14 +495,14 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: selected ? Colors.white : kPrimaryDeep,
+                  color: selected ? Colors.white : AdminColors.secondary,
                 ),
               ),
               const SizedBox(width: 5),
               _countPill(
                 _users.where((u) => u['type'] == label).length,
-                selected ? Colors.white.withOpacity(.2) : kPrimary.withOpacity(.08),
-                selected ? Colors.white : kPrimaryDeep,
+                selected ? Colors.white.withOpacity(.2) : AdminColors.secondary.withOpacity(.08),
+                selected ? Colors.white : AdminColors.secondary,
               ),
             ],
           ),

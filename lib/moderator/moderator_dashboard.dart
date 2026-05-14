@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../services/session.dart';
 import '../services/rbac_service.dart' as rbac;
 import '../app.dart';
@@ -147,7 +147,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AdminColors.cream,
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Logout', style: TextStyle(color: AdminColors.textPrimary, fontWeight: FontWeight.bold)),
         content: const Text('Are you sure you want to logout?', style: TextStyle(color: AdminColors.textSecond)),
@@ -209,7 +209,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: AdminColors.cream,
+      backgroundColor: Colors.white,
       body: RefreshIndicator(
         onRefresh: _loadDashboardStats,
         color: AdminColors.primary,

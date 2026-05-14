@@ -1004,7 +1004,7 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: AdminColors.cream,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('Customer Review', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: AdminColors.primary,

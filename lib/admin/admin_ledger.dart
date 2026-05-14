@@ -671,7 +671,7 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: AdminColors.cream,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('Ledger', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: AdminColors.primary,

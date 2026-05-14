@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../services/session.dart';
 import '../api.dart' as api;
 import '../app.dart';
@@ -616,7 +616,7 @@ class _ModeratorLedgerState extends State<ModeratorLedger> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: AdminColors.cream,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('Ledger', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: AdminColors.primary,

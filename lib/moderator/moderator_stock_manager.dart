@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -190,7 +190,7 @@ class _ModeratorStockManagerPageState extends State<ModeratorStockManagerPage> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AdminColors.cream,
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Delete Blackout',
             style: TextStyle(color: AdminColors.textPrimary, fontWeight: FontWeight.bold)),
@@ -243,7 +243,7 @@ class _ModeratorStockManagerPageState extends State<ModeratorStockManagerPage> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          backgroundColor: AdminColors.cream,
+          backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text('Add Blackout Date',
               style: TextStyle(fontWeight: FontWeight.bold, color: AdminColors.textPrimary)),
@@ -545,7 +545,7 @@ class _ModeratorStockManagerPageState extends State<ModeratorStockManagerPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: AdminColors.cream,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         automaticallyImplyLeading: false,
         backgroundColor: AdminColors.primary,
@@ -654,13 +654,13 @@ class _ModeratorStockManagerPageState extends State<ModeratorStockManagerPage> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 15, color: selected ? Colors.white : AdminColors.primaryLight),
+              Icon(icon, size: 15, color: selected ? Colors.white : AdminColors.textMuted),
               const SizedBox(width: 6),
               Text(label,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    color: selected ? Colors.white : AdminColors.primaryLight,
+                    color: selected ? Colors.white : AdminColors.textMuted,
                   )),
             ],
           ),

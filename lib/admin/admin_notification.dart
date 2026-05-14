@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../services/notification_service.dart';
 import '../services/session.dart';
 import '../shared/bottom_navigation_bar.dart';
@@ -87,7 +87,7 @@ class _AdminNotificationsState extends State<AdminNotifications> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AdminColors.cream,
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Pick Up Suggestion?',
             style: TextStyle(fontWeight: FontWeight.bold, color: AdminColors.textPrimary)),
@@ -152,7 +152,7 @@ class _AdminNotificationsState extends State<AdminNotifications> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: AdminColors.cream,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         automaticallyImplyLeading: false,
         backgroundColor: AdminColors.primary,
@@ -315,13 +315,13 @@ class _AdminNotificationsState extends State<AdminNotifications> {
         selected: isSelected,
         onSelected: (_) => setState(() => _selectedFilter = value),
         backgroundColor: AdminColors.surface,
-        selectedColor: AdminColors.primary,
+        selectedColor: AdminColors.secondary,
         labelStyle: TextStyle(
           color: isSelected ? Colors.white : AdminColors.textSecond,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
           fontSize: 13,
         ),
-        side: BorderSide(color: isSelected ? AdminColors.primary : AdminColors.border),
+        side: BorderSide(color: isSelected ? AdminColors.secondary : AdminColors.border),
       ),
     );
   }
@@ -511,7 +511,7 @@ class _AdminNotificationsState extends State<AdminNotifications> {
       isScrollControlled: true,
       builder: (ctx) => Container(
         decoration: const BoxDecoration(
-          color: AdminColors.cream,
+          color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         padding: const EdgeInsets.all(24),

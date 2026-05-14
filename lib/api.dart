@@ -83,6 +83,38 @@ Future<http.Response> loginUser(Map<String, dynamic> userData) async {
   }
 }
 
+Future<Map<String, dynamic>> sendEmailOtp(String tempToken) async {
+  try {
+    final response = await http.post(
+      Uri.parse('$API_URL/mfa/send-email-otp'),
+      headers: _publicHeaders(),
+      body: jsonEncode({'tempToken': tempToken}),
+    );
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  } catch (error) {
+    print('API error: $error');
+    rethrow;
+  }
+}
+
+Future<Map<String, dynamic>> verifyMfaLogin({
+  required String tempToken,
+  required String token,
+  required String method,
+}) async {
+  try {
+    final response = await http.post(
+      Uri.parse('$API_URL/mfa/verify-login'),
+      headers: _publicHeaders(),
+      body: jsonEncode({'tempToken': tempToken, 'token': token, 'method': method}),
+    );
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  } catch (error) {
+    print('API error: $error');
+    rethrow;
+  }
+}
+
 Future<http.Response> checkstatus(int userid) async {
   try {
     final response = await http.get(

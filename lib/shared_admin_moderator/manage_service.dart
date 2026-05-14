@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../services/session.dart';
 import '../api.dart' as api;
 import '../shared/bottom_navigation_bar.dart';
@@ -124,7 +124,7 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: AdminColors.cream,
+      backgroundColor: Colors.white,
       drawerEnableOpenDragGesture: false,
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -404,7 +404,7 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AdminColors.cream,
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
