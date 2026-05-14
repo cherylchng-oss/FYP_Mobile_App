@@ -5,6 +5,8 @@ class AdminColors {
   static const primaryLight = Color(0xFF8B5E3C);
   static const accent       = Color(0xFFBF8040);
   static const accentLight  = Color(0xFFE8B97A);
+  static const secondary      = Color(0xFF82916C); // muted olive green
+  static const secondaryLight = Color(0xFFA3B08F); // light olive green
   static const cream        = Color(0xFFFAF6F0);
   static const cardBg       = Color(0xFFFFFFFF);
   static const surface      = Color(0xFFF5EDE0);
