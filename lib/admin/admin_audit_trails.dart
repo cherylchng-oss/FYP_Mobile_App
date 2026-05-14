@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'admin_notification.dart';
-import 'admin_dashboard.dart';
-import 'admin_book_and_pay.dart';
 import '../shared/navigation_menu.dart' as nav;
 import '../shared/bottom_navigation_bar.dart';
+import '../shared/colors.dart';
 import '../services/session.dart';
 import '../api.dart' as api;
 import '../app.dart';
@@ -18,12 +16,8 @@ class AdminAuditTrails extends StatefulWidget {
 class _AdminAuditTrailsState extends State<AdminAuditTrails> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  int _selectedIndex = -1;
-  String? _currentUserRole;
-
   final TextEditingController _searchController = TextEditingController();
   String _selectedActionType = 'All Actions';
-
   int _currentPage = 1;
   final int _pageSize = 5;
   bool _isLoading = true;
@@ -32,14 +26,11 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
 
   List<Map<String, dynamic>> get _filteredTrails {
     final query = _searchController.text.trim().toLowerCase();
-
     return allTrails.where((trail) {
       final byType = _selectedActionType == 'All Actions' ||
           trail['actionType'] == _selectedActionType;
       if (!byType) return false;
-
       if (query.isEmpty) return true;
-
       final text = [
         trail['entityType'],
         trail['entityId'].toString(),
@@ -50,7 +41,6 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
         trail['creatorId'].toString(),
         trail['httpMethod'],
       ].join(' ').toLowerCase();
-
       return text.contains(query);
     }).toList();
   }
@@ -59,49 +49,39 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
   void initState() {
     super.initState();
     _loadData();
-    _searchController.addListener(() {
-      setState(() {
-        _currentPage = 1;
-      });
-    });
+    _searchController.addListener(() => setState(() => _currentPage = 1));
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-    });
-
+    setState(() => _isLoading = true);
     try {
       final userid = await Session.getUserId();
       if (userid == null) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
         return;
       }
-
       final auditData = await api.auditTrails(userid);
-      
       if (mounted) {
-        // First pass: collect all userids that need username lookup
         final Set<int> userIdsToFetch = {};
         final List<Map<String, dynamic>> tempTrails = [];
-        
+
         if (auditData is List) {
           for (var log in auditData) {
             final actionedBy = log['username'] ?? log['actionedBy'] ?? log['actionedby'];
             final creatorId = log['userid'] ?? log['creatorid'] ?? 0;
-            
-            // If actionedBy is a number (userid), we need to fetch username
             if (actionedBy is num) {
               userIdsToFetch.add(actionedBy.toInt());
             } else if (actionedBy == null || actionedBy.toString().isEmpty || actionedBy == 'Unknown') {
-              // If actionedBy is missing/invalid, try using creatorId
               if (creatorId is num && creatorId > 0) {
                 userIdsToFetch.add(creatorId.toInt());
               }
             }
-            
             tempTrails.add({
               'creatorId': creatorId,
               'entityType': log['entitytype'] ?? log['entityType'] ?? '',
@@ -115,27 +95,23 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
             });
           }
         }
-        
-        // Fetch usernames for all userids in parallel
+
         final Map<int, String> userIdToUsername = {};
         if (userIdsToFetch.isNotEmpty) {
           final futures = userIdsToFetch.map((uid) async {
             try {
               final userData = await api.fetchUserData(uid);
               return MapEntry(uid, userData['username']?.toString() ?? 'Unknown');
-            } catch (e) {
-              print('Error fetching username for userid $uid: $e');
+            } catch (_) {
               return MapEntry(uid, 'Unknown');
             }
           });
-          
           final results = await Future.wait(futures);
           for (var entry in results) {
             userIdToUsername[entry.key] = entry.value;
           }
         }
-        
-        // Second pass: update actionedBy with usernames
+
         setState(() {
           allTrails.clear();
           for (var trail in tempTrails) {
@@ -143,111 +119,90 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
             if (actionedById != null && userIdToUsername.containsKey(actionedById)) {
               trail['actionedBy'] = userIdToUsername[actionedById]!;
             } else if (trail['actionedBy'] is num) {
-              // If still a number and not in map, keep as is or show userid
               trail['actionedBy'] = 'User ${trail['actionedBy']}';
             } else if (trail['actionedBy'] == null || trail['actionedBy'].toString().isEmpty) {
               trail['actionedBy'] = 'Unknown';
             }
-            // Remove temporary field
             trail.remove('actionedById');
             allTrails.add(trail);
           }
-          // Reverse so newest is first
           allTrails = allTrails.reversed.toList();
           _isLoading = false;
         });
       }
     } catch (error) {
-      print('Error fetching audit trails: $error');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Color _actionTypeColor(String type) {
+    switch (type.toLowerCase()) {
+      case 'create': return AdminColors.success;
+      case 'update': return AdminColors.accent;
+      case 'delete': return AdminColors.danger;
+      case 'assign':
+      case 'request':
+      case 'register': return AdminColors.primaryLight;
+      case 'login':
+      case 'logout': return AdminColors.textMuted;
+      default: return AdminColors.textMuted;
+    }
+  }
+
+  Future<void> _handleLogout() async {
+    await Session.clear();
+    if (!mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+  }
+
+  void _handleBottomNavTap(int index) {
+    if (index == 4) return;
+    if (index == 0) Navigator.of(context).pushNamedAndRemoveUntil('/admin', (route) => false);
+    else if (index == 1) Navigator.of(context).pushNamed('/manage-services');
+    else if (index == 2) Navigator.of(context).pushNamed('/admin-stock-manager');
+    else if (index == 3) Navigator.of(context).pushNamed('/profile');
+  }
+
+  void _handleMenuSelection(String label) {
+    Navigator.pop(context);
+    switch (label) {
+      case 'AuditTrails': break;
+      case 'Dashboard': Navigator.of(context).pushNamedAndRemoveUntil('/admin', (route) => false); break;
+      case 'User Management': Navigator.of(context).pushNamed('/user-management', arguments: AppRole.admin); break;
+      case 'Properties':
+      case 'PropertyListing': Navigator.of(context).pushNamed('/manage-services'); break;
+      case 'Stock Manager':
+      case 'Reservation':
+      case 'Bookings': Navigator.of(context).pushNamed('/admin-stock-manager'); break;
+      case 'BooknPayLog': Navigator.of(context).pushNamed('/admin-book-and-pay'); break;
+      case 'Activity Logs': Navigator.of(context).pushNamed('/admin-activity-logs'); break;
+      case 'Ledger': Navigator.of(context).pushNamed('/admin-ledger'); break;
+      case 'Customer Review': Navigator.of(context).pushNamed('/admin-customer-reviews'); break;
+      case 'Profile': Navigator.of(context).pushNamed('/profile'); break;
     }
   }
 
   @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isWide = screenWidth > 600;
-
     final allFiltered = _filteredTrails;
     final totalItems = allFiltered.length;
-    final totalPages =
-        (totalItems + _pageSize - 1) ~/ _pageSize == 0 ? 1 : (totalItems + _pageSize - 1) ~/ _pageSize;
-
+    final totalPages = ((totalItems + _pageSize - 1) ~/ _pageSize).clamp(1, 999999);
     final currentPage = _currentPage.clamp(1, totalPages);
     final startIndex = (currentPage - 1) * _pageSize;
     final endIndex = (startIndex + _pageSize).clamp(0, totalItems);
-    final pageItems =
-        totalItems == 0 ? <Map<String, dynamic>>[] : allFiltered.sublist(startIndex, endIndex);
+    final pageItems = totalItems == 0 ? <Map<String, dynamic>>[] : allFiltered.sublist(startIndex, endIndex);
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: const Color(0xFFE7F0FF),
+      backgroundColor: AdminColors.cream,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF0077B6), Color(0xFF649EFF)],
-                ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.history, color: Colors.white, size: 24),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'Audit Trails',
-                  style: TextStyle(
-                    color: Color(0xFF1E293B),
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  'Track system activities',
-                  style: TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 12,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-              ],
-            ),
-          ],
+        backgroundColor: AdminColors.primary,
+        title: const Text(
+          'Audit Trails',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined,
-                color: Color(0xFF64748B)),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const AdminNotifications()),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Color(0xFF64748B)),
-            onPressed: _handleLogout,
-          ),
-        ],
+        actions: const [SizedBox.shrink()],
       ),
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.admin,
@@ -257,62 +212,34 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
       ),
       body: RefreshIndicator(
         onRefresh: _loadData,
-        child: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(
-                  color: Color(0xFF649EFF),
-                ),
-              )
-            : SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    isWide
-                        ? Row(
-                            children: [
-                              const Expanded(
-                                child: Text(
-                                  'Audit Trails',
-                                  style: TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1E293B),
-                                  ),
-                                ),
-                              ),
-                              SizedBox(
-                                width: 300,
-                                child: _buildSearchField(),
-                              ),
-                            ],
-                          )
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Audit Trails',
-                                style: TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1E293B),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              _buildSearchField(),
-                            ],
-                          ),
-                    const SizedBox(height: 16),
-                    _buildFilterCard(),
-                    const SizedBox(height: 16),
-                    _buildTrailList(pageItems, totalItems, totalPages, currentPage),
-                  ],
-                ),
-              ),
+        color: AdminColors.primary,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeaderBanner(totalItems),
+              const SizedBox(height: 20),
+              _buildSearchField(),
+              const SizedBox(height: 14),
+              _buildFilterCard(),
+              const SizedBox(height: 16),
+              if (_isLoading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 48),
+                    child: CircularProgressIndicator(color: AdminColors.primary),
+                  ),
+                )
+              else
+                _buildTrailList(pageItems, totalItems, totalPages, currentPage),
+            ],
+          ),
+        ),
       ),
       bottomNavigationBar: SharedBottomNavigationBar(
-        selectedIndex: _selectedIndex,
+        selectedIndex: 4,
         onTap: _handleBottomNavTap,
         scaffoldKey: _scaffoldKey,
         role: nav.UserRole.admin,
@@ -320,20 +247,52 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
     );
   }
 
+  Widget _buildHeaderBanner(int count) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AdminColors.primary,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.history, color: Colors.white70, size: 32),
+          const SizedBox(height: 12),
+          const Text(
+            'Audit Trails',
+            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'View administrator system actions and changes. $count record${count == 1 ? '' : 's'} found.',
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSearchField() {
     return TextField(
       controller: _searchController,
+      cursorColor: AdminColors.primary,
       decoration: InputDecoration(
         hintText: 'Search audit trails...',
-        prefixIcon: const Icon(Icons.search, color: Color(0xFF64748B)),
+        hintStyle: const TextStyle(color: AdminColors.textMuted),
+        prefixIcon: const Icon(Icons.search, color: AdminColors.textMuted),
         filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
+        fillColor: AdminColors.cardBg,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AdminColors.border),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AdminColors.primary, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     );
   }
@@ -342,67 +301,41 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AdminColors.cardBg,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        border: Border.all(color: AdminColors.border),
+        boxShadow: [BoxShadow(color: AdminColors.primary.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Action Type',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
-            ),
+            'Filter by Action Type',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AdminColors.textMuted),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Container(
             decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-              borderRadius: BorderRadius.circular(8),
+              color: AdminColors.surface,
+              border: Border.all(color: AdminColors.border),
+              borderRadius: BorderRadius.circular(10),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: DropdownButton<String>(
               value: _selectedActionType,
               isExpanded: true,
               underline: const SizedBox.shrink(),
-              dropdownColor: Colors.white,
+              dropdownColor: AdminColors.cardBg,
+              icon: const Icon(Icons.keyboard_arrow_down, color: AdminColors.textMuted),
               items: const [
-                'All Actions',
-                'Accept',
-                'Reject',
-                'Create',
-                'Update',
-                'Delete',
-                'Assign',
-                'Request',
-                'Register',
-                'Login',
-                'Logout',
-                'Suggest',
-                'Notify',
-              ].map((type) {
-                return DropdownMenuItem(
-                  value: type,
-                  child: Text(
-                    type,
-                    style: const TextStyle(
-                      color: Color(0xFF0F172A),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                );
-              }).toList(),
+                'All Actions', 'Create', 'Update', 'Delete',
+                'Assign', 'Request', 'Register', 'Login', 'Logout',
+              ]
+                  .map((type) => DropdownMenuItem(
+                        value: type,
+                        child: Text(type, style: const TextStyle(color: AdminColors.textPrimary, fontSize: 14)),
+                      ))
+                  .toList(),
               onChanged: (value) {
                 if (value == null) return;
                 setState(() {
@@ -412,7 +345,6 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
               },
             ),
           ),
-          const SizedBox(height: 12),
         ],
       ),
     );
@@ -427,38 +359,21 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
     if (totalItems == 0) {
       return Container(
         margin: const EdgeInsets.only(top: 8),
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(36),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          color: AdminColors.cardBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AdminColors.border),
         ),
-        child: Column(
-          children: const [
-            Icon(Icons.search_off, size: 64, color: Color(0xFFCBD5E1)),
-            SizedBox(height: 16),
-            Text(
-              'No data found',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF64748B),
-              ),
-            ),
-            SizedBox(height: 4),
-            Text(
-              'Try changing the filters or search keyword.',
-              style: TextStyle(
-                fontSize: 14,
-                color: Color(0xFF94A3B8),
-              ),
-            ),
+        child: const Column(
+          children: [
+            Icon(Icons.search_off, size: 56, color: AdminColors.border),
+            SizedBox(height: 14),
+            Text('No records found',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AdminColors.textSecond)),
+            SizedBox(height: 6),
+            Text('Try changing the filter or search keyword.',
+                style: TextStyle(fontSize: 13, color: AdminColors.textMuted), textAlign: TextAlign.center),
           ],
         ),
       );
@@ -471,10 +386,7 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
           physics: const NeverScrollableScrollPhysics(),
           itemCount: trails.length,
           separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            final trail = trails[index];
-            return _buildTrailCard(trail);
-          },
+          itemBuilder: (context, index) => _buildTrailCard(trails[index]),
         ),
         const SizedBox(height: 12),
         _buildPagination(totalPages, currentPage),
@@ -483,81 +395,42 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
   }
 
   Widget _buildTrailCard(Map<String, dynamic> trail) {
-    final username = trail['actionedBy'] ?? 'Unknown';
-
+    final typeColor = _actionTypeColor(trail['actionType'] ?? '');
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AdminColors.cardBg,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        border: Border.all(color: AdminColors.border),
+        boxShadow: [BoxShadow(color: AdminColors.primary.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 3))],
       ),
       padding: const EdgeInsets.all(16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: const Color(0xFFE7F0FF),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.history, size: 22, color: Color(0xFF649EFF)),
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: typeColor.withValues(alpha: 0.14),
+            child: Icon(Icons.history, size: 20, color: typeColor),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  username,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1E293B),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  trail['action'] ?? '',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
+                Text(trail['actionedBy'] ?? '',
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AdminColors.textPrimary)),
+                const SizedBox(height: 3),
+                Text(trail['action'] ?? '',
+                    style: const TextStyle(fontSize: 13, color: AdminColors.textSecond)),
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Icon(Icons.person_outline,
-                        size: 14, color: Color(0xFF94A3B8)),
+                    const Icon(Icons.access_time, size: 13, color: AdminColors.textMuted),
                     const SizedBox(width: 4),
-                    Text(
-                      trail['actionedBy'] ?? '',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF94A3B8),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.access_time,
-                        size: 14, color: Color(0xFF94A3B8)),
-                    const SizedBox(width: 4),
-                    Text(
-                      trail['timestamp'] ?? '',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF94A3B8),
-                      ),
+                    Expanded(
+                      child: Text(trail['timestamp'] ?? '',
+                          style: const TextStyle(fontSize: 11, color: AdminColors.textMuted),
+                          overflow: TextOverflow.ellipsis),
                     ),
                   ],
                 ),
@@ -569,51 +442,31 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE7F0FF),
-                  borderRadius: BorderRadius.circular(12),
+                  color: typeColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
                 ),
-                child: Text(
-                  trail['actionType'] ?? '',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF649EFF),
-                  ),
-                ),
+                child: Text(trail['actionType'] ?? '',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: typeColor)),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               PopupMenuButton<String>(
-                color: Colors.white,
-                icon: const Icon(Icons.more_horiz, color: Color(0xFF64748B)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                color: AdminColors.cardBg,
+                icon: const Icon(Icons.more_horiz, color: AdminColors.textMuted),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 onSelected: (value) {
-                  if (value == 'view') {
-                    _showTrailDetailsDialog(trail);
-                  }
+                  if (value == 'view') _showTrailDetailsDialog(trail);
                 },
                 itemBuilder: (context) => [
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: 'view',
                     child: Row(
-                      children: const [
-                        Icon(
-                          Icons.visibility,
-                          size: 18,
-                          color: Color(0xFF64748B),
-                        ),
+                      children: [
+                        Icon(Icons.visibility, size: 18, color: AdminColors.textMuted),
                         SizedBox(width: 8),
-                        Text(
-                          'View Details',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF1E293B),
-                          ),
-                        ),
+                        Text('View Details',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AdminColors.textPrimary)),
                       ],
                     ),
                   ),
@@ -642,76 +495,52 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         IconButton(
-          onPressed: currentPage > 1
-              ? () {
-                  setState(() {
-                    _currentPage = currentPage - 1;
-                  });
-                }
-              : null,
-          icon: const Icon(Icons.chevron_left),
+          onPressed: currentPage > 1 ? () => setState(() => _currentPage = currentPage - 1) : null,
+          icon: const Icon(Icons.chevron_left, color: AdminColors.primary),
         ),
-        ..._buildPageButtons(pages, currentPage, totalPages),
+        ..._buildPageButtons(pages, currentPage),
         IconButton(
-          onPressed: currentPage < totalPages
-              ? () {
-                  setState(() {
-                    _currentPage = currentPage + 1;
-                  });
-                }
-              : null,
-          icon: const Icon(Icons.chevron_right),
+          onPressed: currentPage < totalPages ? () => setState(() => _currentPage = currentPage + 1) : null,
+          icon: const Icon(Icons.chevron_right, color: AdminColors.primary),
         ),
       ],
     );
   }
 
-  List<Widget> _buildPageButtons(
-      List<int> pages, int currentPage, int totalPages) {
+  List<Widget> _buildPageButtons(List<int> pages, int currentPage) {
     final List<Widget> widgets = [];
-
     for (int i = 0; i < pages.length; i++) {
       final page = pages[i];
-
       if (i > 0 && page != pages[i - 1] + 1) {
         widgets.add(const Padding(
           padding: EdgeInsets.symmetric(horizontal: 4),
-          child: Text('...'),
+          child: Text('...', style: TextStyle(color: AdminColors.textMuted)),
         ));
       }
-
       final isSelected = page == currentPage;
-
       widgets.add(
         GestureDetector(
-          onTap: () {
-            setState(() {
-              _currentPage = page;
-            });
-          },
+          onTap: () => setState(() => _currentPage = page),
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 2),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: isSelected ? const Color(0xFF111827) : Colors.white,
-              borderRadius: BorderRadius.circular(6),
-              border: isSelected
-                  ? null
-                  : Border.all(color: const Color(0xFFE5E7EB)),
+              color: isSelected ? AdminColors.primary : AdminColors.cardBg,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: isSelected ? AdminColors.primary : AdminColors.border),
             ),
             child: Text(
               '$page',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: isSelected ? Colors.white : const Color(0xFF111827),
+                color: isSelected ? Colors.white : AdminColors.textPrimary,
               ),
             ),
           ),
         ),
       );
     }
-
     return widgets;
   }
 
@@ -719,10 +548,8 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        backgroundColor: const Color(0xFFE7F0FF),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        backgroundColor: AdminColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -732,21 +559,16 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Audit Trail Details',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E293B),
-                    ),
-                  ),
+                  const Text('Audit Trail Details',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AdminColors.textPrimary)),
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon: const Icon(Icons.close, color: AdminColors.textMuted),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const Divider(color: AdminColors.border),
+              const SizedBox(height: 8),
               _buildDetailField('Creator ID', trail['creatorId'].toString()),
               _buildDetailField('Actioned By', trail['actionedBy']),
               _buildDetailField('Entity ID', trail['entityId'].toString()),
@@ -754,23 +576,18 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
               _buildDetailField('Timestamp', trail['timestamp']),
               _buildDetailField('Action', trail['action']),
               _buildDetailField('Action Type', trail['httpMethod']),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () => Navigator.pop(context),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0077B6),
+                    backgroundColor: AdminColors.primary,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  child: const Text(
-                    'Close',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
+                  child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w600)),
                 ),
               ),
             ],
@@ -786,115 +603,12 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 14,
-              color: Color(0xFF0F172A),
-            ),
-          ),
+          Text(label,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AdminColors.textMuted)),
+          const SizedBox(height: 3),
+          Text(value, style: const TextStyle(fontSize: 14, color: AdminColors.textPrimary)),
         ],
       ),
     );
-  }
-
-  void _handleBottomNavTap(int index) {
-    if (index == 4) {
-      // More button - handled by SharedBottomNavigationBar to open drawer
-      return;
-    }
-    if (index == 0) {
-      // Dashboard
-      Navigator.of(context).pushNamed('/admin');
-      return;
-    }
-    if (index == 3) {
-      // Profile
-      Navigator.of(context).pushNamed('/profile');
-      return;
-    }
-    if (index == 1) {
-      // Properties
-      Navigator.of(context).pushNamed('/manage-services');
-      return;
-    }
-    if (index == 2) {
-      // Bookings
-      Navigator.of(context).pushNamed('/manage-booking');
-      return;
-    }
-    setState(() => _selectedIndex = index);
-  }
-
-  void _handleMenuSelection(String label) {
-    if (label == 'AuditTrails') {
-      // Already on audit trails
-      return;
-    }
-    if (label == 'Dashboard') {
-      Navigator.of(context).pushNamed('/admin');
-      return;
-    }
-    if (label == 'Profile') {
-      Navigator.of(context).pushNamed('/profile');
-      return;
-    }
-    if (label == 'User Management') {
-      Navigator.of(context).pushNamed('/user-management', arguments: AppRole.admin);
-      return;
-    }
-    if (label == 'PropertyListing' || label == 'Properties') {
-      Navigator.of(context).pushNamed('/manage-services');
-      return;
-    }
-    if (label == 'Reservation' || label == 'Bookings') {
-      Navigator.of(context).pushNamed('/manage-booking');
-      return;
-    }
-    if (label == 'BooknPayLog') {
-      Navigator.of(context).pushNamed('/admin-book-and-pay');
-      return;
-    }
-  }
-
-  Future<void> _handleLogout() async {
-    // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFFE7F0FF),
-        title: const Text('Logout', style: TextStyle(color: Colors.black)),
-        content: const Text('Are you sure you want to logout?', style: TextStyle(color: Colors.black)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      // Clear the session data
-      await Session.clear();
-      if (mounted) {
-        // Navigate back to the before-login screen
-        Navigator.pushNamedAndRemoveUntil(context, '/before-login', (route) => false);
-      }
-    }
   }
 }
-

@@ -33,9 +33,10 @@ List<DrawerMenuItem> drawerMenuItemsForRole(UserRole role) {
         DrawerMenuItem(Icons.dashboard, 'Dashboard'),
         DrawerMenuItem(Icons.people, 'User Management'),
         DrawerMenuItem(Icons.apartment, 'Properties'),
-        DrawerMenuItem(Icons.calendar_today, 'Bookings'),
-        DrawerMenuItem(Icons.receipt_long, 'BooknPayLog'),
-        DrawerMenuItem(Icons.history, 'AuditTrails'),
+        DrawerMenuItem(Icons.list_alt, 'Activity Logs'),
+        DrawerMenuItem(Icons.account_balance_wallet, 'Ledger'),
+        DrawerMenuItem(Icons.inventory_2, 'Stock Manager'),
+        DrawerMenuItem(Icons.star_rate, 'Customer Review'),
         DrawerMenuItem(Icons.person, 'Profile'),
       ];
     case UserRole.moderator:
@@ -43,18 +44,19 @@ List<DrawerMenuItem> drawerMenuItemsForRole(UserRole role) {
         DrawerMenuItem(Icons.dashboard, 'Dashboard'),
         DrawerMenuItem(Icons.people, 'User Management'),
         DrawerMenuItem(Icons.apartment, 'Properties'),
-        DrawerMenuItem(Icons.calendar_today, 'Bookings'),
-        DrawerMenuItem(Icons.receipt_long, 'BooknPayLog'),
-        DrawerMenuItem(Icons.history, 'AuditTrails'),
+        DrawerMenuItem(Icons.list_alt, 'Activity Logs'),
+        DrawerMenuItem(Icons.account_balance_wallet, 'Ledger'),
+        DrawerMenuItem(Icons.inventory_2, 'Stock Manager'),
+        DrawerMenuItem(Icons.star_rate, 'Customer Reviews'),
         DrawerMenuItem(Icons.person, 'Profile'),
       ];
     case UserRole.customer:
       return const [
-        DrawerMenuItem(Icons.home, 'Home'),
-        DrawerMenuItem(Icons.hotel, 'Rooms'),
+        DrawerMenuItem(Icons.dashboard, 'Rooms'),
         DrawerMenuItem(Icons.shopping_cart, 'Cart'),
         DrawerMenuItem(Icons.calendar_today, 'Bookings'),
-        DrawerMenuItem(Icons.more_horiz, 'More'),
+        DrawerMenuItem(Icons.notifications, 'Notifications'),
+        DrawerMenuItem(Icons.person, 'Profile'),
       ];
     case UserRole.owner:
       return const [

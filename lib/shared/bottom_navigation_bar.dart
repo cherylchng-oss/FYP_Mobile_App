@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'navigation_menu.dart';
-import '../app.dart';
+import 'colors.dart';
 
 class SharedBottomNavigationBar extends StatelessWidget {
   final int selectedIndex;
@@ -19,9 +19,9 @@ class SharedBottomNavigationBar extends StatelessWidget {
   Color get _selectedColor {
     switch (role) {
       case UserRole.admin:
-        return const Color(0xFF649EFF);
+        return AdminColors.primary;
       case UserRole.moderator:
-        return const Color(0xFF78AAFF);
+        return AdminColors.primary;
       case UserRole.owner:
         return const Color(0xFF4188FF);
       case UserRole.customer:
@@ -32,7 +32,21 @@ class SharedBottomNavigationBar extends StatelessWidget {
   List<BottomNavItem> get _navItems {
     switch (role) {
       case UserRole.admin:
+        return const [
+          BottomNavItem(Icons.admin_panel_settings, 'Dashboard'),
+          BottomNavItem(Icons.apartment, 'Properties'),
+          BottomNavItem(Icons.inventory_2, 'Stock'),
+          BottomNavItem(Icons.person, 'Profile'),
+          BottomNavItem(Icons.more_horiz, 'More'),
+        ];
       case UserRole.moderator:
+        return const [
+          BottomNavItem(Icons.manage_accounts, 'Dashboard'),
+          BottomNavItem(Icons.apartment, 'Properties'),
+          BottomNavItem(Icons.inventory_2, 'Stock'),
+          BottomNavItem(Icons.person, 'Profile'),
+          BottomNavItem(Icons.more_horiz, 'More'),
+        ];
       case UserRole.owner:
         return const [
           BottomNavItem(Icons.dashboard, 'Dashboard'),
@@ -43,11 +57,10 @@ class SharedBottomNavigationBar extends StatelessWidget {
         ];
       case UserRole.customer:
         return const [
-          BottomNavItem(Icons.home, 'Home'),
-          BottomNavItem(Icons.hotel, 'Rooms'),
+          BottomNavItem(Icons.home, 'Rooms'),
           BottomNavItem(Icons.shopping_cart, 'Cart'),
           BottomNavItem(Icons.calendar_today, 'Bookings'),
-          BottomNavItem(Icons.more_horiz, 'More'),
+          BottomNavItem(Icons.person, 'Profile'),
         ];
     }
   }
@@ -87,7 +100,7 @@ class SharedBottomNavigationBar extends StatelessWidget {
 
   Widget _buildBottomNavItem(IconData icon, String label, int index) {
     final isSelected = selectedIndex == index;
-    final isMoreButton = index == 4;
+    final isMoreButton = index == 4 && role != UserRole.customer;
     return Expanded(
       child: InkWell(
         onTap: () {
@@ -160,12 +173,25 @@ class MoreMenuDrawer extends StatelessWidget {
     }
   }
 
+  IconData get _headerIcon {
+    switch (role) {
+      case UserRole.admin:
+        return Icons.admin_panel_settings;
+      case UserRole.moderator:
+        return Icons.manage_accounts;
+      case UserRole.owner:
+        return Icons.supervised_user_circle;
+      case UserRole.customer:
+        return Icons.supervised_user_circle;
+    }
+  }
+
   List<Color> get _gradientColors {
     switch (role) {
       case UserRole.admin:
-        return const [Color(0xFF6366F1), Color(0xFF649EFF)];
+        return const [AdminColors.primary, AdminColors.primaryLight];
       case UserRole.moderator:
-        return const [Color(0xFF6366F1), Color(0xFF78AAFF)];
+        return const [AdminColors.primary, AdminColors.primaryLight];
       case UserRole.owner:
         return const [Color(0xFF6366F1), Color(0xFF4188FF)];
       case UserRole.customer:
@@ -176,13 +202,23 @@ class MoreMenuDrawer extends StatelessWidget {
   Color get _borderColor {
     switch (role) {
       case UserRole.admin:
-        return const Color(0xFF649EFF);
+        return AdminColors.accent;
       case UserRole.moderator:
-        return const Color(0xFF78AAFF);
+        return AdminColors.accent;
       case UserRole.owner:
         return const Color(0xFF4188FF);
       case UserRole.customer:
         return const Color(0xFF92BBFF);
+    }
+  }
+
+  Color get _drawerBg {
+    switch (role) {
+      case UserRole.admin:
+      case UserRole.moderator:
+        return AdminColors.drawerBg;
+      default:
+        return const Color(0xFF1E293B);
     }
   }
 
@@ -192,7 +228,7 @@ class MoreMenuDrawer extends StatelessWidget {
 
     return Drawer(
       child: Container(
-        color: const Color(0xFF1E293B),
+        color: _drawerBg,
         child: Column(
           children: [
             Container(
@@ -205,7 +241,7 @@ class MoreMenuDrawer extends StatelessWidget {
                       gradient: LinearGradient(colors: _gradientColors),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.supervised_user_circle, color: Colors.white, size: 28),
+                    child: Icon(_headerIcon, color: Colors.white, size: 28),
                   ),
                   const SizedBox(width: 12),
                   Text(
@@ -228,16 +264,19 @@ class MoreMenuDrawer extends StatelessWidget {
                 ],
               ),
             ),
+            Divider(color: Colors.white.withOpacity(0.12), height: 1),
             if (onLogout != null)
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                 child: ElevatedButton.icon(
                   onPressed: () async {
-                    Navigator.of(context).pop(); // close drawer first
+                    Navigator.of(context).pop();
                     await onLogout?.call();
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0077B6),
+                    backgroundColor: (role == UserRole.admin || role == UserRole.moderator)
+                        ? AdminColors.accent
+                        : const Color(0xFF0077B6),
                     foregroundColor: Colors.white,
                     minimumSize: const Size(double.infinity, 48),
                     shape: RoundedRectangleBorder(
@@ -251,6 +290,16 @@ class MoreMenuDrawer extends StatelessWidget {
                   ),
                 ),
               ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16, top: 8),
+              child: Text(
+                '© 2025 Hello Sarawak',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.35),
+                  fontSize: 11,
+                ),
+              ),
+            ),
           ],
         ),
       ),
