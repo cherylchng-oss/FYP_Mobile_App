@@ -93,6 +93,9 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
   String reviewState = 'create';
   dynamic existingReviewId;
   String reviewText = '';
+  String reviewError = '';
+  final TextEditingController reviewController = TextEditingController();
+  final FocusNode reviewFocusNode = FocusNode();
   final Map<String, int> subRatings = {
     'location': 0, 'cleanliness': 0, 'value': 0, 'facilities': 0, 'service': 0,
   };
@@ -118,6 +121,8 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
     paymentTimer?.cancel();
     successTimer?.cancel();
     _tabController.dispose();
+    reviewController.dispose();
+    reviewFocusNode.dispose();
     super.dispose();
   }
 
@@ -151,19 +156,37 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
   }
 
   Future<void> fetchMyReviews() async {
-    if (!isCartUserLoggedIn) { userReviews = []; return; }
+    if (!isCartUserLoggedIn) {
+      userReviews = [];
+      if (mounted) setState(() {});
+      return;
+    }
+
     try {
       final propertyIds = reservations
           .map((r) => int.tryParse('${r['propertyid']}'))
-          .where((id) => id != null).cast<int>().toSet().toList();
+          .where((id) => id != null)
+          .cast<int>()
+          .toSet()
+          .toList();
+
       final allReviews = <Map<String, dynamic>>[];
+
       for (final propertyId in propertyIds) {
         final data = await api.fetchReviews(propertyId);
         final reviews = normalizeReviews(data);
-        allReviews.addAll(reviews.where((r) => r['userid'].toString() == userId.toString()));
+
+        allReviews.addAll(
+          reviews.where((r) => r['userid'].toString() == userId.toString()),
+        );
       }
+
       userReviews = allReviews;
-    } catch (_) { userReviews = []; }
+    } catch (_) {
+      userReviews = [];
+    }
+
+    if (mounted) setState(() {});
   }
 
   List<Map<String, dynamic>> normalizeReservations(dynamic data) {
@@ -650,7 +673,7 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
   Future<void> openReviewModal(Map<String, dynamic> reservation) async {
     final prefs = await SharedPreferences.getInstance();
     final hasDeletedBefore = prefs.getString('deleted_review_${reservation['propertyid']}_$userId');
-    reviewProperty = reservation; reviewText = ''; existingReviewId = null;
+    reviewProperty = reservation; reviewText = ''; reviewError = ''; reviewController.text = ''; existingReviewId = null;
     subRatings.updateAll((key, value) => 0);
     if (hasDeletedBefore != null) {
       reviewState = 'deleted';
@@ -660,6 +683,7 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
         final er = existing.first;
         existingReviewId = er['id'];
         reviewText = er['comment'] ?? '';
+        reviewController.text = reviewText;
         subRatings['location'] = int.tryParse('${er['location_score'] ?? er['rating'] ?? 5}') ?? 5;
         subRatings['cleanliness'] = int.tryParse('${er['cleanliness_score'] ?? er['rating'] ?? 5}') ?? 5;
         subRatings['value'] = int.tryParse('${er['value_score'] ?? er['rating'] ?? 5}') ?? 5;
@@ -668,33 +692,158 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
         reviewState = 'view';
       } else { reviewState = 'create'; }
     }
-    setState(() => showReviewModal = true);
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        backgroundColor: Colors.transparent,
+        child: _reviewModalContent(),
+      ),
+    );  
   }
 
-  Future<void> handleReviewSubmit() async {
+  Future<void> handleReviewSubmit(StateSetter modalSet) async {
+    reviewText = reviewController.text;
+
     final allRated = subRatings.values.every((v) => v > 0);
-    if (!allRated) return displayToast('error', 'Please provide a star rating for all categories.');
-    if (reviewText.trim().isEmpty) return displayToast('error', 'Please write a review comment.');
+
+    if (!allRated) {
+      modalSet(() {
+        reviewError = 'Please provide a star rating for all categories.';
+      });
+      return;
+    }
+
+    if (reviewText.trim().isEmpty) {
+      modalSet(() {
+        reviewError = 'Please write a review comment.';
+      });
+      return;
+    }
+
+    modalSet(() {
+      reviewError = '';
+      isSubmittingReview = true;
+    });
+
     final sensitiveWords = ['badword1','badword2','scam','fraud','hate','racist','kill'];
     var safeText = reviewText;
-    for (final word in sensitiveWords) { safeText = safeText.replaceAll(RegExp('\\b$word\\b', caseSensitive: false), '*' * word.length); }
-    setState(() => isSubmittingReview = true);
-    final average = ((subRatings['location']! + subRatings['cleanliness']! + subRatings['value']! + subRatings['facilities']! + subRatings['service']!) / 5).round();
+
+    for (final word in sensitiveWords) {
+      safeText = safeText.replaceAll(
+        RegExp('\\b$word\\b', caseSensitive: false),
+        '*' * word.length,
+      );
+    }
+
+    final average = (
+      (
+        subRatings['location']! +
+        subRatings['cleanliness']! +
+        subRatings['value']! +
+        subRatings['facilities']! +
+        subRatings['service']!
+      ) / 5
+    ).round();
+
     final payload = {
-      'userid': int.tryParse(userId), 'propertyid': int.tryParse('${reviewProperty?['propertyid']}'),
-      'review': safeText, 'rating': average,
-      'location_score': subRatings['location'] ?? 5, 'cleanliness_score': subRatings['cleanliness'] ?? 5,
-      'value_score': subRatings['value'] ?? 5, 'facilities_score': subRatings['facilities'] ?? 5, 'service_score': subRatings['service'] ?? 5,
+      'userid': int.tryParse(userId),
+      'propertyid': int.tryParse('${reviewProperty?['propertyid']}'),
+      'review': safeText,
+      'rating': average,
+      'location_score': subRatings['location'] ?? 5,
+      'cleanliness_score': subRatings['cleanliness'] ?? 5,
+      'value_score': subRatings['value'] ?? 5,
+      'facilities_score': subRatings['facilities'] ?? 5,
+      'service_score': subRatings['service'] ?? 5,
     };
+
     try {
       if (reviewState == 'create') {
         await api.submitReview(payload, username);
-        displayToast('success', 'Thank you! Your review has been submitted.');
-        await fetchMyReviews();
-        setState(() => showReviewModal = false);
+
+        final localReview = {
+          'userid': userId,
+          'propertyid': reviewProperty?['propertyid'],
+          'propertyId': reviewProperty?['propertyid'],
+          'comment': safeText,
+          'review': safeText,
+          'rating': average,
+          'location_score': subRatings['location'],
+          'cleanliness_score': subRatings['cleanliness'],
+          'value_score': subRatings['value'],
+          'facilities_score': subRatings['facilities'],
+          'service_score': subRatings['service'],
+        };
+
+        userReviews.add(localReview);
+
+        reviewState = 'view';
+        reviewController.text = safeText;
+        reviewText = safeText;
+
+        if (mounted) setState(() {});
+
+        Navigator.pop(context);
+
+        Future.delayed(const Duration(milliseconds: 250), () {
+          if (mounted) {
+            displayToast('success', 'Thank you! Your review has been submitted.');
+          }
+        });
       }
-    } catch (e) { displayToast('error', e.toString()); }
-    finally { setState(() => isSubmittingReview = false); }
+    } catch (e) {
+      final msg = e.toString().toLowerCase();
+
+      if (msg.contains('already submitted') || msg.contains('already')) {
+        await fetchMyReviews();
+
+        final existing = userReviews.where((r) =>
+          r['propertyId'].toString() == reviewProperty?['propertyid'].toString() ||
+          r['propertyid'].toString() == reviewProperty?['propertyid'].toString()
+        );
+
+        if (existing.isNotEmpty) {
+          final er = existing.first;
+
+          modalSet(() {
+            existingReviewId = er['id'] ?? er['reviewid'] ?? er['reviewId'];
+            reviewText = er['comment'] ?? er['review'] ?? '';
+            reviewController.text = reviewText;
+
+            subRatings['location'] = int.tryParse('${er['location_score'] ?? er['rating'] ?? 5}') ?? 5;
+            subRatings['cleanliness'] = int.tryParse('${er['cleanliness_score'] ?? er['rating'] ?? 5}') ?? 5;
+            subRatings['value'] = int.tryParse('${er['value_score'] ?? er['rating'] ?? 5}') ?? 5;
+            subRatings['facilities'] = int.tryParse('${er['facilities_score'] ?? er['rating'] ?? 5}') ?? 5;
+            subRatings['service'] = int.tryParse('${er['service_score'] ?? er['rating'] ?? 5}') ?? 5;
+
+            reviewState = 'view';
+            reviewError = '';
+          });
+
+          if (mounted) setState(() {});
+        } else {
+          modalSet(() {
+            reviewError = 'You have already submitted a review for this property.';
+          });
+        }
+
+        return;
+      }
+
+      modalSet(() {
+        reviewError = e.toString();
+      });
+    } finally {
+      modalSet(() {
+        isSubmittingReview = false;
+      });
+
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> handleDeleteReview() async {
@@ -919,7 +1068,6 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
           if (showCartRefreshNotice) _refreshNotice(),
           if (isCancelProcessing) _cancelProcessingOverlay(),
           if (showPaymentModal && selectedReservation != null) _paymentModal(),
-          if (showReviewModal && reviewProperty != null) _reviewModal(),
           if (showSupportModal) _supportModal(),
         ],
       ),
@@ -1382,7 +1530,7 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
         buttons.add(_actionBtn(
           icon: Icons.star_rounded,
           label: hasReviewed ? 'View My Review' : 'Write a Review',
-          color: hasReviewed ? _C.textMuted : _C.starGold,
+          color: hasReviewed ? Colors.grey : _C.starGold,
           filled: !hasReviewed,
           onPressed: () => openReviewModal(reservation),
         ));
@@ -1895,8 +2043,8 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
   // ──────────────────────────────────────────────────────────────────
   // REVIEW MODAL
   // ──────────────────────────────────────────────────────────────────
-  Widget _reviewModal() {
-    return _modalBackdrop(child: Container(
+  Widget _reviewModalContent() {
+    return Container(
       width: 480,
       constraints: const BoxConstraints(maxHeight: 680),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22)),
@@ -1914,14 +2062,22 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
               const Text('You have already submitted or deleted a review for this property. Guests are limited to one review per stay.', textAlign: TextAlign.center, style: TextStyle(color: _C.textMuted)),
               const SizedBox(height: 20),
               SizedBox(width: double.infinity, child: ElevatedButton(
-                onPressed: () => setState(() => showReviewModal = false),
-                style: ElevatedButton.styleFrom(backgroundColor: _C.primary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 13), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                onPressed: () {
+                  FocusScope.of(context).unfocus();
+                  Navigator.pop(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _C.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
                 child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w800)),
               )),
             ]);
           }
 
-          final submitDisabled = isSubmittingReview || !subRatings.values.every((v) => v > 0) || reviewText.trim().isEmpty;
+          final submitDisabled = isSubmittingReview;
           return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1931,7 +2087,12 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
                 Text('${reviewProperty?['propertyaddress'] ?? ''}', style: const TextStyle(color: _C.textMuted, fontSize: 12)),
               ])),
               InkWell(
-                onTap: isSubmittingReview ? null : () => setState(() => showReviewModal = false),
+                onTap: isSubmittingReview
+                    ? null
+                    : () {
+                        FocusScope.of(context).unfocus();
+                        Navigator.pop(context);
+                      },
                 borderRadius: BorderRadius.circular(10),
                 child: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: _C.surface, borderRadius: BorderRadius.circular(10)),
                   child: const Icon(Icons.close_rounded, size: 18, color: _C.textSecond)),
@@ -1955,19 +2116,55 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
             const SizedBox(height: 10),
             TextField(
               maxLines: 4,
-              enabled: reviewState == 'create',
-              controller: TextEditingController(text: reviewText)..selection = TextSelection.collapsed(offset: reviewText.length),
-              onChanged: (v) { reviewText = v; modalSet(() {}); },
+              readOnly: reviewState != 'create',
+              enabled: true,
+              controller: reviewController,
+              focusNode: reviewFocusNode,
+              keyboardType: TextInputType.multiline,
+              textInputAction: TextInputAction.newline,
+              onChanged: (v) {
+                reviewText = v;
+              },
               style: const TextStyle(color: _C.textPrimary, fontSize: 14),
               decoration: InputDecoration(
                 hintText: 'Share details of your experience...',
                 hintStyle: const TextStyle(color: _C.textMuted),
-                filled: true, fillColor: _C.surface,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _C.border)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _C.border)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _C.accent, width: 2)),
+                filled: true,
+                fillColor: _C.surface,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _C.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _C.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _C.accent, width: 2),
+                ),
               ),
             ),
+            if (reviewError.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: _C.dangerBg,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _C.dangerBorder),
+                ),
+                child: Text(
+                  reviewError,
+                  style: const TextStyle(
+                    color: _C.danger,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             Row(children: [
               if (reviewState == 'view') TextButton.icon(
@@ -1977,14 +2174,19 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
               ),
               const Spacer(),
               TextButton(
-                onPressed: isSubmittingReview ? null : () => setState(() => showReviewModal = false),
+                onPressed: isSubmittingReview
+                    ? null
+                    : () {
+                        FocusScope.of(context).unfocus();
+                        Navigator.pop(context);
+                      },
                 style: TextButton.styleFrom(foregroundColor: _C.textMuted),
                 child: Text(reviewState == 'view' ? 'Close' : 'Cancel'),
               ),
               if (reviewState == 'create') ...[
                 const SizedBox(width: 8),
                 ElevatedButton(
-                  onPressed: submitDisabled ? null : handleReviewSubmit,
+                  onPressed: submitDisabled ? null : () => handleReviewSubmit(modalSet),
                   style: ElevatedButton.styleFrom(backgroundColor: _C.primary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
                   child: Text(isSubmittingReview ? 'Saving...' : 'Submit', style: const TextStyle(fontWeight: FontWeight.w800)),
                 ),
@@ -1993,7 +2195,7 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
           ]);
         }),
       ),
-    ));
+    );
   }
 
   // ──────────────────────────────────────────────────────────────────

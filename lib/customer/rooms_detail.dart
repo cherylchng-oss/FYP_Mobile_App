@@ -2752,8 +2752,8 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                   backgroundColor: soldOut
                       ? const Color(0xFFE5E7EB)
                       : selected
-                          ? const Color(0xFF16A34A)
-                          : const Color(0xFF2563EB),
+                          ? AppColors.primary
+                          : AppColors.accent,
                   foregroundColor: soldOut ? const Color(0xFF6B7280) : Colors.white,
                   minimumSize: const Size(84, 34),
                   padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -3071,36 +3071,204 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
     final score = average * 2;
 
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: _cardDecoration(),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(child: Text('PROPERTY REVIEWS (${allReviews.length})', style: const TextStyle(color: Color(0xFF007BFF), fontWeight: FontWeight.w900))),
-          DropdownButton<String>(
-            value: reviewSort,
-            items: const [
-              DropdownMenuItem(value: 'latest', child: Text('Latest')),
-              DropdownMenuItem(value: 'highest', child: Text('Highest')),
-              DropdownMenuItem(value: 'lowest', child: Text('Lowest')),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: const Icon(
+                  Icons.reviews_rounded,
+                  color: AppColors.accent,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Guest Reviews',
+                      style: TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${allReviews.length} ${allReviews.length == 1 ? 'review' : 'reviews'} from guests',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecond,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: DropdownButton<String>(
+                  value: reviewSort,
+                  underline: const SizedBox.shrink(),
+                  icon: const Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: AppColors.textMuted,
+                  ),
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'latest', child: Text('Latest')),
+                    DropdownMenuItem(value: 'highest', child: Text('Highest')),
+                    DropdownMenuItem(value: 'lowest', child: Text('Lowest')),
+                  ],
+                  onChanged: (value) => setState(() => reviewSort = value ?? 'latest'),
+                ),
+              ),
             ],
-            onChanged: (value) => setState(() => reviewSort = value ?? 'latest'),
           ),
-        ]),
-        const SizedBox(height: 14),
-        if (allReviews.isEmpty)
-          const Text('No reviews yet.', style: TextStyle(color: Color(0xFF64748B)))
-        else ...[
-          Row(children: [
-            Container(width: 72, height: 72, alignment: Alignment.center, decoration: BoxDecoration(color: const Color(0xFF4285F4), borderRadius: BorderRadius.circular(10)), child: Text(score.toStringAsFixed(1), style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900))),
-            const SizedBox(width: 14),
-            Expanded(child: Text('${ratingText(score)}\nFrom ${allReviews.length} reviews', style: const TextStyle(fontWeight: FontWeight.w800))),
-          ]),
+
+          const SizedBox(height: 18),
+
+          if (allReviews.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.star_border_rounded, color: AppColors.accent),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'No reviews yet. Be the first guest to share your experience after completing a stay.',
+                      style: TextStyle(
+                        color: AppColors.textSecond,
+                        fontSize: 13,
+                        height: 1.4,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 74,
+                    height: 74,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [
+                          AppColors.accent,
+                          AppColors.primary,
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primary.withOpacity(0.18),
+                          blurRadius: 12,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      score.toStringAsFixed(1),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 27,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          ratingText(score),
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Based on ${allReviews.length} ${allReviews.length == 1 ? 'review' : 'reviews'}',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecond,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: List.generate(
+                            5,
+                            (index) => Icon(
+                              index < average.round()
+                                  ? Icons.star_rounded
+                                  : Icons.star_border_rounded,
+                              color: AppColors.accent,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            ...sortedReviews.take(5).map(_reviewTile),
+          ],
+
           const SizedBox(height: 16),
-          ...sortedReviews.take(5).map(_reviewTile),
+          _reviewForm(),
         ],
-        const SizedBox(height: 16),
-        _reviewForm(),
-      ]),
+      ),
     );
   }
 
@@ -3114,66 +3282,354 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
   }
 
   Widget _reviewTile(Map<String, dynamic> review) {
+    final guestName = '${review['username'] ?? review['name'] ?? 'Verified Guest'}';
+    final initial = guestName.trim().isNotEmpty ? guestName.trim()[0].toUpperCase() : 'G';
+    final score = parseDouble(review['rating'], 5) * 2;
+    final comment = '${review['review'] ?? review['comment'] ?? ''}'.trim();
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE5E7EB)), borderRadius: BorderRadius.circular(10)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          CircleAvatar(child: Text('${review['username'] ?? review['name'] ?? 'U'}'.substring(0, 1).toUpperCase())),
-          const SizedBox(width: 10),
-          Expanded(child: Text('${review['username'] ?? review['name'] ?? 'Verified Guest'}', style: const TextStyle(fontWeight: FontWeight.w900))),
-          Text('${(parseDouble(review['rating'], 5) * 2).toStringAsFixed(1)} / 10', style: const TextStyle(color: Color(0xFF0056B3), fontWeight: FontWeight.w900)),
-        ]),
-        const SizedBox(height: 10),
-        Text('"${review['review'] ?? review['comment'] ?? ''}"', style: const TextStyle(height: 1.5, color: Color(0xFF374151))),
-        if ('${review['owner_reply'] ?? ''}'.trim().isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Container(padding: const EdgeInsets.all(12), decoration: const BoxDecoration(color: Color(0xFFF8FAFC), border: Border(left: BorderSide(color: Color(0xFF007BFF), width: 3))), child: Text('Response from Host\n${review['owner_reply']}')),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
         ],
-      ]),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: AppColors.surface,
+                child: Text(
+                  initial,
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      guestName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.textPrimary,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    const Text(
+                      'Verified guest',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.star_rounded, color: AppColors.accent, size: 16),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${score.toStringAsFixed(1)} / 10',
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          if (comment.isNotEmpty)
+            Text(
+              '"$comment"',
+              style: const TextStyle(
+                height: 1.55,
+                color: AppColors.textSecond,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+
+          if ('${review['owner_reply'] ?? ''}'.trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: const Border(
+                  left: BorderSide(color: AppColors.accent, width: 4),
+                ),
+              ),
+              child: Text(
+                'Response from Host\n${review['owner_reply']}',
+                style: const TextStyle(
+                  color: AppColors.textSecond,
+                  height: 1.45,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
   Widget _reviewForm() {
     if (reviewState == 'loading') return const SizedBox.shrink();
-    if (!isEligibleToReview) return const Text('You can submit a review after completing a paid stay at this property.', style: TextStyle(color: Color(0xFF64748B)));
 
-    if (existingReviewId != null) {
-      return const Text(
-        'You have already reviewed this property.',
-        style: TextStyle(color: Color(0xFF64748B)),
+    if (!isEligibleToReview) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: const Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.lock_outline_rounded, color: AppColors.textMuted, size: 18),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'You can submit a review after completing a paid stay at this property.',
+                style: TextStyle(
+                  color: AppColors.textSecond,
+                  fontSize: 13,
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
       );
     }
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Divider(height: 28),
-      const Text('Write a review', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-      const SizedBox(height: 10),
-      ...subRatings.keys.map((key) => _ratingRow(key)),
-      const SizedBox(height: 10),
-      TextField(
-        maxLines: 4,
-        onChanged: (value) => reviewText = value,
-        decoration: const InputDecoration(labelText: 'Your review', border: OutlineInputBorder()),
+    if (existingReviewId != null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEBF7F2),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFB2DDD0)),
+        ),
+        child: const Row(
+          children: [
+            Icon(
+              Icons.check_circle_rounded,
+              color: Color(0xFF3D7A5C),
+              size: 18,
+            ),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'You have already reviewed this property. Thank you for sharing your experience.',
+                style: TextStyle(
+                  color: Color(0xFF3D7A5C),
+                  fontSize: 13,
+                  height: 1.4,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
       ),
-      const SizedBox(height: 12),
-      ElevatedButton(onPressed: isSubmittingReview ? null : submitUserReview, child: Text(isSubmittingReview ? 'Submitting...' : 'Submit Review')),
-    ]);
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.rate_review_rounded, color: AppColors.accent, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Write a Review',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Rate your stay and help future guests make better decisions.',
+            style: TextStyle(
+              color: AppColors.textSecond,
+              fontSize: 13,
+              height: 1.4,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          ...subRatings.keys.map((key) => _ratingRow(key)),
+
+          const SizedBox(height: 12),
+
+          TextField(
+            maxLines: 4,
+            onChanged: (value) => reviewText = value,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+            ),
+            decoration: InputDecoration(
+              hintText: 'Share details of your experience...',
+              hintStyle: const TextStyle(color: AppColors.textMuted),
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.accent, width: 2),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: isSubmittingReview ? null : submitUserReview,
+              icon: const Icon(Icons.send_rounded, size: 17),
+              label: Text(
+                isSubmittingReview ? 'Submitting...' : 'Submit Review',
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                elevation: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _ratingRow(String key) {
-    final label = key[0].toUpperCase() + key.substring(1);
-    return Row(children: [
-      SizedBox(width: 92, child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700))),
-      ...List.generate(5, (index) {
-        final selected = (subRatings[key] ?? 0) >= index + 1;
-        return IconButton(
-          onPressed: () => setState(() => subRatings[key] = index + 1),
-          icon: Icon(selected ? Icons.star : Icons.star_border, color: const Color(0xFFFFB703)),
-        );
-      }),
-    ]);
+    final labels = {
+      'location': 'Location',
+      'cleanliness': 'Cleanliness',
+      'value': 'Value',
+      'facilities': 'Facilities',
+      'service': 'Service',
+    };
+
+    final label = labels[key] ?? key;
+    final rating = subRatings[key] ?? 0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 95,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                color: AppColors.textSecond,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: List.generate(5, (index) {
+                final selected = rating >= index + 1;
+
+                return InkWell(
+                  onTap: () => setState(() => subRatings[key] = index + 1),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: Icon(
+                      selected ? Icons.star_rounded : Icons.star_border_rounded,
+                      color: AppColors.accent,
+                      size: 27,
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _mobileBookingBar() {
