@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
-import 'customer/home.dart';
 import 'customer/customer_rooms.dart';
 import 'customer/customer_cart.dart';
 import 'customer/customer_bookings.dart';
 import 'customer/customer_notification.dart';
-import 'customer/about_sarawak.dart';
-import 'customer/about_us.dart';
-import 'customer/customer_faq.dart';
 import 'beforeLogin/pre_customer_room.dart';
 import 'moderator/moderator_dashboard.dart';
 import 'moderator/moderator_notification.dart';
 import 'admin/admin_dashboard.dart';
 import 'admin/admin_notification.dart';
+import 'admin/admin_activity_logs.dart';
+import 'admin/admin_stock_manager.dart';
+import 'admin/admin_ledger.dart';
+import 'admin/admin_customer_reviews.dart';
 import 'owner/owner_dashboard.dart';
 import 'owner/owner_property_listing.dart';
 import 'owner/owner_reservation.dart';
@@ -24,9 +24,12 @@ import 'admin/admin_audit_trails.dart';
 import 'admin/admin_book_and_pay.dart';
 import 'moderator/moderator_audit_trails.dart';
 import 'moderator/moderator_book_and_pay.dart';
+import 'moderator/moderator_ledger.dart';
+import 'moderator/moderator_activity_logs.dart';
+import 'moderator/moderator_stock_manager.dart';
+import 'moderator/moderator_customer_review.dart';
 import 'shared_admin_moderator/manage_service.dart';
 import 'shared_admin_moderator/user_management.dart';
-import 'shared_admin_moderator/manage_booking.dart';
 // Export AppRole for use in navigation
 export 'shared_admin_moderator/user_management.dart' show AppRole;
 import 'profile_page.dart';
@@ -160,12 +163,12 @@ class _CamsAppState extends State<CamsApp> {
         '/forget-password': (context) => const ForgotPasswordRequestPage(),
         // Centralized post-login redirect so routing happens in app.dart
         '/after-login': (context) => const _PostLoginRedirect(),
-        '/home': (context) => const HomePage(),
+        '/home': (context) => const RoomsPage(),
         '/profile': (context) => const ProfilePage(),
         '/admin': (context) => const AdminDashboard(),
         '/moderator': (context) => const ModeratorDashboard(),
         '/owner': (context) => const OwnerDashboard(),
-        '/customer': (context) => const CustomerRoomsPage(),
+        '/customer': (context) => const RoomsPage(),
         '/manage-services': (context) => const ManageServicesPage(),
         '/user-management': (context) {
           // Get role from route arguments or determine from current user
@@ -179,19 +182,26 @@ class _CamsAppState extends State<CamsApp> {
           }
           return AdminUserManagementPage(viewerRole: role);
         },
-        '/manage-booking': (context) => const AdminManageBooking(),
-
-        // Customer routes
-        '/customer-home': (context) => const HomePage(),
-        '/customer-rooms': (context) => const CustomerRoomsPage(),
+// Customer routes
         '/customer-cart': (context) => const CustomerCart(),
         '/customer-bookings': (context) => const CustomerBookings(),
-        '/about-sarawak': (context) => const AboutSarawakPage(),
-        '/about-us': (context) => const AboutUsPage(),
-        '/customer-faq': (context) => const CustomerFAQ(),
-        
+        '/customer-notifications': (context) => const CustomerNotifications(),
         // Admin routes
         '/admin-notifications': (context) => const AdminNotifications(),
+        '/admin-customers': (context) =>
+            const AdminUserManagementPage(viewerRole: AppRole.admin),
+
+        '/admin-moderators': (context) =>
+            const AdminUserManagementPage(viewerRole: AppRole.admin),
+
+          '/admin-stock-manager': (context) => const AdminStockManagerPage(),
+
+          '/admin-activity-logs': (context) => const AdminActivityLogsPage(),
+
+          '/admin-ledger': (context) => const AdminLedgerPage(),
+
+          '/admin-customer-reviews': (context) => const AdminCustomerReviewsPage(),
+          
         // Moderator routes
         '/moderator-notifications': (context) => const ModeratorNotifications(),
         // Owner routes
@@ -206,6 +216,10 @@ class _CamsAppState extends State<CamsApp> {
         '/admin-book-and-pay': (context) => const AdminBooknPayLog(),
         '/moderator-audit-trails': (context) => const ModeratorAuditTrails(),
         '/moderator-book-and-pay': (context) => const ModeratorBooknPayLog(),
+        '/moderator-ledger': (context) => const ModeratorLedger(),
+        '/moderator-activity-logs': (context) => const ModeratorActivityLogsPage(),
+        '/moderator-stock-manager': (context) => const ModeratorStockManagerPage(),
+        '/moderator-customer-reviews': (context) => const ModeratorCustomerReview(),
         '/rbac-test': (context) => const RBACTestScreen(),
       },
     );

@@ -4,9 +4,9 @@ import 'services/session.dart';
 import 'services/rbac_service.dart' as rbac;
 import 'api.dart' as api;
 import 'app.dart';
-import 'shared/customer_layout.dart';
 import 'shared/navigation_menu.dart' as nav;
 import 'shared/bottom_navigation_bar.dart';
+import 'shared/colors.dart';
 import 'customer/customer_cart.dart';
 import 'customer/customer_bookings.dart';
 import 'customer/customer_notification.dart';
@@ -72,10 +72,12 @@ class _ProfilePageState extends State<ProfilePage>
   // Saving state inside dialog (for loading spinner)
   bool _isSavingDialog = false;
 
-  final Color _primaryBlue = const Color(0xFF0077B6);
-  final Color _pageBg = const Color(0xFFE7F0FF);
-  final Color _textDark = const Color(0xFF1E293B);
-  final Color _textMuted = const Color(0xFF64748B);
+  Color get _primaryBlue => AdminColors.primary;
+  Color get _pageBg => AdminColors.cream;
+  Color get _cardBg => AdminColors.cardBg;
+
+  static const Color _textDark = Color(0xFF1E293B);
+  static const Color _textMuted = Color(0xFF64748B);
   final BorderRadius _cardRadius = BorderRadius.circular(16);
 
   @override
@@ -210,7 +212,7 @@ class _ProfilePageState extends State<ProfilePage>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: _pageBg,
+        backgroundColor: AdminColors.surface,
         title: const Text('Logout', style: TextStyle(color: Colors.black)),
         content: const Text(
           'Are you sure you want to logout?',
@@ -362,22 +364,6 @@ class _ProfilePageState extends State<ProfilePage>
     }
   }
 
-  Color _getHeaderColor(String role) {
-    switch (role.toLowerCase()) {
-      case 'admin':
-      case 'administrator':
-        return const Color(0xFF649EFF);
-      case 'moderator':
-        return const Color(0xFF78AAFF);
-      case 'owner':
-        return const Color(0xFF4188FF);
-      case 'customer':
-        return const Color(0xFF92BBFF);
-      default:
-        return const Color(0xFF92BBFF);
-    }
-  }
-
   String? get _effectiveRoleString {
     return (_userRole ?? _routeUserRole)?.toLowerCase();
   }
@@ -469,45 +455,11 @@ class _ProfilePageState extends State<ProfilePage>
     final userName = _userName ?? args?['userName'] ?? widget.userName;
     final userEmail = _userEmail ?? args?['userEmail'] ?? widget.userEmail;
     final userRole = args?['userRole'] ?? _userRole ?? 'customer';
-    final headerColor = _getHeaderColor(userRole);
 
     final roleLower = userRole.toString().toLowerCase();
     final bool canEditPaypal =
-        roleLower == 'admin' ||
-        roleLower == 'administrator' ||
-        roleLower == 'moderator';
+        roleLower == 'owner' || roleLower == 'Owner';
     final navRole = _userRoleEnum;
-
-    if (roleLower == 'customer') {
-      return CustomerLayout(
-        selectedIndex: 3,
-        backgroundColor: _pageBg,
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          leading: const SizedBox(width: 0, height: 0),
-          leadingWidth: 0,
-          toolbarHeight: kToolbarHeight,
-          title: const Text(
-            "My Profile",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          centerTitle: true,
-          elevation: 0,
-          backgroundColor: headerColor,
-        ),
-        body: _profileBody(
-          userName: userName,
-          userEmail: userEmail,
-          userRole: userRole,
-          headerColor: headerColor,
-          canEditPaypal: canEditPaypal,
-        ),
-      );
-    }
 
     return Scaffold(
       key: _scaffoldKey,
@@ -515,8 +467,8 @@ class _ProfilePageState extends State<ProfilePage>
       drawerEnableOpenDragGesture: false,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        leading: const SizedBox(width: 0, height: 0),
         leadingWidth: 0,
+        leading: const SizedBox.shrink(),
         toolbarHeight: kToolbarHeight,
         title: const Text(
           "My Profile",
@@ -528,7 +480,8 @@ class _ProfilePageState extends State<ProfilePage>
         ),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: headerColor,
+        backgroundColor: AdminColors.primary,
+        actions: const [SizedBox.shrink()],
       ),
       endDrawer: (navRole != null && navRole != nav.UserRole.customer)
           ? MoreMenuDrawer(
@@ -538,41 +491,19 @@ class _ProfilePageState extends State<ProfilePage>
               currentPageLabel: 'Profile',
             )
           : null,
-      body: _profileBody(
-        userName: userName,
-        userEmail: userEmail,
-        userRole: userRole,
-        headerColor: headerColor,
-        canEditPaypal: canEditPaypal,
-      ),
-      bottomNavigationBar: navRole != null ? SharedBottomNavigationBar(
-        selectedIndex: _selectedIndex,
-        onTap: _handleBottomNavTap,
-        scaffoldKey: _scaffoldKey,
-        role: navRole,
-      ) : null,
-    );
-  }
-
-  Widget _profileBody({
-    required String userName,
-    required String userEmail,
-    required dynamic userRole,
-    required Color headerColor,
-    required bool canEditPaypal,
-  }) {
-    return SafeArea(
-      top: false,
-      child: _isLoading
-          ? const Center(
+      body: SafeArea(
+        top: false,
+        child: _isLoading
+          ? Center(
               child: CircularProgressIndicator(
-                color: Color(0xFF0077B6),
+                color: _primaryBlue,
               ),
             )
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
+                  // Error message
                   if (_errorMessage != null)
                     Container(
                       margin: const EdgeInsets.only(bottom: 16),
@@ -607,6 +538,7 @@ class _ProfilePageState extends State<ProfilePage>
                       ),
                     ),
 
+                  // === Profile + Account card ===
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
@@ -614,11 +546,12 @@ class _ProfilePageState extends State<ProfilePage>
                       horizontal: 18,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: _cardBg,
                       borderRadius: _cardRadius,
+                      border: Border.all(color: AdminColors.border),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
+                          color: _primaryBlue.withValues(alpha: 0.06),
                           blurRadius: 12,
                           offset: const Offset(0, 4),
                         ),
@@ -627,12 +560,13 @@ class _ProfilePageState extends State<ProfilePage>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Profile header
                         Center(
                           child: Column(
                             children: [
                               CircleAvatar(
                                 radius: 46,
-                                backgroundColor: headerColor,
+                                backgroundColor: AdminColors.primary,
                                 child: const Icon(
                                   Icons.person,
                                   color: Colors.white,
@@ -663,23 +597,23 @@ class _ProfilePageState extends State<ProfilePage>
                                   vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: headerColor.withValues(alpha: 0.15),
+                                  color: AdminColors.primary.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Text(
                                   rbac.RBACService.getRoleDisplayName(
                                       _userRole ?? userRole),
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
-                                    color: headerColor,
+                                    color: AdminColors.primary,
                                   ),
                                 ),
                               ),
                               const SizedBox(height: 18),
                               ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: headerColor,
+                                  backgroundColor: AdminColors.primary,
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 10,
                                     horizontal: 22,
@@ -689,7 +623,19 @@ class _ProfilePageState extends State<ProfilePage>
                                   ),
                                 ),
                                 onPressed: () {
+                                  // Show edit profile popup dialog
                                   _showEditProfileDialog();
+                                  // Keep existing info message
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: const Text(
+                                        'Settings page coming soon',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                      backgroundColor: _primaryBlue,
+                                      duration: const Duration(seconds: 1),
+                                    ),
+                                  );
                                 },
                                 icon: const Icon(Icons.settings,
                                     color: Colors.white, size: 18),
@@ -726,19 +672,19 @@ class _ProfilePageState extends State<ProfilePage>
                           icon: Icons.badge,
                           label: "Username",
                           value: userName,
-                          color: headerColor,
+                          color: AdminColors.primary,
                         ),
                         _infoRow(
                           icon: Icons.email_outlined,
                           label: "Email",
                           value: userEmail,
-                          color: headerColor,
+                          color: AdminColors.primary,
                         ),
                         _infoRow(
                           icon: Icons.verified_user,
                           label: "Account Status",
                           value: "Active",
-                          color: headerColor,
+                          color: AdminColors.primary,
                         ),
                         _infoRow(
                           icon: Icons.group,
@@ -746,21 +692,22 @@ class _ProfilePageState extends State<ProfilePage>
                           value: _userRole != null
                               ? rbac.RBACService.getRoleDisplayName(_userRole!)
                               : userRole.toString().toUpperCase(),
-                          color: headerColor,
+                          color: AdminColors.primary,
                         ),
                         if (_userPhone != null && _userPhone!.isNotEmpty)
                           _infoRow(
                             icon: Icons.phone,
                             label: "Phone",
                             value: _userPhone!,
-                            color: headerColor,
+                            color: AdminColors.primary,
                           ),
-                        if (_userAddress != null && _userAddress!.isNotEmpty)
+                        if (_userAddress != null &&
+                            _userAddress!.isNotEmpty)
                           _infoRow(
                             icon: Icons.location_on,
                             label: "Address",
                             value: _userAddress!,
-                            color: headerColor,
+                            color: AdminColors.primary,
                           ),
                       ],
                     ),
@@ -768,6 +715,7 @@ class _ProfilePageState extends State<ProfilePage>
 
                   const SizedBox(height: 18),
 
+                  // === PayPal card (Admin / Moderator only) ===
                   if (canEditPaypal)
                     Container(
                       width: double.infinity,
@@ -776,11 +724,12 @@ class _ProfilePageState extends State<ProfilePage>
                         horizontal: 18,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: _cardBg,
                         borderRadius: _cardRadius,
+                        border: Border.all(color: AdminColors.border),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
+                            color: _primaryBlue.withValues(alpha: 0.06),
                             blurRadius: 10,
                             offset: const Offset(0, 3),
                           ),
@@ -814,6 +763,12 @@ class _ProfilePageState extends State<ProfilePage>
                                   width: 1.6,
                                 ),
                               ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(
+                                  color: AdminColors.border,
+                                ),
+                              ),
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 12,
                                 vertical: 10,
@@ -831,7 +786,8 @@ class _ProfilePageState extends State<ProfilePage>
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            "As an Admin or Moderator, you are required to provide your PayPal account for receiving payments.",
+                            "As an Admin or Moderator, you are required to "
+                            "provide your PayPal account for receiving payments.",
                             style: TextStyle(
                               fontSize: 13,
                               color: _textMuted,
@@ -846,7 +802,8 @@ class _ProfilePageState extends State<ProfilePage>
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: _primaryBlue,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -864,8 +821,11 @@ class _ProfilePageState extends State<ProfilePage>
                       ),
                     ),
 
-                  const SizedBox(height: 42),
+                  const SizedBox(height: 18),
 
+                  const SizedBox(height: 24),
+
+                  // Logout button (full width)
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
@@ -890,6 +850,13 @@ class _ProfilePageState extends State<ProfilePage>
                 ],
               ),
             ),
+      ),
+      bottomNavigationBar: navRole != null ? SharedBottomNavigationBar(
+        selectedIndex: _selectedIndex,
+        onTap: _handleBottomNavTap,
+        scaffoldKey: _scaffoldKey,
+        role: navRole,
+      ) : null,
     );
   }
 
@@ -903,9 +870,6 @@ class _ProfilePageState extends State<ProfilePage>
     _showNewPassword = false;
     _showConfirmPassword = false;
     _isSavingDialog = false;
-
-    final role = _userRole ?? _routeUserRole ?? 'customer';
-    final Color accentColor = _getHeaderColor(role);
 
     await showDialog(
       context: context,
@@ -1021,7 +985,7 @@ class _ProfilePageState extends State<ProfilePage>
                                     hintStyle: TextStyle(color: _textMuted),
                                     prefixIcon: Icon(
                                       Icons.person_outline,
-                                      color: accentColor,
+                                      color: AdminColors.primary,
                                     ),
                                     border: OutlineInputBorder(
                                       borderRadius:
@@ -1071,7 +1035,7 @@ class _ProfilePageState extends State<ProfilePage>
                                     hintStyle: TextStyle(color: _textMuted),
                                     prefixIcon: Icon(
                                       Icons.phone_outlined,
-                                      color: accentColor,
+                                      color: AdminColors.primary,
                                     ),
                                     border: OutlineInputBorder(
                                       borderRadius:
@@ -1131,7 +1095,7 @@ class _ProfilePageState extends State<ProfilePage>
                                     ),
                                     prefixIcon: Icon(
                                       Icons.lock_outline,
-                                      color: accentColor,
+                                      color: AdminColors.primary,
                                     ),
                                     suffixIcon: IconButton(
                                       icon: Icon(
@@ -1201,7 +1165,7 @@ class _ProfilePageState extends State<ProfilePage>
                                     ),
                                     prefixIcon: Icon(
                                       Icons.lock_reset_outlined,
-                                      color: accentColor,
+                                      color: AdminColors.primary,
                                     ),
                                     suffixIcon: IconButton(
                                       icon: Icon(
@@ -1266,7 +1230,7 @@ class _ProfilePageState extends State<ProfilePage>
                                               );
                                             },
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: accentColor,
+                                        backgroundColor: AdminColors.primary,
                                         foregroundColor: Colors.white,
                                         padding:
                                             const EdgeInsets.symmetric(
@@ -1499,13 +1463,14 @@ class _ProfilePageState extends State<ProfilePage>
     }
 
     if (index == 2) {
-      // Bookings
       if (role == nav.UserRole.customer) {
         Navigator.of(context).pushReplacementNamed('/customer-bookings');
       } else if (role == nav.UserRole.owner) {
         Navigator.of(context).pushReplacementNamed('/owner-reservation');
+      } else if (role == nav.UserRole.admin) {
+        Navigator.of(context).pushReplacementNamed('/admin-stock-manager');
       } else {
-        Navigator.of(context).pushReplacementNamed('/manage-booking');
+        Navigator.of(context).pushReplacementNamed('/moderator-stock-manager');
       }
       return;
     }
@@ -1563,8 +1528,10 @@ class _ProfilePageState extends State<ProfilePage>
       case 'Bookings':
         if (role == nav.UserRole.owner) {
           Navigator.of(context).pushReplacementNamed('/owner-reservation');
+        } else if (role == nav.UserRole.admin) {
+          Navigator.of(context).pushReplacementNamed('/admin-stock-manager');
         } else {
-          Navigator.of(context).pushReplacementNamed('/manage-booking');
+          Navigator.of(context).pushReplacementNamed('/moderator-stock-manager');
         }
         break;
       case 'Rooms':
@@ -1594,20 +1561,12 @@ class _ProfilePageState extends State<ProfilePage>
         }
         break;
       case 'BooknPayLog':
-        if (role == nav.UserRole.admin) {
-          Navigator.of(context).pushReplacementNamed('/admin-book-and-pay');
-        } else if (role == nav.UserRole.moderator) {
-          Navigator.of(context).pushReplacementNamed('/moderator-book-and-pay');
-        } else if (role == nav.UserRole.owner) {
+        if (role == nav.UserRole.owner) {
           Navigator.of(context).pushReplacementNamed('/owner-book-and-pay');
         }
         break;
       case 'AuditTrails':
-        if (role == nav.UserRole.admin) {
-          Navigator.of(context).pushReplacementNamed('/admin-audit-trails');
-        } else if (role == nav.UserRole.moderator) {
-          Navigator.of(context).pushReplacementNamed('/moderator-audit-trails');
-        } else if (role == nav.UserRole.owner) {
+        if (role == nav.UserRole.owner) {
           Navigator.of(context).pushReplacementNamed('/owner-audit-trails');
         }
         break;
@@ -1617,11 +1576,38 @@ class _ProfilePageState extends State<ProfilePage>
           Navigator.of(context).pushReplacementNamed('/owner-cluster');
         }
         break;
+      case 'Activity Logs':
+        if (role == nav.UserRole.admin) {
+          Navigator.of(context).pushReplacementNamed('/admin-activity-logs');
+        } else if (role == nav.UserRole.moderator) {
+          Navigator.of(context).pushReplacementNamed('/moderator-activity-logs');
+        }
+        break;
+      case 'Ledger':
+        if (role == nav.UserRole.admin) {
+          Navigator.of(context).pushReplacementNamed('/admin-ledger');
+        } else if (role == nav.UserRole.moderator) {
+          Navigator.of(context).pushReplacementNamed('/moderator-ledger');
+        }
+        break;
+      case 'Stock Manager':
+        if (role == nav.UserRole.admin) {
+          Navigator.of(context).pushReplacementNamed('/admin-stock-manager');
+        } else if (role == nav.UserRole.moderator) {
+          Navigator.of(context).pushReplacementNamed('/moderator-stock-manager');
+        }
+        break;
+      case 'Customer Review':
+        Navigator.of(context).pushReplacementNamed('/admin-customer-reviews');
+        break;
+      case 'Customer Reviews':
+        Navigator.of(context).pushReplacementNamed('/moderator-customer-reviews');
+        break;
       default:
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Navigating to $label', style: const TextStyle(color: Colors.black)),
-            backgroundColor: const Color(0xFF468FAF),
+            content: Text('Navigating to $label', style: const TextStyle(color: Colors.white)),
+            backgroundColor: _primaryBlue,
             duration: const Duration(seconds: 1),
           ),
         );
