@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'navigation_menu.dart';
 import 'colors.dart';
 
@@ -151,6 +152,8 @@ class MoreMenuDrawer extends StatelessWidget {
   final Function(String) onItemSelected;
   final Future<void> Function()? onLogout;
   final String? currentPageLabel;
+  final String? userName;
+  final String? userEmail;
 
   const MoreMenuDrawer({
     super.key,
@@ -158,6 +161,8 @@ class MoreMenuDrawer extends StatelessWidget {
     required this.onItemSelected,
     this.onLogout,
     this.currentPageLabel,
+    this.userName,
+    this.userEmail,
   });
 
   String get _headerTitle {
@@ -222,112 +227,233 @@ class MoreMenuDrawer extends StatelessWidget {
     }
   }
 
+  bool get _isAdminOrMod =>
+      role == UserRole.admin || role == UserRole.moderator;
+
   @override
   Widget build(BuildContext context) {
     final items = drawerMenuItemsForRole(role);
+    final topPad = MediaQuery.of(context).padding.top;
+    final displayName = userName ?? _headerTitle;
+    final displayEmail = userEmail ?? '';
 
     return Drawer(
-      child: Container(
-        color: _drawerBg,
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(colors: _gradientColors),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(_headerIcon, color: Colors.white, size: 28),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    _headerTitle,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
+      child: Stack(
+        children: [
+          // Background image (admin/mod only)
+          if (_isAdminOrMod)
+            Positioned.fill(
+              child: Image.asset(
+                'assets/navigation_menu.png',
+                fit: BoxFit.cover,
               ),
             ),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  for (var i = 0; i < items.length; i++)
-                    _buildDrawerItem(items[i], isSelected: currentPageLabel != null && items[i].label == currentPageLabel),
-                ],
+          // Dark overlay
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: _isAdminOrMod
+                      ? [
+                          const Color(0xFF2A1004).withOpacity(0.50),
+                          const Color(0xFF2A1004).withOpacity(0.20),
+                        ]
+                      : [
+                          const Color(0xFF1E293B),
+                          const Color(0xFF0F172A),
+                        ],
+                ),
               ),
             ),
-            Divider(color: Colors.white.withOpacity(0.12), height: 1),
-            if (onLogout != null)
+          ),
+          // Content
+          Column(
+            children: [
+              // Header
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    Navigator.of(context).pop();
-                    await onLogout?.call();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: (role == UserRole.admin || role == UserRole.moderator)
-                        ? AdminColors.accent
-                        : const Color(0xFF0077B6),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                padding: EdgeInsets.fromLTRB(20, topPad + 24, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(11),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                                color: Colors.white.withOpacity(0.25)),
+                          ),
+                          child:
+                              Icon(_headerIcon, color: Colors.white, size: 26),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                displayName,
+                                style: GoogleFonts.outfit(
+                                  color: Colors.white,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              if (displayEmail.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  displayEmail,
+                                  style: GoogleFonts.outfit(
+                                    color: Colors.white.withOpacity(0.60),
+                                    fontSize: 12,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                              const SizedBox(height: 6),
+                              Row(children: [
+                                Container(
+                                  width: 7,
+                                  height: 7,
+                                  decoration: const BoxDecoration(
+                                    color: AdminColors.success,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  'Online',
+                                  style: GoogleFonts.outfit(
+                                    color: AdminColors.success,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ]),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                height: 1,
+                margin: const EdgeInsets.symmetric(horizontal: 20),
+                color: Colors.white.withOpacity(0.10),
+              ),
+              const SizedBox(height: 8),
+              // Menu items
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  children: [
+                    for (var i = 0; i < items.length; i++)
+                      _buildDrawerItem(
+                        items[i],
+                        isSelected: currentPageLabel != null &&
+                            items[i].label == currentPageLabel,
+                      ),
+                  ],
+                ),
+              ),
+              // Logout
+              if (onLogout != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      Navigator.of(context).pop();
+                      await onLogout?.call();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isAdminOrMod
+                          ? AdminColors.primary.withOpacity(0.85)
+                          : const Color(0xFF0077B6),
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                      elevation: 0,
+                    ),
+                    icon: const Icon(Icons.logout, size: 18),
+                    label: Text(
+                      'Logout',
+                      style: GoogleFonts.outfit(
+                          fontWeight: FontWeight.w600, fontSize: 15),
                     ),
                   ),
-                  icon: const Icon(Icons.logout),
-                  label: const Text(
-                    'Logout',
-                    style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 20, top: 10),
+                child: Text(
+                  '© 2025 Hello Sarawak',
+                  style: GoogleFonts.outfit(
+                    color: Colors.white.withOpacity(0.30),
+                    fontSize: 11,
                   ),
                 ),
               ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16, top: 8),
-              child: Text(
-                '© 2025 Hello Sarawak',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.35),
-                  fontSize: 11,
-                ),
-              ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildDrawerItem(DrawerMenuItem item, {required bool isSelected}) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      margin: const EdgeInsets.symmetric(vertical: 3),
       decoration: BoxDecoration(
-        color: isSelected ? Colors.white.withOpacity(0.1) : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isSelected ? _borderColor : Colors.transparent,
-          width: 2,
-        ),
+        gradient: isSelected
+            ? const LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [
+                  Color(0xFFC4893A),
+                  Color(0xFF7A3D15),
+                ],
+              )
+            : null,
+        color: isSelected ? null : Colors.white.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(14),
       ),
-      child: ListTile(
-        leading: Icon(item.icon, color: Colors.white, size: 24),
-        title: Text(
-          item.label,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+      child: Row(
+        children: [
+          // Left accent bar for active item
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 4,
+            height: isSelected ? 36 : 0,
+            margin: const EdgeInsets.only(left: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.7),
+              borderRadius: BorderRadius.circular(4),
+            ),
           ),
-        ),
-        onTap: () => onItemSelected(item.label),
+          Expanded(
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 2),
+              leading: Icon(item.icon, color: Colors.white, size: 20),
+              title: Text(
+                item.label,
+                style: GoogleFonts.outfit(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight:
+                      isSelected ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+              onTap: () => onItemSelected(item.label),
+            ),
+          ),
+        ],
       ),
     );
   }
