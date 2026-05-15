@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -8,6 +8,8 @@ import '../services/session.dart';
 import '../shared/navigation_menu.dart' as nav;
 import '../shared/bottom_navigation_bar.dart';
 import '../shared/colors.dart';
+import '../api.dart' as api;
+import 'admin_notification.dart';
 
 class AdminCustomerReviewsPage extends StatefulWidget {
   const AdminCustomerReviewsPage({super.key});
@@ -25,6 +27,7 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
 
   bool _isLoading = true;
   String? _errorMessage;
+  int _unreadCount = 0;
 
   List<Map<String, dynamic>> _reviews = [];
   Map<String, dynamic> _summary = {};
@@ -39,6 +42,7 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
   void initState() {
     super.initState();
     _loadReviews();
+    _loadUnreadCount();
     _searchController.addListener(() => setState(() => _currentPage = 1));
   }
 
@@ -46,6 +50,16 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    try {
+      final notifications = await api.fetchNotifications();
+      if (!mounted) return;
+      setState(() {
+        _unreadCount = notifications.where((n) => !(n['isRead'] ?? false)).length;
+      });
+    } catch (_) {}
   }
 
   Future<Map<String, String>> _headers() async {
@@ -301,6 +315,99 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
     }
   }
 
+  // ── Header ──────────────────────────────────────────────────────────────────
+  Widget _buildHeader(double topPad) {
+    return SizedBox(
+      width: double.infinity,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.asset('assets/customer_review.png', fit: BoxFit.cover),
+          ),
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF3D1E0C).withOpacity(0.62),
+                    const Color(0xFF8B4A2F).withOpacity(0.55),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(20, topPad + 24, 20, 36),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white.withOpacity(0.25)),
+                  ),
+                  child: const Icon(Icons.rate_review_outlined, color: Colors.white, size: 26),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Customer Reviews',
+                          style: AppTextStyles.h2.copyWith(
+                              color: Colors.white, fontSize: 24, height: 1.2)),
+                      const SizedBox(height: 4),
+                      Text(
+                        'View customer feedback, ratings,\nreplies, and email notifications.',
+                        style: AppTextStyles.bodySmall.copyWith(
+                            color: Colors.white.withOpacity(0.72), height: 1.4),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => AdminNotifications()),
+                  ).then((_) => _loadUnreadCount()),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(9),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white.withOpacity(0.25)),
+                        ),
+                        child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 15),
+                      ),
+                      if (_unreadCount > 0)
+                        Positioned(
+                          top: -4, right: -4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                                color: Color(0xFFE0A43A), shape: BoxShape.circle),
+                            child: Text('$_unreadCount',
+                                style: AppTextStyles.caption.copyWith(
+                                    color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSummaryCard({
     required String title,
     required String value,
@@ -314,14 +421,17 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
           color: AdminColors.cardBg,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: AdminColors.border),
-          boxShadow: [BoxShadow(color: AdminColors.primary.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 4))],
+          boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: color.withValues(alpha: 0.14),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Icon(icon, color: color, size: 18),
             ),
             const SizedBox(height: 10),
@@ -330,28 +440,25 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
                   height: 20,
                   width: 60,
                   decoration: BoxDecoration(
-                  color: AdminColors.surface,
-                  borderRadius: BorderRadius.circular(6),
+                    color: AdminColors.surface,
+                    borderRadius: BorderRadius.circular(6),
                   ),
-              )
+                )
               : Text(
                   value,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.bold,
-                  color: AdminColors.textPrimary,
-                  ),
-              ),
+                  style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary),
+                ),
             const SizedBox(height: 3),
-            Text(title, style: const TextStyle(fontSize: 12, color: AdminColors.textMuted)),
+            Text(title,
+                style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHeaderSummary() {
+  Widget _buildSummaryGrid() {
     final totalReviews = _safeText(_summary['totalReviews'], fallback: _reviews.length.toString());
     final repliedReviews = _safeText(_summary['repliedReviews'], fallback: '0');
     final pendingReplies = _safeText(_summary['pendingReplies'], fallback: '0');
@@ -359,23 +466,6 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
 
     return Column(
       children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(color: AdminColors.primary, borderRadius: BorderRadius.circular(24)),
-          child: const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.rate_review, color: Colors.white70, size: 32),
-              SizedBox(height: 12),
-              Text('Customer Reviews', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text('View customer feedback, ratings, replies, and email notification status.',
-                  style: TextStyle(color: Colors.white70, fontSize: 13)),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
         Row(children: [
           _buildSummaryCard(title: 'Total Reviews', value: totalReviews, icon: Icons.reviews, color: AdminColors.primaryLight),
           const SizedBox(width: 12),
@@ -413,7 +503,9 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
         children: [
           SizedBox(
             width: 90,
-            child: Text(label, style: const TextStyle(color: AdminColors.textSecond, fontSize: 12, fontWeight: FontWeight.w600)),
+            child: Text(label,
+                style: AppTextStyles.caption.copyWith(
+                    color: AdminColors.textSecond, fontWeight: FontWeight.w600)),
           ),
           Expanded(
             child: LinearProgressIndicator(
@@ -426,7 +518,8 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
           ),
           const SizedBox(width: 8),
           Text(_toDouble(value).toStringAsFixed(1),
-              style: const TextStyle(color: AdminColors.textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
+              style: AppTextStyles.caption.copyWith(
+                  color: AdminColors.textPrimary, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -448,19 +541,23 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
         color: AdminColors.cardBg,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AdminColors.border),
-        boxShadow: [BoxShadow(color: AdminColors.primary.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           tilePadding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
           childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          leading: CircleAvatar(
-            backgroundColor: AdminColors.accent.withValues(alpha: 0.14),
-            child: const Icon(Icons.person, color: AdminColors.accent),
+          leading: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AdminColors.accent.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.person_outline, color: AdminColors.accent, size: 20),
           ),
           title: Text(property,
-              style: const TextStyle(color: AdminColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 15)),
+              style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Wrap(
@@ -470,14 +567,14 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                   decoration: BoxDecoration(
-                    color: hasReply ? AdminColors.success.withValues(alpha: 0.12) : AdminColors.accent.withValues(alpha: 0.12),
+                    color: hasReply ? AdminColors.success.withOpacity(0.12) : AdminColors.accent.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
                     hasReply ? 'Replied' : 'Pending Reply',
-                    style: TextStyle(
+                    style: AppTextStyles.caption.copyWith(
                       color: hasReply ? AdminColors.success : AdminColors.accent,
-                      fontSize: 11, fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
@@ -490,16 +587,18 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
             _infoRow('Cluster', cluster),
             _infoRow('Review Date', _formatDate(review['reviewdate'])),
             const SizedBox(height: 12),
-            const Align(
+            Align(
               alignment: Alignment.centerLeft,
               child: Text('Customer Review',
-                  style: TextStyle(color: AdminColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 14)),
+                  style: AppTextStyles.label.copyWith(
+                      color: AdminColors.textPrimary, fontWeight: FontWeight.bold)),
             ),
             const SizedBox(height: 6),
             Align(
               alignment: Alignment.centerLeft,
               child: Text(comment,
-                  style: const TextStyle(color: AdminColors.textSecond, fontSize: 13, height: 1.4)),
+                  style: AppTextStyles.bodySmall.copyWith(
+                      color: AdminColors.textSecond, height: 1.4)),
             ),
             const SizedBox(height: 12),
             _buildScoreRow('Location', review['location_score']),
@@ -515,17 +614,19 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Reply / Email Notification',
-                      style: TextStyle(color: AdminColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 13)),
+                  Text('Reply / Email Notification',
+                      style: AppTextStyles.label.copyWith(
+                          color: AdminColors.textPrimary, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 6),
                   Text(
                     hasReply ? reply : 'No reply yet. Submit a reply to notify the customer by email.',
-                    style: const TextStyle(color: AdminColors.textSecond, fontSize: 12, height: 1.4),
+                    style: AppTextStyles.caption.copyWith(
+                        color: AdminColors.textSecond, height: 1.4),
                   ),
                   if (hasReply) ...[
                     const SizedBox(height: 6),
                     Text('Reply date: ${_formatDate(review['reply_date'])}',
-                        style: const TextStyle(color: AdminColors.textMuted, fontSize: 11)),
+                        style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted)),
                   ],
                 ],
               ),
@@ -558,9 +659,13 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(width: 105,
-              child: Text(label, style: const TextStyle(color: AdminColors.textSecond, fontSize: 12, fontWeight: FontWeight.w600))),
+              child: Text(label,
+                  style: AppTextStyles.caption.copyWith(
+                      color: AdminColors.textSecond, fontWeight: FontWeight.w600))),
           Expanded(
-              child: Text(value, style: const TextStyle(color: AdminColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w700))),
+              child: Text(value,
+                  style: AppTextStyles.caption.copyWith(
+                      color: AdminColors.textPrimary, fontWeight: FontWeight.w700))),
         ],
       ),
     );
@@ -628,16 +733,17 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
         color: AdminColors.cardBg,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AdminColors.border),
-        boxShadow: [BoxShadow(color: AdminColors.primary.withValues(alpha: 0.05), blurRadius: 8, offset: const Offset(0, 3))],
+        boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 3))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(children: [
-            Icon(Icons.filter_list, size: 16, color: AdminColors.accent),
-            SizedBox(width: 6),
+          Row(children: [
+            const Icon(Icons.filter_list, size: 16, color: AdminColors.accent),
+            const SizedBox(width: 6),
             Text('Filter Reviews',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AdminColors.textPrimary)),
+                style: AppTextStyles.label.copyWith(
+                    color: AdminColors.textPrimary, fontWeight: FontWeight.w700)),
           ]),
           const SizedBox(height: 12),
           _buildSearchField(),
@@ -667,7 +773,7 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
                 icon: const Icon(Icons.clear, size: 14),
                 label: const Text('Clear'),
                 style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF64748B)),
+                    foregroundColor: AdminColors.textMuted),
               ),
             ],
           ]),
@@ -691,10 +797,10 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
         Expanded(
           child: TextField(
             controller: _searchController,
-            style: const TextStyle(fontSize: 13, color: AdminColors.textPrimary),
-            decoration: const InputDecoration(
+            style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
+            decoration: InputDecoration(
               hintText: 'Search property name or customer name...',
-              hintStyle: TextStyle(fontSize: 12, color: AdminColors.textMuted),
+              hintStyle: AppTextStyles.caption.copyWith(color: AdminColors.textMuted),
               border: InputBorder.none,
               isDense: true,
             ),
@@ -718,10 +824,8 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label,
-            style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF64748B))),
+            style: AppTextStyles.caption.copyWith(
+                color: AdminColors.textMuted, fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),
         GestureDetector(
           onTap: () async {
@@ -737,9 +841,9 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
             height: 40,
             padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: BoxDecoration(
-              border: Border.all(color: const Color(0xFFD4DCE8)),
+              border: Border.all(color: AdminColors.border),
               borderRadius: BorderRadius.circular(8),
-              color: Colors.white,
+              color: AdminColors.cardBg,
             ),
             child: Row(children: [
               Expanded(
@@ -747,18 +851,13 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
                   value == null
                       ? 'mm/dd/yyyy'
                       : '${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}/${value.year}',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: value == null
-                          ? const Color(0xFF94A3B8)
-                          : const Color(0xFF1A202C)),
+                  style: AppTextStyles.caption.copyWith(
+                      color: value == null ? AdminColors.textMuted : AdminColors.textPrimary),
                 ),
               ),
               Icon(Icons.calendar_today,
                   size: 13,
-                  color: value == null
-                      ? const Color(0xFF94A3B8)
-                      : const Color(0xFF80BF54)),
+                  color: value == null ? AdminColors.textMuted : AdminColors.accent),
             ]),
           ),
         ),
@@ -770,25 +869,24 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Sort',
-            style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF64748B))),
+        Text('Sort',
+            style: AppTextStyles.caption.copyWith(
+                color: AdminColors.textMuted, fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),
         Container(
           height: 40,
           padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
-            border: Border.all(color: const Color(0xFFD4DCE8)),
+            border: Border.all(color: AdminColors.border),
             borderRadius: BorderRadius.circular(8),
-            color: Colors.white,
+            color: AdminColors.cardBg,
           ),
           child: DropdownButton<String>(
             value: _sortOrder,
             isExpanded: true,
             underline: const SizedBox.shrink(),
-            style: const TextStyle(fontSize: 13, color: Color(0xFF1A202C)),
+            dropdownColor: AdminColors.cardBg,
+            style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
             items: const [
               DropdownMenuItem(value: 'latest', child: Text('Latest First')),
               DropdownMenuItem(value: 'oldest', child: Text('Oldest First')),
@@ -826,16 +924,15 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
                 height: 32,
                 margin: const EdgeInsets.symmetric(horizontal: 3),
                 decoration: BoxDecoration(
-                  color: active ? AdminColors.primary : Colors.white,
+                  color: active ? AdminColors.primary : AdminColors.cardBg,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: active ? AdminColors.primary : AdminColors.border),
                 ),
                 alignment: Alignment.center,
                 child: Text('$page',
-                    style: TextStyle(
-                        fontSize: 12,
+                    style: AppTextStyles.caption.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: active ? Colors.white : const Color(0xFF64748B))),
+                        color: active ? Colors.white : AdminColors.textMuted)),
               ),
             );
           }),
@@ -876,42 +973,45 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
       color: AdminColors.primary,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildHeaderSummary(),
-            const SizedBox(height: 16),
+            Text('Summary',
+                style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
+            const SizedBox(height: 4),
+            Text('Overview of customer feedback and ratings.',
+                style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted)),
+            const SizedBox(height: 14),
+            _buildSummaryGrid(),
+            const SizedBox(height: 20),
             if (_isLoading)
               const Center(
                 child: Padding(
                   padding: EdgeInsets.symmetric(vertical: 40),
-                  child: CircularProgressIndicator(color: Color(0xFF80BF54)),
+                  child: CircularProgressIndicator(color: AdminColors.primary),
                 ),
               )
             else if (_errorMessage != null)
               Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: AdminColors.danger.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AdminColors.danger.withOpacity(0.3)),
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.error_outline,
-                        color: Color(0xFFDC2626), size: 42),
+                    const Icon(Icons.error_outline, color: AdminColors.danger, size: 42),
                     const SizedBox(height: 12),
-                    const Text(
-                      'Unable to load customer reviews',
-                      style: TextStyle(
-                        color: Color(0xFF1A202C),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
-                    ),
+                    Text('Unable to load customer reviews',
+                        style: AppTextStyles.h4.copyWith(color: AdminColors.danger)),
                     const SizedBox(height: 8),
                     Text(
                       _errorMessage!,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          color: Color(0xFF64748B), fontSize: 13),
+                      style: AppTextStyles.bodySmall.copyWith(color: AdminColors.danger),
                     ),
                     const SizedBox(height: 16),
                     ElevatedButton.icon(
@@ -919,7 +1019,7 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
                       icon: const Icon(Icons.refresh),
                       label: const Text('Try Again'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF80BF54),
+                        backgroundColor: AdminColors.primary,
                         foregroundColor: Colors.white,
                       ),
                     ),
@@ -927,23 +1027,23 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
                 ),
               )
             else if (_reviews.isEmpty)
-              const Column(
-                children: [
-                  SizedBox(height: 60),
-                  Icon(Icons.rate_review_outlined,
-                      size: 52, color: Color(0xFF94A3B8)),
-                  SizedBox(height: 12),
-                  Text(
-                    'No customer reviews found',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFF1A202C),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
-                  ),
-                  SizedBox(height: 40),
-                ],
+              Container(
+                padding: const EdgeInsets.all(40),
+                decoration: BoxDecoration(
+                  color: AdminColors.cardBg,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AdminColors.border),
+                ),
+                child: Column(
+                  children: [
+                    const Icon(Icons.rate_review_outlined, size: 52, color: AdminColors.border),
+                    const SizedBox(height: 12),
+                    Text('No customer reviews found',
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
+                    const SizedBox(height: 40),
+                  ],
+                ),
               )
             else ...[
               _buildFilterCard(),
@@ -952,17 +1052,11 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
                   padding: const EdgeInsets.symmetric(vertical: 32),
                   child: Column(
                     children: [
-                      const Icon(Icons.search_off,
-                          size: 44, color: Color(0xFF94A3B8)),
+                      const Icon(Icons.search_off, size: 44, color: AdminColors.border),
                       const SizedBox(height: 10),
-                      const Text(
-                        'No reviews match your filters',
-                        style: TextStyle(
-                          color: Color(0xFF64748B),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                      Text('No reviews match your filters',
+                          style: AppTextStyles.label.copyWith(
+                              color: AdminColors.textSecond, fontWeight: FontWeight.w600)),
                       if (hasFilters) ...[
                         const SizedBox(height: 10),
                         TextButton(
@@ -986,8 +1080,7 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
                     'Showing ${(_currentPage - 1) * _reviewsPerPage + 1}–'
                     '${((_currentPage - 1) * _reviewsPerPage + _currentPageReviews.length)} '
                     'of ${filtered.length} reviews',
-                    style: const TextStyle(
-                        fontSize: 12, color: Color(0xFF64748B)),
+                    style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted),
                   ),
                 ),
                 ..._currentPageReviews.map(_buildReviewCard),
@@ -1002,19 +1095,11 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top;
+
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('Customer Review', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: AdminColors.primary,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        actions: [
-          IconButton(onPressed: _loadReviews, icon: const Icon(Icons.refresh)),
-        ],
-      ),
+      backgroundColor: AdminColors.cream,
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.admin,
         onItemSelected: _handleMenuSelection,
@@ -1027,7 +1112,12 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
         scaffoldKey: _scaffoldKey,
         role: nav.UserRole.admin,
       ),
-      body: _buildBody(),
+      body: Column(
+        children: [
+          _buildHeader(topPad),
+          Expanded(child: _buildBody()),
+        ],
+      ),
     );
   }
 }

@@ -96,6 +96,15 @@ flutter:
     - assets/ob3.png
     - assets/bg_wave.png
     - assets/google_logo.png
+    - assets/stock_manager.png
+    - assets/property_listing.png
+    - assets/activity_logs.png
+    - assets/book_and_pay.png
+    - assets/audit_trails.png
+    - assets/ledger.png
+    - assets/customer_review.png
+    - assets/user_management.png
+    - assets/notification.png
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 

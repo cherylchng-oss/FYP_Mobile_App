@@ -1,5 +1,6 @@
 import 'dart:math' show min;
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../services/session.dart';
 import '../api.dart' as api;
 import '../app.dart';
@@ -7,6 +8,8 @@ import 'manage_service.dart';
 import '../shared/navigation_menu.dart';
 import '../shared/bottom_navigation_bar.dart';
 import '../shared/colors.dart';
+import '../admin/admin_notification.dart';
+import '../moderator/moderator_notification.dart';
 
 // Who is using the page right now?
 enum AppRole { admin, moderator }
@@ -42,8 +45,11 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
   bool _isLoading = false;
   String? _errorMessage;
 
+  // Notification badge
+  int _unreadCount = 0;
+
   // ===== Theme =====
-  Color get kBg => Colors.white;
+  Color get kBg => AdminColors.cream;
   Color get kPrimary => AdminColors.primary;
   Color get kPrimaryDeep => AdminColors.primaryLight;
   Color get kCardBg => AdminColors.cardBg;
@@ -55,6 +61,17 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
       widget.viewerRole == AppRole.admin ? UserRole.admin : UserRole.moderator;
 
   List<DrawerMenuItem> get _drawerItems => drawerMenuItemsForRole(_drawerRole);
+
+  Future<void> _loadUnreadCount() async {
+    try {
+      final notifications = await api.fetchNotifications();
+      final list = notifications is List
+          ? notifications
+          : (notifications as Map<String, dynamic>)['data'] as List? ?? [];
+      final count = list.where((n) => !(n['isRead'] ?? false)).length;
+      if (mounted) setState(() => _unreadCount = count);
+    } catch (_) {}
+  }
 
   Future<void> _handleLogout() async {
     final confirmed = await showDialog<bool>(
@@ -112,6 +129,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
   void initState() {
     super.initState();
     _loadUsers();
+    _loadUnreadCount();
   }
 
   Future<void> _loadUsers() async {
@@ -223,8 +241,8 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
     // Check multiple field name variations for phone (backend uses 'uphoneno')
     final phone = (raw['uphoneno'] ?? raw['phone'] ?? raw['phoneNo'] ?? raw['phoneno'] ?? raw['uphone'] ?? '').toString();
     // If phone is empty or "N/A", set to empty string
-    final phoneValue = phone.isEmpty || phone.toLowerCase() == 'n/a' 
-        ? '' 
+    final phoneValue = phone.isEmpty || phone.toLowerCase() == 'n/a'
+        ? ''
         : phone;
     final country = (raw['country'] ?? raw['countryname'] ?? raw['ucountry'] ?? '').toString();
     final cluster = (raw['cluster'] ?? raw['clustername'] ?? raw['clusterName'])?.toString();
@@ -302,27 +320,154 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
     return list;
   }
 
+  // ===== Header (Stock Manager style) =====
+  Widget _buildHeader(double topPad) {
+    return SizedBox(
+      height: topPad + 110,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.asset(
+              'assets/user_management.png',
+              fit: BoxFit.cover,
+            ),
+          ),
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF3D1E0C).withOpacity(0.62),
+                    const Color(0xFF8B4A2F).withOpacity(0.55),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.only(top: topPad + 24, left: 18, right: 18, bottom: 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(Icons.manage_accounts, color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'User Management',
+                        style: GoogleFonts.outfit(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        widget.viewerRole == AppRole.admin
+                            ? 'Customers, Moderators & Admins'
+                            : 'Customer Accounts',
+                        style: GoogleFonts.outfit(
+                          fontSize: 13,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Notification bell
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => widget.viewerRole == AppRole.admin
+                            ? AdminNotifications()
+                            : ModeratorNotifications(),
+                      ),
+                    ).then((_) => _loadUnreadCount());
+                  },
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 22),
+                      ),
+                      if (_unreadCount > 0)
+                        Positioned(
+                          top: -4,
+                          right: -4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFE53E3E),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              '$_unreadCount',
+                              style: GoogleFonts.outfit(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top;
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: kBg,
-      appBar: _buildAppBar(),
+      backgroundColor: AdminColors.cream,
       endDrawer: _buildDrawer(),
-      body: RefreshIndicator(
-        onRefresh: _loadUsers,
-        color: kPrimary,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-          slivers: [
-            SliverToBoxAdapter(child: _buildHeaderBanner()),
-            SliverToBoxAdapter(child: _buildTopBar()),
-            SliverToBoxAdapter(child: _buildTypeChips()),
-            const SliverToBoxAdapter(child: SizedBox(height: 10)),
-            _buildUserSliver(),
-            const SliverToBoxAdapter(child: SizedBox(height: 16)),
-          ],
-        ),
+      body: Column(
+        children: [
+          _buildHeader(topPad),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadUsers,
+              color: kPrimary,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                slivers: [
+                  SliverToBoxAdapter(child: _buildTopBar()),
+                  SliverToBoxAdapter(child: _buildTypeChips()),
+                  const SliverToBoxAdapter(child: SizedBox(height: 10)),
+                  _buildUserSliver(),
+                  const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: SharedBottomNavigationBar(
         selectedIndex: _selectedIndex,
@@ -333,57 +478,10 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
     );
   }
 
-  Widget _buildHeaderBanner() {
-    final total = _users.length;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: AdminColors.primary,
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.manage_accounts, color: Colors.white70, size: 32),
-            const SizedBox(height: 12),
-            const Text(
-              'User Management',
-              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Manage customers, moderators, and admin accounts. $total user${total == 1 ? '' : 's'} total.',
-              style: const TextStyle(color: Colors.white70, fontSize: 13),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ===== App Bar =====
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      automaticallyImplyLeading: false,
-      backgroundColor: kPrimary,
-      elevation: 0,
-      shape: null,
-      title: const Text(
-        'User Management',
-        style: TextStyle(fontWeight: FontWeight.w600, letterSpacing: .3, color: Colors.white),
-      ),
-      centerTitle: true,
-      actions: const [SizedBox.shrink()],
-    );
-  }
-
   // ===== Search + Filters =====
   Widget _buildTopBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
       child: Row(
         children: [
           // Search field — takes remaining width
@@ -400,13 +498,13 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                       controller: _searchCtrl,
                       onChanged: _performSmartSearch,
                       cursorColor: kPrimary,
-                      style: const TextStyle(fontSize: 14),
-                      decoration: const InputDecoration(
+                      style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
+                      decoration: InputDecoration(
                         border: InputBorder.none,
                         hintText: 'Search users…',
-                        hintStyle: TextStyle(fontSize: 14),
+                        hintStyle: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted),
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(vertical: 10),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
                       ),
                     ),
                   ),
@@ -433,7 +531,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                   value: _selectedStatus,
                   isExpanded: true,
                   icon: const Icon(Icons.keyboard_arrow_down, size: 18, color: kMuted),
-                  style: const TextStyle(fontSize: 13, color: Color(0xFF1E293B)),
+                  style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
                   dropdownColor: Colors.white,
                   items: const [
                     DropdownMenuItem(value: 'All Statuses', child: Text('All')),
@@ -461,16 +559,16 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
             gradient: selected
-                ? const LinearGradient(colors: [AdminColors.secondary, AdminColors.secondaryLight])
+                ? const LinearGradient(colors: [AdminColors.primary, AdminColors.primaryLight])
                 : LinearGradient(colors: [Colors.white, Colors.white.withOpacity(.9)]),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: selected ? Colors.transparent : AdminColors.secondary.withOpacity(.2),
+              color: selected ? Colors.transparent : AdminColors.border,
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: selected ? AdminColors.secondary.withOpacity(.22) : Colors.black.withOpacity(.03),
+                color: selected ? AdminColors.primary.withOpacity(.22) : Colors.black.withOpacity(.03),
                 blurRadius: selected ? 12 : 6,
                 offset: const Offset(0, 3),
               ),
@@ -487,22 +585,20 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                         ? Icons.verified_user
                         : Icons.person,
                 size: 15,
-                color: selected ? Colors.white : AdminColors.secondary,
+                color: selected ? Colors.white : AdminColors.textMuted,
               ),
               const SizedBox(width: 6),
               Text(
                 label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: selected ? Colors.white : AdminColors.secondary,
+                style: AppTextStyles.label.copyWith(
+                  color: selected ? Colors.white : AdminColors.textMuted,
                 ),
               ),
               const SizedBox(width: 5),
               _countPill(
                 _users.where((u) => u['type'] == label).length,
-                selected ? Colors.white.withOpacity(.2) : AdminColors.secondary.withOpacity(.08),
-                selected ? Colors.white : AdminColors.secondary,
+                selected ? Colors.white.withOpacity(.2) : AdminColors.primary.withOpacity(.08),
+                selected ? Colors.white : AdminColors.primary,
               ),
             ],
           ),
@@ -547,11 +643,11 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                 children: [
                   const Icon(Icons.error_outline, size: 42, color: Colors.redAccent),
                   const SizedBox(height: 10),
-                  const Text('Failed to load users', style: TextStyle(fontWeight: FontWeight.w600)),
+                  Text('Failed to load users', style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
                   const SizedBox(height: 4),
                   Text(
                     _errorMessage!,
-                    style: const TextStyle(color: kMuted, fontSize: 12),
+                    style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 12),
@@ -563,7 +659,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: const Text('Retry'),
+                    child: Text('Retry', style: AppTextStyles.label.copyWith(color: Colors.white)),
                   ),
                 ],
               ),
@@ -583,14 +679,14 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
             child: _glass(
               radius: 20,
               padding: const EdgeInsets.all(22),
-              child: const Column(
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.search_off, size: 42, color: kMuted),
-                  SizedBox(height: 10),
-                  Text('No users found', style: TextStyle(fontWeight: FontWeight.w600)),
-                  SizedBox(height: 4),
-                  Text('Try adjusting your filters', style: TextStyle(color: kMuted)),
+                  const Icon(Icons.search_off, size: 42, color: kMuted),
+                  const SizedBox(height: 10),
+                  Text('No users found', style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
+                  const SizedBox(height: 4),
+                  Text('Try adjusting your filters', style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted)),
                 ],
               ),
             ),
@@ -609,54 +705,54 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
               radius: 18,
               margin: const EdgeInsets.symmetric(vertical: 8),
               padding: const EdgeInsets.all(14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                _avatarForType(user['type']),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Wrap(
-                        spacing: 8,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          Text(
-                            user['username'],
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                          ),
-                          _statusPill(user['status']),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  _avatarForType(user['type']),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Wrap(
+                          spacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              user['username'],
+                              style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary),
+                            ),
+                            _statusPill(user['status']),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          user['name'],
+                          style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          user['email'],
+                          style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (user['type'] == 'Moderator' && user['cluster'] != null) ...[
+                          const SizedBox(height: 6),
+                          _tag('Cluster: ${user['cluster']}'),
                         ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        user['name'],
-                        style: const TextStyle(color: kMuted),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        user['email'],
-                        style: const TextStyle(color: kMuted),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (user['type'] == 'Moderator' && user['cluster'] != null) ...[
-                        const SizedBox(height: 6),
-                        _tag('Cluster: ${user['cluster']}'),
                       ],
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                _refinedMenu(user),
-              ],
-            ),
-          );
-        },
-        childCount: data.length,
+                  const SizedBox(width: 8),
+                  _refinedMenu(user),
+                ],
+              ),
+            );
+          },
+          childCount: data.length,
+        ),
       ),
-    ),
     );
   }
 
@@ -676,7 +772,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         border: Border.all(color: kBorder, width: 1.0),
         boxShadow: [
           BoxShadow(
-            color: kPrimary.withValues(alpha: 0.06),
+            color: kPrimary.withOpacity(0.06),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -693,13 +789,13 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         color: bg,
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text('$count', style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 12)),
+      child: Text('$count', style: AppTextStyles.caption.copyWith(color: fg, fontWeight: FontWeight.w700)),
     );
   }
 
   Widget _statusPill(String status) {
     final bool active = status == 'Active';
-    final Color bg = (active ? AdminColors.success : AdminColors.textMuted).withValues(alpha: 0.12);
+    final Color bg = (active ? AdminColors.success : AdminColors.textMuted).withOpacity(0.12);
     final Color fg = active ? AdminColors.success : AdminColors.textMuted;
     final IconData icon = active ? Icons.check_circle : Icons.pause_circle_filled;
     return Container(
@@ -714,7 +810,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         children: [
           Icon(icon, size: 14, color: fg),
           const SizedBox(width: 6),
-          Text(status, style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 12)),
+          Text(status, style: AppTextStyles.caption.copyWith(color: fg, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -727,7 +823,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         color: kPrimary.withOpacity(.08),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Text(text, style: TextStyle(color: kPrimaryDeep, fontSize: 12, fontWeight: FontWeight.w600)),
+      child: Text(text, style: AppTextStyles.caption.copyWith(color: kPrimaryDeep, fontWeight: FontWeight.w600)),
     );
   }
 
@@ -737,9 +833,13 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         : type == 'Moderator'
             ? _darken(kPrimary, .05)
             : kPrimary.withOpacity(.9);
-    return CircleAvatar(
-      radius: 26,
-      backgroundColor: c.withOpacity(.2),
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        color: c.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Icon(
         type == 'Admin'
             ? Icons.shield
@@ -747,6 +847,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                 ? Icons.verified_user
                 : Icons.person,
         color: c,
+        size: 26,
       ),
     );
   }
@@ -830,7 +931,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         children: [
           Icon(icon, color: kPrimaryDeep),
           const SizedBox(width: 10),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(label, style: AppTextStyles.label.copyWith(color: AdminColors.textPrimary)),
         ],
       ),
     );
@@ -925,18 +1026,14 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                                       children: [
                                         Text(
                                           (user['username'] as String?) ?? '—',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.w800,
-                                          ),
+                                          style: AppTextStyles.h3.copyWith(color: Colors.white),
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                         _bigStatusPill(isActive ? 'Active' : 'Inactive', isActive),
                                       ],
                                     ),
                                     const SizedBox(height: 6),
-                                    // Role + email (Wrap). Email is a width-aware badge to avoid overflow.
+                                    // Role + email (Wrap)
                                     Wrap(
                                       spacing: 8,
                                       runSpacing: 4,
@@ -969,11 +1066,11 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                                 _infoTile(Icons.tag, 'UID', (user['uid'] as String?) ?? '—'),
                                 _infoTile(Icons.person_outline, 'Username', (user['username'] as String?) ?? '—'),
                                 _infoTile(Icons.email_outlined, 'Email', (user['email'] as String?) ?? '—'),
-                                _infoTile(Icons.phone_outlined, 'Phone', 
+                                _infoTile(Icons.phone_outlined, 'Phone',
                                   (user['phone'] != null && (user['phone'] as String).isNotEmpty)
                                     ? (user['phone'] as String)
                                     : '—'),
-                                _infoTile(Icons.public, 'Country', 
+                                _infoTile(Icons.public, 'Country',
                                   (user['country'] != null && (user['country'] as String).isNotEmpty)
                                     ? (user['country'] as String)
                                     : '—'),
@@ -1040,7 +1137,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                               ),
                               onPressed: () => Navigator.pop(context),
                               icon: const Icon(Icons.check_circle_outline),
-                              label: const Text('Close', style: TextStyle(fontWeight: FontWeight.w700)),
+                              label: Text('Close', style: AppTextStyles.label.copyWith(color: kPrimaryDeep, fontWeight: FontWeight.w700)),
                             ),
                           ),
                         ),
@@ -1060,11 +1157,10 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
   Widget _emailBadge(String email) {
     return LayoutBuilder(
       builder: (context, cons) {
-        // Force the internal Row to exactly the available width
         return ConstrainedBox(
           constraints: BoxConstraints(maxWidth: cons.maxWidth),
           child: SizedBox(
-            width: cons.maxWidth, // <= this guarantees no overflow
+            width: cons.maxWidth,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
@@ -1079,7 +1175,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                   Expanded(
                     child: Text(
                       email,
-                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                      style: AppTextStyles.caption.copyWith(color: Colors.white70),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1,
                       softWrap: false,
@@ -1111,7 +1207,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         children: [
           Icon(icon, size: 16, color: fg),
           const SizedBox(width: 6),
-          Text(label, style: TextStyle(color: fg, fontWeight: FontWeight.w800)),
+          Text(label, style: AppTextStyles.label.copyWith(color: fg, fontWeight: FontWeight.w800)),
         ],
       ),
     );
@@ -1132,7 +1228,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         children: [
           Icon(icon, size: 16, color: Colors.white),
           const SizedBox(width: 6),
-          Text(type, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          Text(type, style: AppTextStyles.label.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -1167,10 +1263,8 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: kMuted,
-                      fontWeight: FontWeight.w600,
+                    style: AppTextStyles.caption.copyWith(
+                      color: AdminColors.textMuted,
                       letterSpacing: .2,
                     )),
                 const SizedBox(height: 6),
@@ -1184,7 +1278,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                     ),
                     child: Text(
                       value,
-                      style: TextStyle(
+                      style: AppTextStyles.label.copyWith(
                         color: chipTextColor ?? kPrimaryDeep,
                         fontWeight: FontWeight.w700,
                       ),
@@ -1193,9 +1287,9 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                 else
                   Text(
                     value,
-                    style: const TextStyle(
-                      fontSize: 15,
+                    style: AppTextStyles.bodyDefault.copyWith(
                       fontWeight: FontWeight.w700,
+                      color: AdminColors.textPrimary,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1221,7 +1315,6 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
     );
     final usernameController = TextEditingController(text: user['username']);
     final emailController = TextEditingController(text: user['email']);
-    // Show encrypted password as read-only if present in data
     final passwordController = TextEditingController(text: (user['password'] ?? '') as String? ?? '');
     final phoneController = TextEditingController(text: user['phone'] ?? '');
     final countryController = TextEditingController(text: user['country'] ?? '');
@@ -1243,7 +1336,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                   // Header
                   Row(
                     children: [
-                      const Text('Edit User', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                      Text('Edit User', style: AppTextStyles.h2.copyWith(color: AdminColors.textPrimary)),
                       const Spacer(),
                       IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
                     ],
@@ -1268,7 +1361,6 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  // Password (encrypted, read-only)
                   const SizedBox(height: 12),
                   _input('Password ', Icons.lock_outline, passwordController,
                       obscure: false, readOnly: true),
@@ -1315,7 +1407,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                           SnackBar(content: Text('User ${user['username']} has been updated.')),
                         );
                       },
-                      child: const Text('Submit', style: TextStyle(fontWeight: FontWeight.w700)),
+                      child: Text('Submit', style: AppTextStyles.label.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
                     ),
                   ),
                 ],
@@ -1331,7 +1423,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+        Text(label, style: AppTextStyles.label.copyWith(color: AdminColors.textPrimary)),
         const SizedBox(height: 6),
         _glass(
           radius: 12,
@@ -1341,6 +1433,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
             readOnly: readOnly,
             obscureText: obscure,
             cursorColor: kPrimary,
+            style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
             decoration: InputDecoration(
               icon: Icon(icon, color: kPrimaryDeep),
               border: InputBorder.none,
@@ -1353,7 +1446,6 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
 
   // ===== Actions =====
   void _suspendUser(Map<String, dynamic> user) {
-    // Only Admin viewer can get here (menu guarded)
     showDialog(
       context: context,
       builder: (_) => _confirm(
@@ -1362,7 +1454,6 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         confirmLabel: 'Suspend',
         confirmColor: kPrimaryDeep,
         onConfirm: () async {
-          // Call backend to suspend by userid, then reload list
           final uidStr = (user['uid'] ?? '').toString();
           final userid = int.tryParse(uidStr);
           if (userid == null) {
@@ -1429,7 +1520,6 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
   }
 
   void _removeUser(Map<String, dynamic> user) {
-    // Only Admin viewer & only inactive moderators (menu guards this)
     showDialog(
       context: context,
       builder: (_) => _confirm(
@@ -1464,9 +1554,9 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            Text(title, style: AppTextStyles.h3.copyWith(color: AdminColors.textPrimary)),
             const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: kMuted)),
+            Text(message, textAlign: TextAlign.center, style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted)),
             const SizedBox(height: 18),
             Row(
               children: [
@@ -1479,7 +1569,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                    child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w700)),
+                    child: Text('Cancel', style: AppTextStyles.label.copyWith(color: kPrimaryDeep, fontWeight: FontWeight.w700)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1493,7 +1583,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       elevation: 0,
                     ),
-                    child: Text(confirmLabel, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    child: Text(confirmLabel, style: AppTextStyles.label.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
                   ),
                 ),
               ],
@@ -1581,7 +1671,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Navigating to $label', style: const TextStyle(color: Colors.white)),
+        content: Text('Navigating to $label', style: AppTextStyles.bodySmall.copyWith(color: Colors.white)),
         backgroundColor: kPrimary,
         duration: const Duration(seconds: 1),
       ),

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../services/session.dart';
 import '../api.dart' as api;
@@ -6,6 +6,7 @@ import '../app.dart';
 import '../shared/navigation_menu.dart' as nav;
 import '../shared/bottom_navigation_bar.dart';
 import '../shared/colors.dart';
+import 'admin_notification.dart';
 
 class AdminLedgerPage extends StatefulWidget {
   const AdminLedgerPage({super.key});
@@ -20,6 +21,7 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
 
   bool _isLoading = true;
   String _errorMsg = '';
+  int _unreadCount = 0;
 
   List<Map<String, dynamic>> _ledgerRecords = [];
   Map<String, dynamic> _summary = {};
@@ -35,6 +37,7 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
   void initState() {
     super.initState();
     _loadAll();
+    _loadUnreadCount();
     _searchController.addListener(() {
       setState(() => _page = 1);
       _fetchLedger();
@@ -45,6 +48,16 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    try {
+      final notifications = await api.fetchNotifications();
+      if (!mounted) return;
+      setState(() {
+        _unreadCount = notifications.where((n) => !(n['isRead'] ?? false)).length;
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadAll() async {
@@ -220,6 +233,99 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
     return AdminColors.textMuted;
   }
 
+  // ── Header ──────────────────────────────────────────────────────────────────
+  Widget _buildHeader(double topPad) {
+    return SizedBox(
+      width: double.infinity,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.asset('assets/ledger.png', fit: BoxFit.cover),
+          ),
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF3D1E0C).withOpacity(0.62),
+                    const Color(0xFF8B4A2F).withOpacity(0.55),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(20, topPad + 24, 20, 36),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white.withOpacity(0.25)),
+                  ),
+                  child: const Icon(Icons.account_balance_wallet_outlined, color: Colors.white, size: 26),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Ledger',
+                          style: AppTextStyles.h2.copyWith(
+                              color: Colors.white, fontSize: 24, height: 1.2)),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Track booking movement, commission,\ncredit, debit, and expected amount.',
+                        style: AppTextStyles.bodySmall.copyWith(
+                            color: Colors.white.withOpacity(0.72), height: 1.4),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => AdminNotifications()),
+                  ).then((_) => _loadUnreadCount()),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(9),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white.withOpacity(0.25)),
+                        ),
+                        child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 15),
+                      ),
+                      if (_unreadCount > 0)
+                        Positioned(
+                          top: -4, right: -4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                                color: Color(0xFFE0A43A), shape: BoxShape.circle),
+                            child: Text('$_unreadCount',
+                                style: AppTextStyles.caption.copyWith(
+                                    color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSummaryCard({
     required String title,
     required String value,
@@ -233,14 +339,17 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
           color: AdminColors.cardBg,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: AdminColors.border),
-          boxShadow: [BoxShadow(color: AdminColors.primary.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 4))],
+          boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: color.withValues(alpha: 0.14),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Icon(icon, color: color, size: 18),
             ),
             const SizedBox(height: 10),
@@ -249,28 +358,25 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
                   height: 20,
                   width: 60,
                   decoration: BoxDecoration(
-                  color: AdminColors.surface,
-                  borderRadius: BorderRadius.circular(6),
+                    color: AdminColors.surface,
+                    borderRadius: BorderRadius.circular(6),
                   ),
-              )
+                )
               : Text(
                   value,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  color: AdminColors.textPrimary,
-                  ),
-              ),
+                  style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary),
+                ),
             const SizedBox(height: 3),
-            Text(title, style: const TextStyle(fontSize: 12, color: AdminColors.textMuted)),
+            Text(title,
+                style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHeaderSummary() {
+  Widget _buildSummaryGrid() {
     final totalTransactions = _safeText(_summary['total_transactions'], fallback: _ledgerRecords.length.toString());
     final totalCredit = _money(_summary['total_credit']);
     final totalDebit = _money(_summary['total_debit']);
@@ -279,23 +385,6 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
 
     return Column(
       children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(color: AdminColors.primary, borderRadius: BorderRadius.circular(24)),
-          child: const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.account_balance_wallet, color: Colors.white70, size: 32),
-              SizedBox(height: 12),
-              Text('Ledger', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-              SizedBox(height: 6),
-              Text('Track booking movement, stock status, commission, credit, debit, and expected amount.',
-                  style: TextStyle(color: Colors.white70, fontSize: 13)),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
         Row(children: [
           _buildSummaryCard(title: 'Transactions', value: totalTransactions, icon: Icons.receipt_long, color: AdminColors.primaryLight),
           const SizedBox(width: 12),
@@ -320,8 +409,8 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
   Widget _buildChip(String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
-      child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+      decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(999)),
+      child: Text(label, style: AppTextStyles.caption.copyWith(color: color, fontWeight: FontWeight.w700)),
     );
   }
 
@@ -333,10 +422,14 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
         children: [
           SizedBox(
             width: 115,
-            child: Text(label, style: const TextStyle(color: AdminColors.textSecond, fontSize: 12, fontWeight: FontWeight.w600)),
+            child: Text(label,
+                style: AppTextStyles.caption.copyWith(
+                    color: AdminColors.textSecond, fontWeight: FontWeight.w600)),
           ),
           Expanded(
-            child: Text(value, style: const TextStyle(color: AdminColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+            child: Text(value,
+                style: AppTextStyles.caption.copyWith(
+                    color: AdminColors.textPrimary, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
@@ -363,19 +456,23 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
         color: AdminColors.cardBg,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AdminColors.border),
-        boxShadow: [BoxShadow(color: AdminColors.primary.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           tilePadding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
           childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          leading: CircleAvatar(
-            backgroundColor: AdminColors.accent.withValues(alpha: 0.14),
-            child: const Icon(Icons.account_balance_wallet, color: AdminColors.accent),
+          leading: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AdminColors.accent.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.account_balance_wallet_outlined, color: AdminColors.accent, size: 20),
           ),
           title: Text(propertyName,
-              style: const TextStyle(color: AdminColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 15)),
+              style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Wrap(spacing: 8, runSpacing: 8, children: [
@@ -413,12 +510,14 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
         color: AdminColors.cardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AdminColors.border),
-        boxShadow: [BoxShadow(color: AdminColors.primary.withValues(alpha: 0.05), blurRadius: 8, offset: const Offset(0, 3))],
+        boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 3))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Date', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AdminColors.textSecond)),
+          Text('Date',
+              style: AppTextStyles.label.copyWith(
+                  color: AdminColors.textSecond, fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
           GestureDetector(
             onTap: () async {
@@ -452,14 +551,17 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
                   const SizedBox(width: 8),
                   Text(
                     _selectedDate.isNotEmpty ? _selectedDate : 'Select date',
-                    style: TextStyle(fontSize: 14, color: _selectedDate.isNotEmpty ? AdminColors.textPrimary : AdminColors.textMuted),
+                    style: AppTextStyles.bodySmall.copyWith(
+                        color: _selectedDate.isNotEmpty ? AdminColors.textPrimary : AdminColors.textMuted),
                   ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 12),
-          const Text('Status', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AdminColors.textSecond)),
+          Text('Status',
+              style: AppTextStyles.label.copyWith(
+                  color: AdminColors.textSecond, fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
           _filterDropdown<String>(
             value: _statusFilter,
@@ -474,7 +576,9 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
             onChanged: (v) { setState(() { _statusFilter = v ?? ''; _page = 1; }); _loadAll(); },
           ),
           const SizedBox(height: 12),
-          const Text('Sort By', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AdminColors.textSecond)),
+          Text('Sort By',
+              style: AppTextStyles.label.copyWith(
+                  color: AdminColors.textSecond, fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
           _filterDropdown<String>(
             value: _sortOrder,
@@ -485,14 +589,16 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
             onChanged: (v) { setState(() { _sortOrder = v ?? 'reservation_latest'; _page = 1; }); _fetchLedger(); },
           ),
           const SizedBox(height: 12),
-          const Text('Search', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AdminColors.textSecond)),
+          Text('Search',
+              style: AppTextStyles.label.copyWith(
+                  color: AdminColors.textSecond, fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
           TextField(
             controller: _searchController,
-            style: const TextStyle(color: AdminColors.textPrimary),
+            style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
             decoration: InputDecoration(
               hintText: 'Search property, customer, operator...',
-              hintStyle: const TextStyle(color: AdminColors.textMuted, fontSize: 13),
+              hintStyle: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted),
               prefixIcon: const Icon(Icons.search, color: AdminColors.textMuted, size: 18),
               filled: true,
               fillColor: AdminColors.surface,
@@ -514,7 +620,9 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 elevation: 0,
               ),
-              child: const Text('Clear Filters', style: TextStyle(fontWeight: FontWeight.w700)),
+              child: Text('Clear Filters',
+                  style: AppTextStyles.label.copyWith(
+                      color: Colors.white, fontWeight: FontWeight.w700)),
             ),
           ),
         ],
@@ -540,7 +648,8 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
         isExpanded: true,
         underline: const SizedBox.shrink(),
         dropdownColor: AdminColors.cardBg,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AdminColors.textPrimary),
+        style: AppTextStyles.bodySmall.copyWith(
+            fontWeight: FontWeight.w600, color: AdminColors.textPrimary),
         items: items,
         onChanged: onChanged,
       ),
@@ -560,7 +669,8 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
       child: Column(
         children: [
           Text('Page $_page of $_totalPages  •  $_totalRecords records',
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AdminColors.textMuted)),
+              style: AppTextStyles.label.copyWith(
+                  color: AdminColors.textMuted, fontWeight: FontWeight.w600)),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -571,8 +681,9 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
                     side: const BorderSide(color: AdminColors.border),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  child: const Text('← Previous',
-                      style: TextStyle(fontWeight: FontWeight.w700, color: AdminColors.textSecond)),
+                  child: Text('← Previous',
+                      style: AppTextStyles.label.copyWith(
+                          color: AdminColors.textSecond, fontWeight: FontWeight.w700)),
                 ),
               ),
               const SizedBox(width: 10),
@@ -585,7 +696,9 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     elevation: 0,
                   ),
-                  child: const Text('Next →', style: TextStyle(fontWeight: FontWeight.w700)),
+                  child: Text('Next →',
+                      style: AppTextStyles.label.copyWith(
+                          color: Colors.white, fontWeight: FontWeight.w700)),
                 ),
               ),
             ],
@@ -601,12 +714,21 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
       color: AdminColors.primary,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildHeaderSummary(),
-            const SizedBox(height: 16),
+            Text('Summary',
+                style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
+            const SizedBox(height: 4),
+            Text('Financial overview of all ledger activity.',
+                style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted)),
+            const SizedBox(height: 14),
+            _buildSummaryGrid(),
+            const SizedBox(height: 20),
+            Text('Filters',
+                style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
+            const SizedBox(height: 10),
             _buildFilterCard(),
             const SizedBox(height: 16),
             if (_isLoading)
@@ -621,19 +743,19 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(32),
                 decoration: BoxDecoration(
-                  color: AdminColors.danger.withValues(alpha: 0.06),
+                  color: AdminColors.danger.withOpacity(0.06),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AdminColors.danger.withValues(alpha: 0.3)),
+                  border: Border.all(color: AdminColors.danger.withOpacity(0.3)),
                 ),
                 child: Column(
                   children: [
                     const Icon(Icons.error_outline, size: 48, color: AdminColors.danger),
                     const SizedBox(height: 12),
-                    const Text('Unable to load ledger',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AdminColors.danger)),
+                    Text('Unable to load ledger',
+                        style: AppTextStyles.h4.copyWith(color: AdminColors.danger)),
                     const SizedBox(height: 4),
                     Text(_errorMsg, textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 13, color: AdminColors.danger)),
+                        style: AppTextStyles.bodySmall.copyWith(color: AdminColors.danger)),
                   ],
                 ),
               )
@@ -646,16 +768,16 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: AdminColors.border),
                 ),
-                child: const Column(
+                child: Column(
                   children: [
-                    Icon(Icons.search_off, size: 56, color: AdminColors.border),
-                    SizedBox(height: 12),
+                    const Icon(Icons.search_off, size: 56, color: AdminColors.border),
+                    const SizedBox(height: 12),
                     Text('No ledger entries found',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AdminColors.textPrimary)),
-                    SizedBox(height: 4),
+                        style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
+                    const SizedBox(height: 4),
                     Text('Try clearing the filters or choosing another date/status.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 13, color: AdminColors.textMuted)),
+                        style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted)),
                   ],
                 ),
               )
@@ -669,19 +791,11 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top;
+
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('Ledger', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: AdminColors.primary,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        actions: [
-          IconButton(onPressed: _loadAll, icon: const Icon(Icons.refresh)),
-        ],
-      ),
+      backgroundColor: AdminColors.cream,
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.admin,
         onItemSelected: _handleMenuSelection,
@@ -694,7 +808,12 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
         scaffoldKey: _scaffoldKey,
         role: nav.UserRole.admin,
       ),
-      body: _buildBody(),
+      body: Column(
+        children: [
+          _buildHeader(topPad),
+          Expanded(child: _buildBody()),
+        ],
+      ),
     );
   }
 }

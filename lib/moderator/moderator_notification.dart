@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../services/notification_service.dart';
 import '../services/session.dart';
 import '../shared/bottom_navigation_bar.dart';
@@ -15,7 +16,7 @@ class ModeratorNotifications extends StatefulWidget {
 }
 
 class _ModeratorNotificationsState extends State<ModeratorNotifications> {
-  String _selectedFilter = 'All';
+  String _selectedFilter = 'Unread';
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   late Future<void> _notificationInit;
   bool _isLoading = true;
@@ -146,55 +147,136 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        backgroundColor: AdminColors.primary,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: const Text('Notifications',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: _loadNotifications,
+  // ===== Stock Manager style header =====
+  Widget _buildHeader(double topPad) {
+    return SizedBox(
+      height: topPad + 110,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.asset(
+              'assets/notification.png',
+              fit: BoxFit.cover,
+            ),
           ),
-          const SizedBox.shrink(),
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF3D1E0C).withOpacity(0.62),
+                    const Color(0xFF8B4A2F).withOpacity(0.55),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.only(top: topPad + 24, left: 18, right: 18, bottom: 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Notifications',
+                        style: GoogleFonts.outfit(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        unreadCount > 0 ? '$unreadCount unread' : 'All caught up',
+                        style: GoogleFonts.outfit(
+                          fontSize: 13,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Back button
+                GestureDetector(
+                  onTap: () => Navigator.of(context).maybePop(),
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top;
+    return Scaffold(
+      key: _scaffoldKey,
+      backgroundColor: AdminColors.cream,
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.moderator,
         onItemSelected: _handleMenuSelection,
         onLogout: _handleLogout,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AdminColors.primary))
-          : RefreshIndicator(
+      body: Column(
+        children: [
+          _buildHeader(topPad),
+          Expanded(
+            child: RefreshIndicator(
               onRefresh: _loadNotifications,
               color: AdminColors.primary,
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
-                  SliverToBoxAdapter(child: _buildHeaderBanner()),
                   SliverToBoxAdapter(child: _buildFilterSection()),
-                  filteredNotifications.isEmpty
-                      ? SliverFillRemaining(child: _buildEmptyState())
-                      : SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                          sliver: SliverList(
-                            delegate: SliverChildBuilderDelegate(
-                              (ctx, i) => _buildNotificationCard(filteredNotifications[i]),
-                              childCount: filteredNotifications.length,
-                            ),
-                          ),
+                  if (_isLoading)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(child: CircularProgressIndicator(color: AdminColors.primary)),
+                    )
+                  else if (filteredNotifications.isEmpty)
+                    SliverFillRemaining(child: _buildEmptyState())
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (ctx, i) => _buildNotificationCard(filteredNotifications[i]),
+                          childCount: filteredNotifications.length,
                         ),
+                      ),
+                    ),
                 ],
               ),
             ),
+          ),
+        ],
+      ),
       bottomNavigationBar: SharedBottomNavigationBar(
         selectedIndex: -1,
         onTap: _handleBottomNavTap,
@@ -204,54 +286,9 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
     );
   }
 
-  Widget _buildHeaderBanner() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: AdminColors.primary,
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.notifications, color: Colors.white70, size: 32),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Text('Notifications',
-                    style: TextStyle(
-                        color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-                const Spacer(),
-                if (unreadCount > 0)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AdminColors.danger,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text('$unreadCount unread',
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '${allNotifications.length} total notification${allNotifications.length == 1 ? '' : 's'}.',
-              style: const TextStyle(color: Colors.white70, fontSize: 13),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildFilterSection() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -272,15 +309,12 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('$unreadCount Unread',
-                    style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: AdminColors.textPrimary)),
+                    style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
                 if (unreadCount > 0)
                   TextButton.icon(
                     onPressed: _markAllAsRead,
                     icon: const Icon(Icons.done_all, size: 16),
-                    label: const Text('Mark all read', style: TextStyle(fontSize: 13)),
+                    label: Text('Mark all read', style: AppTextStyles.bodySmall),
                     style: TextButton.styleFrom(foregroundColor: AdminColors.primary),
                   ),
               ],
@@ -290,11 +324,10 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  _buildFilterChip('All', 'All'),
                   _buildFilterChip('Unread', 'Unread'),
-                  _buildFilterChip('payment_received', 'Payments'),
-                  _buildFilterChip('room_enquiry', 'Enquiries'),
-                  _buildFilterChip('broadcast_suggestion', 'Broadcasts'),
+                  _buildFilterChip('Bookings', 'Bookings'),
+                  _buildFilterChip('Payment', 'Payment'),
+                  _buildFilterChip('Cancellation', 'Cancellation'),
                 ],
               ),
             ),
@@ -313,11 +346,10 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
         selected: isSelected,
         onSelected: (_) => setState(() => _selectedFilter = value),
         backgroundColor: AdminColors.surface,
-        selectedColor: AdminColors.secondary,
-        labelStyle: TextStyle(
+        selectedColor: AdminColors.primary,
+        labelStyle: AppTextStyles.bodySmall.copyWith(
           color: isSelected ? Colors.white : AdminColors.textSecond,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-          fontSize: 13,
         ),
         side: BorderSide(color: isSelected ? AdminColors.secondary : AdminColors.border),
       ),
@@ -381,10 +413,7 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
                               Expanded(
                                 child: Text(
                                   notification['title'] ?? '',
-                                  style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold,
-                                      color: AdminColors.textPrimary),
+                                  style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary),
                                 ),
                               ),
                               if (!isRead)
@@ -399,8 +428,7 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
                           const SizedBox(height: 4),
                           Text(
                             notification['message'] ?? '',
-                            style: const TextStyle(
-                                fontSize: 13, color: AdminColors.textSecond, height: 1.5),
+                            style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textSecond, height: 1.5),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -409,7 +437,7 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
                             const Icon(Icons.access_time, size: 13, color: AdminColors.textMuted),
                             const SizedBox(width: 4),
                             Text(notification['time'] ?? '',
-                                style: const TextStyle(fontSize: 12, color: AdminColors.textMuted)),
+                                style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted)),
                           ]),
                         ],
                       ),
@@ -487,14 +515,13 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
               child: const Icon(Icons.notifications_none, size: 52, color: AdminColors.primary),
             ),
             const SizedBox(height: 24),
-            const Text('No Notifications',
-                style: TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.bold, color: AdminColors.textPrimary)),
+            Text('No Notifications',
+                style: AppTextStyles.h2.copyWith(color: AdminColors.textPrimary)),
             const SizedBox(height: 10),
-            const Text(
+            Text(
               'All caught up!\nWe\'ll notify you of new customer activities.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: AdminColors.textMuted, height: 1.6),
+              style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted, height: 1.6),
             ),
           ],
         ),
@@ -523,10 +550,7 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
                 const SizedBox(width: 14),
                 Expanded(
                   child: Text(notification['title'] ?? '',
-                      style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AdminColors.textPrimary)),
+                      style: AppTextStyles.h3.copyWith(color: AdminColors.textPrimary)),
                 ),
                 IconButton(
                   icon: const Icon(Icons.close, color: AdminColors.textMuted),
@@ -536,8 +560,7 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
             ),
             const SizedBox(height: 14),
             Text(notification['message'] ?? '',
-                style: const TextStyle(
-                    fontSize: 14, color: AdminColors.textSecond, height: 1.6)),
+                style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textSecond, height: 1.6)),
             const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(14),
@@ -580,7 +603,7 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
               const Icon(Icons.access_time, size: 14, color: AdminColors.textMuted),
               const SizedBox(width: 4),
               Text(notification['time'] ?? '',
-                  style: const TextStyle(fontSize: 13, color: AdminColors.textMuted)),
+                  style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted)),
             ]),
             const SizedBox(height: 20),
             if (notification['type'] == 'broadcast_suggestion' &&
@@ -593,8 +616,8 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
                     _pickupSuggestion(notification);
                   },
                   icon: const Icon(Icons.check_circle, size: 18),
-                  label: const Text('Pick Up Suggestion',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  label: Text('Pick Up Suggestion',
+                      style: AppTextStyles.label.copyWith(color: Colors.white, fontWeight: FontWeight.w600)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AdminColors.primary,
                     foregroundColor: Colors.white,
@@ -619,7 +642,7 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
                       padding: const EdgeInsets.symmetric(vertical: 13),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: const Text('Delete', style: TextStyle(fontWeight: FontWeight.w600)),
+                    child: Text('Delete', style: AppTextStyles.label.copyWith(color: AdminColors.danger, fontWeight: FontWeight.w600)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -632,7 +655,7 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
                       padding: const EdgeInsets.symmetric(vertical: 13),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w600)),
+                    child: Text('Close', style: AppTextStyles.label.copyWith(color: Colors.white, fontWeight: FontWeight.w600)),
                   ),
                 ),
               ],
@@ -650,12 +673,10 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
         Icon(icon, size: 16, color: AdminColors.accent),
         const SizedBox(width: 8),
         Text('$label: ',
-            style: const TextStyle(
-                fontSize: 13, color: AdminColors.textSecond, fontWeight: FontWeight.w600)),
+            style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textSecond, fontWeight: FontWeight.w600)),
         Expanded(
           child: Text(value,
-              style: const TextStyle(
-                  fontSize: 13, color: AdminColors.textPrimary, fontWeight: FontWeight.w600)),
+              style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary, fontWeight: FontWeight.w600)),
         ),
       ],
     );

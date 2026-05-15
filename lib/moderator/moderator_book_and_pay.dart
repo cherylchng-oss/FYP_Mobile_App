@@ -1,10 +1,11 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../shared/navigation_menu.dart' as nav;
 import '../shared/bottom_navigation_bar.dart';
 import '../shared/colors.dart';
 import '../services/session.dart';
 import '../api.dart' as api;
 import '../app.dart';
+import 'moderator_notification.dart';
 
 class ModeratorBooknPayLog extends StatefulWidget {
   const ModeratorBooknPayLog({super.key});
@@ -19,6 +20,7 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
   final TextEditingController _searchController = TextEditingController();
   String _selectedActionType = 'All Actions';
   bool _isLoading = true;
+  int _unreadCount = 0;
 
   List<Map<String, dynamic>> allLogs = [];
 
@@ -43,6 +45,7 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
   void initState() {
     super.initState();
     _loadData();
+    _loadUnreadCount();
     _searchController.addListener(() => setState(() {}));
   }
 
@@ -50,6 +53,16 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    try {
+      final notifications = await api.fetchNotifications();
+      if (!mounted) return;
+      setState(() {
+        _unreadCount = notifications.where((n) => !(n['isRead'] ?? false)).length;
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadData() async {
@@ -175,55 +188,22 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
     }
   }
 
+  // ─────────────────────────────────────────────
+  // Build
+  // ─────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top;
     final logs = filteredLogs;
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        backgroundColor: AdminColors.primary,
-        title: const Text(
-          'Book & Pay Log',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        actions: const [SizedBox.shrink()],
-      ),
+      backgroundColor: AdminColors.cream,
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.moderator,
         onItemSelected: _handleMenuSelection,
         onLogout: _handleLogout,
         currentPageLabel: 'BooknPayLog',
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadData,
-        color: AdminColors.primary,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeaderBanner(logs.length),
-              const SizedBox(height: 20),
-              _buildSearchField(),
-              const SizedBox(height: 14),
-              _buildFilterCard(),
-              const SizedBox(height: 16),
-              if (_isLoading)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 48),
-                    child: CircularProgressIndicator(color: AdminColors.primary),
-                  ),
-                )
-              else
-                _buildLogList(logs),
-            ],
-          ),
-        ),
       ),
       bottomNavigationBar: SharedBottomNavigationBar(
         selectedIndex: 4,
@@ -231,43 +211,153 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
         scaffoldKey: _scaffoldKey,
         role: nav.UserRole.moderator,
       ),
-    );
-  }
-
-  Widget _buildHeaderBanner(int count) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AdminColors.primary,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      body: Column(
         children: [
-          const Icon(Icons.receipt_long, color: Colors.white70, size: 32),
-          const SizedBox(height: 12),
-          const Text(
-            'Book & Pay Log',
-            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Monitor booking and payment activities. $count record${count == 1 ? '' : 's'} found.',
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          _buildHeader(topPad),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadData,
+              color: AdminColors.primary,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSearchField(),
+                    const SizedBox(height: 12),
+                    _buildFilterCard(),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Records', style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
+                        Text('${logs.length} found',
+                            style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (_isLoading)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 48),
+                          child: CircularProgressIndicator(color: AdminColors.primary),
+                        ),
+                      )
+                    else
+                      _buildLogList(logs),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
+  // ── Header ──────────────────────────────────────────────────────────────────
+  Widget _buildHeader(double topPad) {
+    return SizedBox(
+      width: double.infinity,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.asset('assets/book_and_pay.png', fit: BoxFit.cover),
+          ),
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF3D1E0C).withOpacity(0.62),
+                    const Color(0xFF8B4A2F).withOpacity(0.55),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(20, topPad + 24, 20, 36),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white.withOpacity(0.25)),
+                  ),
+                  child: const Icon(Icons.receipt_long_outlined, color: Colors.white, size: 26),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Book & Pay Log',
+                          style: AppTextStyles.h2.copyWith(
+                              color: Colors.white, fontSize: 24, height: 1.2)),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Monitor booking and payment\nactivities across the system.',
+                        style: AppTextStyles.bodySmall.copyWith(
+                            color: Colors.white.withOpacity(0.72), height: 1.4),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => ModeratorNotifications()),
+                  ).then((_) => _loadUnreadCount()),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(9),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white.withOpacity(0.25)),
+                        ),
+                        child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 15),
+                      ),
+                      if (_unreadCount > 0)
+                        Positioned(
+                          top: -4, right: -4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                                color: Color(0xFFE0A43A), shape: BoxShape.circle),
+                            child: Text('$_unreadCount',
+                                style: AppTextStyles.caption.copyWith(
+                                    color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Search ───────────────────────────────────────────────────────────────────
   Widget _buildSearchField() {
     return TextField(
       controller: _searchController,
       cursorColor: AdminColors.primary,
+      style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
       decoration: InputDecoration(
         hintText: 'Search logs...',
-        hintStyle: const TextStyle(color: AdminColors.textMuted),
+        hintStyle: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted),
         prefixIcon: const Icon(Icons.search, color: AdminColors.textMuted),
         filled: true,
         fillColor: AdminColors.cardBg,
@@ -284,6 +374,7 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
     );
   }
 
+  // ── Filter ───────────────────────────────────────────────────────────────────
   Widget _buildFilterCard() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -291,15 +382,14 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
         color: AdminColors.cardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AdminColors.border),
-        boxShadow: [BoxShadow(color: AdminColors.primary.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.06),
+            blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Filter by Action Type',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AdminColors.textMuted),
-          ),
+          Text('Filter by Action Type',
+              style: AppTextStyles.label.copyWith(color: AdminColors.textSecond)),
           const SizedBox(height: 10),
           Container(
             decoration: BoxDecoration(
@@ -314,11 +404,9 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
               underline: const SizedBox.shrink(),
               dropdownColor: AdminColors.cardBg,
               icon: const Icon(Icons.keyboard_arrow_down, color: AdminColors.textMuted),
+              style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
               items: const ['All Actions', 'Deposit', 'Balance', 'Full Payment', 'Cancel', 'Expired']
-                  .map((type) => DropdownMenuItem(
-                        value: type,
-                        child: Text(type, style: const TextStyle(color: AdminColors.textPrimary, fontSize: 14)),
-                      ))
+                  .map((type) => DropdownMenuItem(value: type, child: Text(type)))
                   .toList(),
               onChanged: (value) {
                 if (value == null) return;
@@ -331,27 +419,28 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
     );
   }
 
+  // ── Log List ─────────────────────────────────────────────────────────────────
   Widget _buildLogList(List<Map<String, dynamic>> logs) {
     if (logs.isEmpty) {
       return Container(
-        margin: const EdgeInsets.only(top: 8),
         padding: const EdgeInsets.all(36),
         decoration: BoxDecoration(
           color: AdminColors.cardBg,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: AdminColors.border),
+          boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.05),
+              blurRadius: 10, offset: const Offset(0, 4))],
         ),
-        child: const Column(
-          children: [
-            Icon(Icons.search_off, size: 56, color: AdminColors.border),
-            SizedBox(height: 14),
-            Text('No records found',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AdminColors.textSecond)),
-            SizedBox(height: 6),
-            Text('Try changing the filter or search keyword.',
-                style: TextStyle(fontSize: 13, color: AdminColors.textMuted), textAlign: TextAlign.center),
-          ],
-        ),
+        child: Column(children: [
+          const Icon(Icons.search_off, size: 56, color: AdminColors.border),
+          const SizedBox(height: 14),
+          Text('No records found',
+              style: AppTextStyles.h4.copyWith(color: AdminColors.textSecond)),
+          const SizedBox(height: 6),
+          Text('Try changing the filter or search keyword.',
+              style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted),
+              textAlign: TextAlign.center),
+        ]),
       );
     }
 
@@ -364,6 +453,7 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
     );
   }
 
+  // ── Log Card ─────────────────────────────────────────────────────────────────
   Widget _buildLogCard(Map<String, dynamic> log) {
     final typeColor = _actionTypeColor(log['actionType'] ?? '');
     return Container(
@@ -371,16 +461,20 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
         color: AdminColors.cardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AdminColors.border),
-        boxShadow: [BoxShadow(color: AdminColors.primary.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 3))],
+        boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.06),
+            blurRadius: 10, offset: const Offset(0, 3))],
       ),
       padding: const EdgeInsets.all(16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: typeColor.withValues(alpha: 0.14),
-            child: Icon(Icons.receipt_long, size: 20, color: typeColor),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: typeColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(Icons.receipt_long_outlined, size: 20, color: typeColor),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -388,19 +482,17 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(log['actionedBy'] ?? '',
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AdminColors.textPrimary)),
+                    style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
                 const SizedBox(height: 3),
                 Text(log['action'] ?? '',
-                    style: const TextStyle(fontSize: 13, color: AdminColors.textSecond)),
+                    style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textSecond)),
                 const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(Icons.access_time, size: 13, color: AdminColors.textMuted),
-                    const SizedBox(width: 4),
-                    Text(log['timestamp'] ?? '',
-                        style: const TextStyle(fontSize: 11, color: AdminColors.textMuted)),
-                  ],
-                ),
+                Row(children: [
+                  const Icon(Icons.access_time, size: 12, color: AdminColors.textMuted),
+                  const SizedBox(width: 4),
+                  Text(log['timestamp'] ?? '',
+                      style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted)),
+                ]),
               ],
             ),
           ),
@@ -411,11 +503,12 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: typeColor.withValues(alpha: 0.12),
+                  color: typeColor.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(log['actionType'] ?? '',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: typeColor)),
+                    style: AppTextStyles.caption.copyWith(
+                        color: typeColor, fontWeight: FontWeight.w700)),
               ),
               const SizedBox(height: 6),
               PopupMenuButton<String>(
@@ -426,16 +519,14 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
                   if (value == 'view') _showLogDetailsDialog(log);
                 },
                 itemBuilder: (context) => [
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'view',
-                    child: Row(
-                      children: [
-                        Icon(Icons.visibility, size: 18, color: AdminColors.textMuted),
-                        SizedBox(width: 8),
-                        Text('View Details',
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AdminColors.textPrimary)),
-                      ],
-                    ),
+                    child: Row(children: [
+                      const Icon(Icons.visibility, size: 18, color: AdminColors.textMuted),
+                      const SizedBox(width: 8),
+                      Text('View Details',
+                          style: AppTextStyles.label.copyWith(color: AdminColors.textPrimary)),
+                    ]),
                   ),
                 ],
               ),
@@ -446,11 +537,12 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
     );
   }
 
+  // ── Details Dialog ───────────────────────────────────────────────────────────
   void _showLogDetailsDialog(Map<String, dynamic> log) {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        backgroundColor: AdminColors.surface,
+        backgroundColor: AdminColors.cardBg,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -461,15 +553,15 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Log Details',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AdminColors.textPrimary)),
+                  Text('Log Details',
+                      style: AppTextStyles.h3.copyWith(color: AdminColors.textPrimary)),
                   IconButton(
                     icon: const Icon(Icons.close, color: AdminColors.textMuted),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
               ),
-              const Divider(color: AdminColors.border),
+              Divider(color: AdminColors.border),
               const SizedBox(height: 8),
               _buildDetailField('User ID', log['userId'].toString()),
               _buildDetailField('Timestamp', log['timestamp']),
@@ -484,9 +576,10 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
                     backgroundColor: AdminColors.primary,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    textStyle: AppTextStyles.label.copyWith(color: Colors.white),
                   ),
-                  child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w600)),
+                  child: const Text('Close'),
                 ),
               ),
             ],
@@ -503,9 +596,11 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AdminColors.textMuted)),
+              style: AppTextStyles.caption.copyWith(
+                  color: AdminColors.textMuted, fontWeight: FontWeight.w600)),
           const SizedBox(height: 3),
-          Text(value, style: const TextStyle(fontSize: 14, color: AdminColors.textPrimary)),
+          Text(value,
+              style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary)),
         ],
       ),
     );

@@ -1,10 +1,11 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../shared/navigation_menu.dart' as nav;
 import '../shared/bottom_navigation_bar.dart';
 import '../shared/colors.dart';
 import '../services/session.dart';
 import '../api.dart' as api;
 import '../app.dart';
+import 'moderator_notification.dart';
 
 class ModeratorAuditTrails extends StatefulWidget {
   const ModeratorAuditTrails({super.key});
@@ -21,6 +22,7 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
   int _currentPage = 1;
   final int _pageSize = 5;
   bool _isLoading = true;
+  int _unreadCount = 0;
 
   List<Map<String, dynamic>> allTrails = [];
 
@@ -49,6 +51,7 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
   void initState() {
     super.initState();
     _loadData();
+    _loadUnreadCount();
     _searchController.addListener(() => setState(() => _currentPage = 1));
   }
 
@@ -56,6 +59,16 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    try {
+      final notifications = await api.fetchNotifications();
+      if (!mounted) return;
+      setState(() {
+        _unreadCount = notifications.where((n) => !(n['isRead'] ?? false)).length;
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadData() async {
@@ -184,6 +197,7 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
 
   @override
   Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top;
     final allFiltered = _filteredTrails;
     final totalItems = allFiltered.length;
     final totalPages = ((totalItems + _pageSize - 1) ~/ _pageSize).clamp(1, 999999);
@@ -194,49 +208,12 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        backgroundColor: AdminColors.primary,
-        title: const Text(
-          'Audit Trails',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        actions: const [SizedBox.shrink()],
-      ),
+      backgroundColor: AdminColors.cream,
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.moderator,
         onItemSelected: _handleMenuSelection,
         onLogout: _handleLogout,
         currentPageLabel: 'AuditTrails',
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadData,
-        color: AdminColors.primary,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeaderBanner(totalItems),
-              const SizedBox(height: 20),
-              _buildSearchField(),
-              const SizedBox(height: 14),
-              _buildFilterCard(),
-              const SizedBox(height: 16),
-              if (_isLoading)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 48),
-                    child: CircularProgressIndicator(color: AdminColors.primary),
-                  ),
-                )
-              else
-                _buildTrailList(pageItems, totalItems, totalPages, currentPage),
-            ],
-          ),
-        ),
       ),
       bottomNavigationBar: SharedBottomNavigationBar(
         selectedIndex: 4,
@@ -244,30 +221,153 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
         scaffoldKey: _scaffoldKey,
         role: nav.UserRole.moderator,
       ),
+      body: Column(
+        children: [
+          _buildHeader(topPad),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadData,
+              color: AdminColors.primary,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Audit Records',
+                        style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
+                    const SizedBox(height: 4),
+                    Text('View moderator system actions and changes.',
+                        style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted)),
+                    const SizedBox(height: 16),
+                    _buildSearchField(),
+                    const SizedBox(height: 12),
+                    _buildFilterCard(),
+                    const SizedBox(height: 16),
+                    if (_isLoading)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 48),
+                          child: CircularProgressIndicator(color: AdminColors.primary),
+                        ),
+                      )
+                    else ...[
+                      Row(
+                        children: [
+                          Text('Records',
+                              style: AppTextStyles.label.copyWith(color: AdminColors.textPrimary)),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AdminColors.primary.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text('$totalItems found',
+                                style: AppTextStyles.caption.copyWith(color: AdminColors.primary)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTrailList(pageItems, totalItems, totalPages, currentPage),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildHeaderBanner(int count) {
-    return Container(
+  // ── Header ──────────────────────────────────────────────────────────────────
+  Widget _buildHeader(double topPad) {
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AdminColors.primary,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          const Icon(Icons.history, color: Colors.white70, size: 32),
-          const SizedBox(height: 12),
-          const Text(
-            'Audit Trails',
-            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+          Positioned.fill(
+            child: Image.asset('assets/audit_trails.png', fit: BoxFit.cover),
           ),
-          const SizedBox(height: 6),
-          Text(
-            'View moderator system actions and changes. $count record${count == 1 ? '' : 's'} found.',
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF3D1E0C).withOpacity(0.62),
+                    const Color(0xFF8B4A2F).withOpacity(0.55),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(20, topPad + 24, 20, 36),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white.withOpacity(0.25)),
+                  ),
+                  child: const Icon(Icons.history_outlined, color: Colors.white, size: 26),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Audit Trails',
+                          style: AppTextStyles.h2.copyWith(
+                              color: Colors.white, fontSize: 24, height: 1.2)),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Track moderator system\nactions and changes.',
+                        style: AppTextStyles.bodySmall.copyWith(
+                            color: Colors.white.withOpacity(0.72), height: 1.4),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => ModeratorNotifications()),
+                  ).then((_) => _loadUnreadCount()),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(9),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white.withOpacity(0.25)),
+                        ),
+                        child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 15),
+                      ),
+                      if (_unreadCount > 0)
+                        Positioned(
+                          top: -4, right: -4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                                color: Color(0xFFE0A43A), shape: BoxShape.circle),
+                            child: Text('$_unreadCount',
+                                style: AppTextStyles.caption.copyWith(
+                                    color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -278,10 +378,11 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
     return TextField(
       controller: _searchController,
       cursorColor: AdminColors.primary,
+      style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
       decoration: InputDecoration(
         hintText: 'Search audit trails...',
-        hintStyle: const TextStyle(color: AdminColors.textMuted),
-        prefixIcon: const Icon(Icons.search, color: AdminColors.textMuted),
+        hintStyle: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted),
+        prefixIcon: const Icon(Icons.search, color: AdminColors.textMuted, size: 20),
         filled: true,
         fillColor: AdminColors.cardBg,
         enabledBorder: OutlineInputBorder(
@@ -304,15 +405,19 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
         color: AdminColors.cardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AdminColors.border),
-        boxShadow: [BoxShadow(color: AdminColors.primary.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+              color: AdminColors.primary.withOpacity(0.06),
+              blurRadius: 10,
+              offset: const Offset(0, 4)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Filter by Action Type',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AdminColors.textMuted),
-          ),
+          Text('Filter by Action Type',
+              style: AppTextStyles.caption.copyWith(
+                  color: AdminColors.textMuted, fontWeight: FontWeight.w600)),
           const SizedBox(height: 10),
           Container(
             decoration: BoxDecoration(
@@ -333,7 +438,9 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
               ]
                   .map((type) => DropdownMenuItem(
                         value: type,
-                        child: Text(type, style: const TextStyle(color: AdminColors.textPrimary, fontSize: 14)),
+                        child: Text(type,
+                            style: AppTextStyles.bodySmall
+                                .copyWith(color: AdminColors.textPrimary)),
                       ))
                   .toList(),
               onChanged: (value) {
@@ -365,15 +472,16 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: AdminColors.border),
         ),
-        child: const Column(
+        child: Column(
           children: [
-            Icon(Icons.search_off, size: 56, color: AdminColors.border),
-            SizedBox(height: 14),
+            const Icon(Icons.search_off, size: 56, color: AdminColors.border),
+            const SizedBox(height: 14),
             Text('No records found',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AdminColors.textSecond)),
-            SizedBox(height: 6),
+                style: AppTextStyles.h4.copyWith(color: AdminColors.textSecond)),
+            const SizedBox(height: 6),
             Text('Try changing the filter or search keyword.',
-                style: TextStyle(fontSize: 13, color: AdminColors.textMuted), textAlign: TextAlign.center),
+                style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted),
+                textAlign: TextAlign.center),
           ],
         ),
       );
@@ -399,18 +507,26 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
     return Container(
       decoration: BoxDecoration(
         color: AdminColors.cardBg,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AdminColors.border),
-        boxShadow: [BoxShadow(color: AdminColors.primary.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 3))],
+        boxShadow: [
+          BoxShadow(
+              color: AdminColors.primary.withOpacity(0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 4)),
+        ],
       ),
       padding: const EdgeInsets.all(16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: typeColor.withValues(alpha: 0.14),
-            child: Icon(Icons.history, size: 20, color: typeColor),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: typeColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.history_outlined, size: 20, color: typeColor),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -418,10 +534,10 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(trail['actionedBy'] ?? '',
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AdminColors.textPrimary)),
+                    style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
                 const SizedBox(height: 3),
                 Text(trail['action'] ?? '',
-                    style: const TextStyle(fontSize: 13, color: AdminColors.textSecond)),
+                    style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textSecond)),
                 const SizedBox(height: 6),
                 Row(
                   children: [
@@ -429,7 +545,7 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(trail['timestamp'] ?? '',
-                          style: const TextStyle(fontSize: 11, color: AdminColors.textMuted),
+                          style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted),
                           overflow: TextOverflow.ellipsis),
                     ),
                   ],
@@ -444,11 +560,12 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: typeColor.withValues(alpha: 0.12),
+                  color: typeColor.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(trail['actionType'] ?? '',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: typeColor)),
+                    style: AppTextStyles.caption.copyWith(
+                        color: typeColor, fontWeight: FontWeight.w700)),
               ),
               const SizedBox(height: 6),
               PopupMenuButton<String>(
@@ -459,14 +576,15 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
                   if (value == 'view') _showTrailDetailsDialog(trail);
                 },
                 itemBuilder: (context) => [
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'view',
                     child: Row(
                       children: [
-                        Icon(Icons.visibility, size: 18, color: AdminColors.textMuted),
-                        SizedBox(width: 8),
+                        const Icon(Icons.visibility, size: 18, color: AdminColors.textMuted),
+                        const SizedBox(width: 8),
                         Text('View Details',
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AdminColors.textPrimary)),
+                            style: AppTextStyles.label.copyWith(
+                                color: AdminColors.textPrimary)),
                       ],
                     ),
                   ),
@@ -512,9 +630,9 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
     for (int i = 0; i < pages.length; i++) {
       final page = pages[i];
       if (i > 0 && page != pages[i - 1] + 1) {
-        widgets.add(const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 4),
-          child: Text('...', style: TextStyle(color: AdminColors.textMuted)),
+        widgets.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text('...', style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted)),
         ));
       }
       final isSelected = page == currentPage;
@@ -531,8 +649,7 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
             ),
             child: Text(
               '$page',
-              style: TextStyle(
-                fontSize: 13,
+              style: AppTextStyles.caption.copyWith(
                 fontWeight: FontWeight.w600,
                 color: isSelected ? Colors.white : AdminColors.textPrimary,
               ),
@@ -559,8 +676,9 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Audit Trail Details',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AdminColors.textPrimary)),
+                  Text('Audit Trail Details',
+                      style: AppTextStyles.h4.copyWith(
+                          color: AdminColors.textPrimary, fontSize: 18)),
                   IconButton(
                     icon: const Icon(Icons.close, color: AdminColors.textMuted),
                     onPressed: () => Navigator.pop(context),
@@ -587,7 +705,9 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w600)),
+                  child: Text('Close',
+                      style: AppTextStyles.label.copyWith(
+                          color: Colors.white, fontWeight: FontWeight.w600)),
                 ),
               ),
             ],
@@ -604,9 +724,11 @@ class _ModeratorAuditTrailsState extends State<ModeratorAuditTrails> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AdminColors.textMuted)),
+              style: AppTextStyles.caption.copyWith(
+                  color: AdminColors.textMuted, fontWeight: FontWeight.w600)),
           const SizedBox(height: 3),
-          Text(value, style: const TextStyle(fontSize: 14, color: AdminColors.textPrimary)),
+          Text(value,
+              style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary)),
         ],
       ),
     );

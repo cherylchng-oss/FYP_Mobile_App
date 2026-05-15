@@ -1,16 +1,41 @@
-﻿import 'dart:convert';
-import 'dart:ui';
-
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import '../api.dart' as api;
-import '../app.dart';
-import '../services/session.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../shared/navigation_menu.dart' as nav;
 import '../shared/bottom_navigation_bar.dart';
-import '../shared/colors.dart';
+import '../services/session.dart';
+import '../api.dart' as api;
+import '../app.dart';
+import 'admin_notification.dart';
 
+// ── Design tokens ──────────────────────────────────────────────────────────────
+class _C {
+  static const primary      = Color(0xFF905C3E);
+  static const primaryLight = Color(0xFFC09174);
+  static const cream        = Color(0xFFF8F5F2);
+  static const cardBg       = Color(0xFFFFFFFF);
+  static const surface      = Color(0xFFF1EBE6);
+  static const border       = Color(0xFFE2D8D0);
+  static const textPrimary  = Color(0xFF40291C);
+  static const textSecond   = Color(0xFF6B4A38);
+  static const textMuted    = Color(0xFF8C857F);
+  static const success      = Color(0xFF2B5136);
+  static const successBg    = Color(0xFFE8F5EC);
+  static const warning      = Color(0xFFE0A43A);
+  static const warningBg    = Color(0xFFFFF8E1);
+  static const error        = Color(0xFFD9534F);
+  static const errorBg      = Color(0xFFFFEBEE);
+  static const accent       = Color(0xFF82916C);
+}
+
+TextStyle _ts(double size, FontWeight weight, Color color, {double? height}) =>
+    GoogleFonts.outfit(fontSize: size, fontWeight: weight, color: color, height: height);
+
+// ── Page ───────────────────────────────────────────────────────────────────────
 class AdminStockManagerPage extends StatefulWidget {
   const AdminStockManagerPage({super.key});
+  static const routeName = '/admin-stock';
 
   @override
   State<AdminStockManagerPage> createState() => _AdminStockManagerPageState();
@@ -19,49 +44,64 @@ class AdminStockManagerPage extends StatefulWidget {
 class _AdminStockManagerPageState extends State<AdminStockManagerPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
+  int _selectedNavIndex = 2;
   String _selectedSection = 'Stock Overview';
 
+  // ── Session ──────────────────────────────────────────────────────────────────
+  int? _userid;
+  String? _usergroup;
+  int _unreadCount = 0;
+
+  // ── Stock Overview ───────────────────────────────────────────────────────────
   bool _isLoadingStock = true;
+  bool _isFilteringStock = false;
   String? _stockError;
   List<Map<String, dynamic>> _properties = [];
+  List<Map<String, dynamic>>? _stockFilteredProperties;
 
-  bool _isLoadingReservations = false;
+  final TextEditingController _stockSearchCtrl = TextEditingController();
+  String _stockStatusFilter = 'All';
+  DateTime? _stockCheckIn;
+  DateTime? _stockCheckOut;
+
+  // ── Daily Occupancy ──────────────────────────────────────────────────────────
+  bool _isLoadingOccupancy = false;
+  bool _occupancyLoaded = false;
   List<dynamic> _allReservations = [];
   List<dynamic> _filteredReservations = [];
   DateTimeRange? _dateRange;
-  final TextEditingController _propertySearchCtrl = TextEditingController();
-  bool _occupancyLoaded = false;
+  final TextEditingController _occupancySearchCtrl = TextEditingController();
 
+  // ── Blackout Dates ───────────────────────────────────────────────────────────
   bool _isLoadingBlackouts = true;
   String? _blackoutError;
   List<dynamic> _blackouts = [];
   String _blackoutFilter = 'All';
   String _blackoutRoleFilter = 'All';
 
-  final TextEditingController _stockSearchCtrl = TextEditingController();
-  String _stockStatusFilter = 'All Status';
-  DateTime? _stockCheckIn;
-  DateTime? _stockCheckOut;
-  List<Map<String, dynamic>>? _stockFilteredProperties;
-
-  int? _userid;
-  String? _username;
-  String? _usergroup;
-
-  int get _totalProperties => _properties.length;
-  int get _totalStock {
+  // ── Computed stats ───────────────────────────────────────────────────────────
+  int get _statProperties => _properties.length;
+  int get _statTotalStock {
     int t = 0;
     for (final p in _properties) t += _toInt(p['quantity']);
     return t;
   }
-  int get _lowStockCount =>
+  int get _statLowStock =>
       _properties.where((p) => _toInt(p['quantity']) > 0 && _toInt(p['quantity']) <= 2).length;
-  int get _outOfStockCount =>
+  int get _statOutOfStock =>
       _properties.where((p) => _toInt(p['quantity']) <= 0).length;
 
-  List<Map<String, dynamic>> get _displayProperties =>
-      _stockFilteredProperties ?? _properties;
+  List<Map<String, dynamic>> get _displayProperties {
+    final base = _stockFilteredProperties ?? _properties;
+    final search = _stockSearchCtrl.text.trim().toLowerCase();
+    if (search.isEmpty) return base;
+    return base.where((p) {
+      final name = (p['propertyaddress'] ?? '').toString().toLowerCase();
+      return name.contains(search);
+    }).toList();
+  }
 
+  // ── Lifecycle ────────────────────────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
@@ -69,27 +109,48 @@ class _AdminStockManagerPageState extends State<AdminStockManagerPage> {
       _loadStockData();
       _loadBlackouts();
     });
+    _loadUnreadCount();
+    _stockSearchCtrl.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
-    _propertySearchCtrl.dispose();
     _stockSearchCtrl.dispose();
+    _occupancySearchCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _loadSession() async {
     _userid = await Session.getUserId();
-    _username = await Session.getUsername();
     _usergroup = await Session.getUserGroup();
   }
 
+  Future<void> _loadUnreadCount() async {
+    try {
+      final notifications = await api.fetchNotifications();
+      if (!mounted) return;
+      setState(() {
+        _unreadCount = notifications.where((n) => !(n['isRead'] ?? false)).length;
+      });
+    } catch (_) {}
+  }
+
+  // ── Stock data ───────────────────────────────────────────────────────────────
   Future<void> _loadStockData() async {
     setState(() { _isLoadingStock = true; _stockError = null; });
     try {
       final data = await api.fetchPropertiesListingTable();
       List<dynamic> raw = data['properties'] ?? data['data'] ?? data['result'] ?? [];
-      final mapped = raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      final mapped = raw.whereType<Map>()
+          .where((e) =>
+              e['propertyid'] != null &&
+              e['propertyid'].toString().trim().isNotEmpty &&
+              (e['propertyaddress'] ?? '').toString().trim().isNotEmpty)
+          .map((e) {
+        final m = Map<String, dynamic>.from(e);
+        m['_preImgs'] = _decodeImages(m['propertyimage'] ?? m['propertyimages']);
+        return m;
+      }).toList();
       if (!mounted) return;
       setState(() { _properties = mapped; _stockFilteredProperties = null; _isLoadingStock = false; });
     } catch (e) {
@@ -98,45 +159,108 @@ class _AdminStockManagerPageState extends State<AdminStockManagerPage> {
     }
   }
 
-  Future<void> _loadOccupancyData() async {
-    setState(() => _isLoadingReservations = true);
+  // ── Stock filters (date + status cross-reference) ───────────────────────────
+  Future<void> _applyStockFilters() async {
+    final hasDateFilter = _stockCheckIn != null || _stockCheckOut != null;
+    final hasStatusFilter = _stockStatusFilter != 'All';
+
+    if (!hasDateFilter && !hasStatusFilter) {
+      setState(() => _stockFilteredProperties = null);
+      return;
+    }
+
+    // Status-only filter: no reservation fetch needed
+    if (!hasDateFilter && hasStatusFilter) {
+      setState(() {
+        _stockFilteredProperties = _properties.where((p) {
+          final s = (p['propertystatus'] ?? '').toString().toLowerCase();
+          return s == _stockStatusFilter.toLowerCase();
+        }).toList();
+      });
+      return;
+    }
+
+    // Date filter (with optional status) — cross-reference via reservations
+    setState(() => _isFilteringStock = true);
     try {
-      final reservations = await api.fetchReservationsForAdminModerator();
+      if (!_occupancyLoaded) {
+        final res = await api.fetchReservationsForAdminModerator();
+        if (!mounted) return;
+        setState(() { _allReservations = res; _occupancyLoaded = true; });
+      }
+
+      final matchingAddresses = <String>{};
+      for (final r in _allReservations) {
+        final m = r is Map ? Map<String, dynamic>.from(r) : <String, dynamic>{};
+        final ci = _parseDate(m['checkindate']);
+        if (ci == null) continue;
+        if (_stockCheckIn != null) {
+          final from = DateTime(_stockCheckIn!.year, _stockCheckIn!.month, _stockCheckIn!.day);
+          if (ci.isBefore(from)) continue;
+        }
+        if (_stockCheckOut != null) {
+          final to = DateTime(_stockCheckOut!.year, _stockCheckOut!.month, _stockCheckOut!.day);
+          if (ci.isAfter(to)) continue;
+        }
+        final addr = (m['propertyaddress'] ?? '').toString().toLowerCase();
+        if (addr.isNotEmpty) matchingAddresses.add(addr);
+      }
+
+      List<Map<String, dynamic>> result = _properties.where((p) {
+        final addr = (p['propertyaddress'] ?? '').toString().toLowerCase();
+        return matchingAddresses.contains(addr);
+      }).toList();
+
+      if (hasStatusFilter) {
+        result = result.where((p) {
+          final s = (p['propertystatus'] ?? '').toString().toLowerCase();
+          return s == _stockStatusFilter.toLowerCase();
+        }).toList();
+      }
+
+      if (!mounted) return;
+      setState(() { _stockFilteredProperties = result; _isFilteringStock = false; });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isFilteringStock = false);
+    }
+  }
+
+  // ── Daily Occupancy ──────────────────────────────────────────────────────────
+  Future<void> _loadOccupancyData() async {
+    setState(() => _isLoadingOccupancy = true);
+    try {
+      final res = await api.fetchReservationsForAdminModerator();
       if (!mounted) return;
       setState(() {
-        _allReservations = reservations;
+        _allReservations = res;
         _occupancyLoaded = true;
-        _isLoadingReservations = false;
+        _isLoadingOccupancy = false;
       });
       _applyOccupancyFilter();
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      setState(() => _isLoadingReservations = false);
+      setState(() => _isLoadingOccupancy = false);
     }
   }
 
   void _applyOccupancyFilter() {
-    final search = _propertySearchCtrl.text.trim().toLowerCase();
+    final search = _occupancySearchCtrl.text.trim().toLowerCase();
     setState(() {
       _filteredReservations = _allReservations.where((r) {
-        final map = r is Map ? Map<String, dynamic>.from(r) : <String, dynamic>{};
+        final m = r is Map ? Map<String, dynamic>.from(r) : <String, dynamic>{};
         if (_dateRange != null) {
-          final checkIn = _parseDate(map['checkindate'] ?? map['checkInDate'] ?? map['check_in_date']);
-          if (checkIn == null) return false;
-          if (checkIn.isBefore(_dateRange!.start) || checkIn.isAfter(_dateRange!.end)) return false;
+          final ci = _parseDate(m['checkindate'] ?? m['checkInDate']);
+          if (ci == null) return false;
+          if (ci.isBefore(_dateRange!.start) || ci.isAfter(_dateRange!.end)) return false;
         }
         if (search.isNotEmpty) {
-          final name = (map['propertyaddress'] ?? map['propertyAddress'] ?? '').toString().toLowerCase();
+          final name = (m['propertyaddress'] ?? m['propertyAddress'] ?? '').toString().toLowerCase();
           if (!name.contains(search)) return false;
         }
         return true;
       }).toList();
     });
-  }
-
-  DateTime? _parseDate(dynamic value) {
-    if (value == null) return null;
-    try { return DateTime.parse(value.toString()); } catch (_) { return null; }
   }
 
   Future<void> _pickDateRange() async {
@@ -148,7 +272,7 @@ class _AdminStockManagerPageState extends State<AdminStockManagerPage> {
       initialDateRange: _dateRange,
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.light(primary: AdminColors.primary),
+          colorScheme: const ColorScheme.light(primary: _C.primary),
         ),
         child: child!,
       ),
@@ -159,6 +283,7 @@ class _AdminStockManagerPageState extends State<AdminStockManagerPage> {
     }
   }
 
+  // ── Blackout Dates ───────────────────────────────────────────────────────────
   Future<void> _loadBlackouts() async {
     if (_userid == null) { await _loadSession(); if (_userid == null) return; }
     setState(() { _isLoadingBlackouts = true; _blackoutError = null; });
@@ -176,16 +301,15 @@ class _AdminStockManagerPageState extends State<AdminStockManagerPage> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Delete Blackout', style: TextStyle(color: AdminColors.textPrimary, fontWeight: FontWeight.bold)),
-        content: const Text('Are you sure you want to delete this blackout date?', style: TextStyle(color: AdminColors.textSecond)),
+        title: Text('Delete Blackout', style: _ts(16, FontWeight.w600, _C.textPrimary)),
+        content: Text('Are you sure you want to delete this blackout date?',
+            style: _ts(14, FontWeight.w400, _C.textSecond)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: AdminColors.textMuted))),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: AdminColors.danger)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel', style: _ts(13, FontWeight.w500, _C.textMuted))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Delete', style: _ts(13, FontWeight.w600, _C.error))),
         ],
       ),
     );
@@ -199,1267 +323,1123 @@ class _AdminStockManagerPageState extends State<AdminStockManagerPage> {
     }
   }
 
-  Future<void> _showCreateBlackoutDialog() async {
-    final propertyOptions = _properties.map((p) {
-      final id = p['propertyid'] ?? p['id'];
-      final name = _safeText(p['propertyaddress'] ?? p['propertyAddress'], fallback: 'Unknown');
-      return {'id': id, 'name': name};
-    }).toList();
-
-    if (propertyOptions.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No properties found. Load stock data first.')),
-      );
-      return;
-    }
-
-    Map<String, dynamic>? selectedProperty = propertyOptions.first;
-    String roomName = '';
-    DateTime? startDate;
-    DateTime? endDate;
-    String reason = '';
-    final formKey = GlobalKey<FormState>();
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Add Blackout Date',
-              style: TextStyle(fontWeight: FontWeight.bold, color: AdminColors.textPrimary)),
-          content: SingleChildScrollView(
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<Map<String, dynamic>>(
-                    value: selectedProperty,
-                    decoration: const InputDecoration(labelText: 'Property'),
-                    items: propertyOptions
-                        .map((p) => DropdownMenuItem(value: p, child: Text(p['name'].toString(), overflow: TextOverflow.ellipsis)))
-                        .toList(),
-                    onChanged: (v) => setDialogState(() => selectedProperty = v),
-                    validator: (v) => v == null ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    decoration: const InputDecoration(labelText: 'Room Name (optional)'),
-                    onChanged: (v) => roomName = v,
-                  ),
-                  const SizedBox(height: 12),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      startDate == null ? 'Start Date *' : 'Start: ${startDate!.toLocal().toString().split(' ')[0]}',
-                      style: const TextStyle(fontSize: 14, color: AdminColors.textSecond),
-                    ),
-                    trailing: const Icon(Icons.calendar_today, size: 18, color: AdminColors.accent),
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: ctx,
-                        initialDate: DateTime.now(),
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime(2030),
-                        builder: (c, child) => Theme(
-                          data: Theme.of(c).copyWith(colorScheme: const ColorScheme.light(primary: AdminColors.primary)),
-                          child: child!,
-                        ),
-                      );
-                      if (picked != null) setDialogState(() => startDate = picked);
-                    },
-                  ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      endDate == null ? 'End Date *' : 'End: ${endDate!.toLocal().toString().split(' ')[0]}',
-                      style: const TextStyle(fontSize: 14, color: AdminColors.textSecond),
-                    ),
-                    trailing: const Icon(Icons.calendar_today, size: 18, color: AdminColors.accent),
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: ctx,
-                        initialDate: startDate ?? DateTime.now(),
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime(2030),
-                        builder: (c, child) => Theme(
-                          data: Theme.of(c).copyWith(colorScheme: const ColorScheme.light(primary: AdminColors.primary)),
-                          child: child!,
-                        ),
-                      );
-                      if (picked != null) setDialogState(() => endDate = picked);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    decoration: const InputDecoration(labelText: 'Reason (optional)'),
-                    maxLines: 2,
-                    onChanged: (v) => reason = v,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AdminColors.textMuted))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AdminColors.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () async {
-                if (!formKey.currentState!.validate()) return;
-                if (startDate == null || endDate == null) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please select start and end dates')));
-                  return;
-                }
-                if (endDate!.isBefore(startDate!)) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('End date must be after start date')));
-                  return;
-                }
-                Navigator.pop(ctx);
-                try {
-                  await api.createBlackout({
-                    'propertyid': selectedProperty!['id'],
-                    'property_name': selectedProperty!['name'],
-                    'room_name': roomName.isEmpty ? null : roomName,
-                    'startDate': startDate!.toIso8601String().split('T')[0],
-                    'endDate': endDate!.toIso8601String().split('T')[0],
-                    'reason': reason.isEmpty ? null : reason,
-                    'created_by_userid': _userid,
-                    'created_by_username': _username,
-                    'created_by_role': _usergroup ?? 'admin',
-                  });
-                  _loadBlackouts();
-                } catch (e) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to create blackout: $e')));
-                }
-              },
-              child: const Text('Create'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Helpers ──
-  int _toInt(dynamic value) {
-    if (value == null) return 0;
-    if (value is int) return value;
-    if (value is double) return value.toInt();
-    if (value is String) return int.tryParse(value) ?? 0;
-    return 0;
-  }
-
-  String _safeText(dynamic value, {String fallback = '-'}) {
-    if (value == null) return fallback;
-    final t = value.toString().trim();
-    return t.isEmpty ? fallback : t;
-  }
-
-  String _formatDate(dynamic value) {
-    if (value == null) return '-';
-    try {
-      final dt = DateTime.parse(value.toString()).toLocal();
-      return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-    } catch (_) { return value.toString(); }
-  }
-
-  Color _stockLevelColor(int qty) {
-    if (qty <= 0) return AdminColors.danger;
-    if (qty <= 2) return AdminColors.accent;
-    return AdminColors.success;
-  }
-
-  Future<void> _applyStockFilters() async {
-    final search = _stockSearchCtrl.text.trim().toLowerCase();
-    final hasDateFilter = _stockCheckIn != null || _stockCheckOut != null;
-    final hasStatusFilter = _stockStatusFilter != 'All Status';
-
-    if (!hasDateFilter && !hasStatusFilter && search.isEmpty) {
-      setState(() => _stockFilteredProperties = null);
-      return;
-    }
-
-    List<Map<String, dynamic>> result = _properties.where((p) {
-      if (search.isEmpty) return true;
-      final name = (p['propertyaddress'] ?? p['propertyAddress'] ?? '').toString().toLowerCase();
-      return name.contains(search);
-    }).toList();
-
-    if (hasDateFilter || hasStatusFilter) {
-      if (!_occupancyLoaded) {
-        setState(() => _isLoadingReservations = true);
-        try {
-          final reservations = await api.fetchReservationsForAdminModerator();
-          if (!mounted) return;
-          setState(() { _allReservations = reservations; _occupancyLoaded = true; _isLoadingReservations = false; });
-        } catch (e) {
-          if (!mounted) return;
-          setState(() => _isLoadingReservations = false);
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to load reservation data for filtering')));
-          return;
-        }
-      }
-
-      final matchingNames = <String>{};
-      for (final r in _allReservations) {
-        final rMap = r is Map ? Map<String, dynamic>.from(r) : <String, dynamic>{};
-        if (hasStatusFilter) {
-          final resStatus = (rMap['reservationstatus'] ?? rMap['reservationStatus'] ?? '').toString().toLowerCase();
-          bool match = false;
-          switch (_stockStatusFilter) {
-            case 'Paid': match = resStatus == 'paid'; break;
-            case 'Partially Paid': match = resStatus == 'partially paid' || resStatus == 'partially_paid'; break;
-            case 'Expired': match = resStatus == 'expired'; break;
-            case 'Cancelled': match = resStatus == 'cancelled' || resStatus == 'canceled'; break;
-          }
-          if (!match) continue;
-        }
-        if (hasDateFilter) {
-          final checkIn = _parseDate(rMap['checkindate'] ?? rMap['checkInDate'] ?? rMap['check_in_date']);
-          if (checkIn == null) continue;
-          if (_stockCheckIn != null && checkIn.isBefore(DateTime(_stockCheckIn!.year, _stockCheckIn!.month, _stockCheckIn!.day))) continue;
-          if (_stockCheckOut != null && checkIn.isAfter(DateTime(_stockCheckOut!.year, _stockCheckOut!.month, _stockCheckOut!.day))) continue;
-        }
-        final propName = (rMap['propertyaddress'] ?? rMap['propertyAddress'] ?? '').toString().toLowerCase();
-        if (propName.isNotEmpty) matchingNames.add(propName);
-      }
-
-      result = result.where((p) {
-        final name = (p['propertyaddress'] ?? p['propertyAddress'] ?? '').toString().toLowerCase();
-        return matchingNames.contains(name);
-      }).toList();
-    }
-
-    setState(() => _stockFilteredProperties = result);
-  }
-
-  Future<void> _pickStockDate({required bool isCheckIn}) async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: (isCheckIn ? _stockCheckIn : _stockCheckOut) ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-      builder: (c, child) => Theme(
-        data: Theme.of(c).copyWith(colorScheme: const ColorScheme.light(primary: AdminColors.primary)),
-        child: child!,
-      ),
-    );
-    if (picked != null) {
-      setState(() {
-        if (isCheckIn) _stockCheckIn = picked;
-        else _stockCheckOut = picked;
-      });
-    }
-  }
-
-  // ── Navigation ──
-  Future<void> _handleLogout() async {
-    await Session.clear();
-    if (!mounted) return;
-    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
-  }
-
-  void _handleBottomNavTap(int index) {
-    if (index == 2) return;
-    if (index == 0) { Navigator.of(context).pushNamedAndRemoveUntil('/admin', (route) => false); return; }
-    if (index == 1) { Navigator.of(context).pushNamed('/manage-services'); return; }
-    if (index == 3) { Navigator.of(context).pushNamed('/profile'); return; }
-  }
-
-  void _handleMenuSelection(String label) {
-    Navigator.pop(context);
-    switch (label) {
-      case 'Dashboard': Navigator.of(context).pushNamedAndRemoveUntil('/admin', (route) => false); return;
-      case 'Customer': Navigator.of(context).pushNamed('/admin-customers'); return;
-      case 'Moderator': Navigator.of(context).pushNamed('/admin-moderators'); return;
-      case 'Property Listing':
-      case 'Properties': Navigator.of(context).pushNamed('/manage-services'); return;
-      case 'Stock Manager': return;
-      case 'User Management': Navigator.of(context).pushNamed('/user-management', arguments: AppRole.admin); return;
-      case 'Activity Logs': Navigator.of(context).pushNamed('/admin-activity-logs'); return;
-      case 'Ledger': Navigator.of(context).pushNamed('/admin-ledger'); return;
-      case 'Customer Review': Navigator.of(context).pushNamed('/admin-customer-reviews'); return;
-      case 'Profile': Navigator.of(context).pushNamed('/profile'); return;
-    }
-  }
-
-  // ── Build ──
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        backgroundColor: AdminColors.primary,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        title: const Text('Stock Manager', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-        actions: const [SizedBox.shrink()],
-      ),
-      endDrawer: MoreMenuDrawer(
-        role: nav.UserRole.admin,
-        onItemSelected: _handleMenuSelection,
-        onLogout: _handleLogout,
-        currentPageLabel: 'Stock Manager',
-      ),
-      floatingActionButton: _selectedSection == 'Blackout Dates'
-          ? FloatingActionButton.extended(
-              onPressed: _showCreateBlackoutDialog,
-              backgroundColor: AdminColors.primary,
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.add),
-              label: const Text('Add Blackout', style: TextStyle(fontWeight: FontWeight.w700)),
-            )
-          : null,
-      bottomNavigationBar: SharedBottomNavigationBar(
-        selectedIndex: 2,
-        onTap: _handleBottomNavTap,
-        scaffoldKey: _scaffoldKey,
-        role: nav.UserRole.admin,
-      ),
-      body: NestedScrollView(
-        headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          SliverToBoxAdapter(child: _buildStockHeaderBanner()),
-          SliverToBoxAdapter(child: _buildSectionChips()),
-        ],
-        body: _selectedSection == 'Stock Overview'
-            ? _buildStockTab()
-            : _selectedSection == 'Daily Occupancy'
-                ? _buildOccupancyTab()
-                : _buildBlackoutTab(),
-      ),
-    );
-  }
-
-  Widget _buildStockHeaderBanner() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: AdminColors.primary,
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.inventory_2, color: Colors.white70, size: 32),
-            SizedBox(height: 12),
-            Text('Stock Manager',
-                style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-            SizedBox(height: 6),
-            Text('Monitor property stock, room quantity, and availability.',
-                style: TextStyle(color: Colors.white70, fontSize: 13)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionChips() {
-    const sections = ['Stock Overview', 'Daily Occupancy', 'Blackout Dates'];
-
-    Widget chip(String label) {
-      final selected = _selectedSection == label;
-      final IconData icon;
-      switch (label) {
-        case 'Stock Overview':  icon = Icons.inventory_2;     break;
-        case 'Daily Occupancy': icon = Icons.calendar_month;  break;
-        default:                icon = Icons.event_busy;
-      }
-      return GestureDetector(
-        onTap: () => setState(() => _selectedSection = label),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            gradient: selected
-                ? const LinearGradient(colors: [AdminColors.primary, AdminColors.primaryLight])
-                : LinearGradient(colors: [Colors.white, Colors.white.withOpacity(.9)]),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected ? Colors.transparent : AdminColors.border,
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: selected
-                    ? AdminColors.primary.withOpacity(.22)
-                    : Colors.black.withOpacity(.03),
-                blurRadius: selected ? 12 : 6,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 15,
-                  color: selected ? Colors.white : AdminColors.textMuted),
-              const SizedBox(width: 6),
-              Text(label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: selected ? Colors.white : AdminColors.textMuted,
-                  )),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
-        children: [
-          for (int i = 0; i < sections.length; i++) ...[
-            chip(sections[i]),
-            if (i < sections.length - 1) const SizedBox(width: 8),
-          ],
-        ],
-      ),
-    );
-  }
-
-  // ── Tab 1: Stock Overview ──
-  Widget _buildStockTab() {
-    if (_stockError != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, color: AdminColors.danger, size: 48),
-              const SizedBox(height: 12),
-              const Text('Unable to load stock data',
-                  style: TextStyle(
-                      color: AdminColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18)),
-              const SizedBox(height: 8),
-              Text(_stockError!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: AdminColors.textMuted, fontSize: 13)),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: _loadStockData,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Try Again'),
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: AdminColors.primary,
-                    foregroundColor: Colors.white,
-                    shape:
-                        RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadStockData,
-      color: AdminColors.primary,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _buildHeaderSummary(),
-          const SizedBox(height: 16),
-          _buildStockFilterCard(),
-          const SizedBox(height: 14),
-          if (_isLoadingStock)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 40),
-                child: CircularProgressIndicator(color: AdminColors.primary),
-              ),
-            )
-          else ...[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Property Stock List',
-                    style: TextStyle(
-                        color: AdminColors.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold)),
-                if (_stockFilteredProperties != null)
-                  Text('${_displayProperties.length} result(s)',
-                      style: const TextStyle(fontSize: 13, color: AdminColors.textMuted)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (_properties.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 40),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.inventory_2_outlined, size: 56, color: AdminColors.border),
-                      SizedBox(height: 12),
-                      Text('No stock records found',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              color: AdminColors.textMuted,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18)),
-                    ],
-                  ),
-                ),
-              )
-            else if (_displayProperties.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 32),
-                child: Center(
-                  child: Text('No properties match the selected filters.',
-                      style: TextStyle(color: AdminColors.textMuted)),
-                ),
-              )
-            else
-              ..._displayProperties.map(_buildStockCard),
-          ],
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeaderSummary() {
-    return Column(
-      children: [
-        Row(
-          children: [
-            _buildSummaryCard(title: 'Properties', value: _totalProperties.toString(),
-                icon: Icons.apartment, color: AdminColors.accent),
-            const SizedBox(width: 12),
-            _buildSummaryCard(title: 'Total Stock', value: _totalStock.toString(),
-                icon: Icons.inventory, color: AdminColors.primary),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            _buildSummaryCard(title: 'Low Stock', value: _lowStockCount.toString(),
-                icon: Icons.warning_amber, color: AdminColors.accentLight),
-            const SizedBox(width: 12),
-            _buildSummaryCard(title: 'Out of Stock', value: _outOfStockCount.toString(),
-                icon: Icons.remove_circle_outline, color: AdminColors.danger),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSummaryCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-  }) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AdminColors.cardBg,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AdminColors.border),
-          boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: color.withOpacity(0.14),
-              child: Icon(icon, color: color, size: 18),
-            ),
-            const SizedBox(height: 10),
-            _isLoadingStock
-              ? Container(
-                height: 20,
-                width: 60,
-                decoration: BoxDecoration(
-                color: AdminColors.surface,
-                borderRadius: BorderRadius.circular(6),
-                ),
-              )
-              : Text(
-                value,
-                style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: AdminColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                title,
-                style: const TextStyle(
-                fontSize: 12,
-                color: AdminColors.textMuted,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-  Widget _buildStatusChip(String status) {
-    final lower = status.toLowerCase();
-    Color color;
-    if (lower == 'available') color = AdminColors.success;
-    else if (lower == 'pending') color = AdminColors.accent;
-    else if (lower == 'unavailable' || lower == 'rejected') color = AdminColors.danger;
-    else color = AdminColors.textMuted;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(999)),
-      child: Text(status, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700)),
-    );
-  }
-
-  Widget _buildRoomDetails(dynamic roomDetails) {
-    if (roomDetails == null) {
-      return const Text('No room details available', style: TextStyle(color: AdminColors.textMuted, fontSize: 12));
-    }
-    dynamic parsed = roomDetails;
-    if (roomDetails is String) {
-      try { parsed = jsonDecode(roomDetails); }
-      catch (_) {
-        return Text(roomDetails.trim().isEmpty ? 'No room details available' : roomDetails,
-            style: const TextStyle(color: AdminColors.textMuted, fontSize: 12));
-      }
-    }
-    if (parsed is! List || parsed.isEmpty) {
-      return const Text('No room details available', style: TextStyle(color: AdminColors.textMuted, fontSize: 12));
-    }
-    return Column(
-      children: parsed.map<Widget>((room) {
-        if (room is! Map) return const SizedBox.shrink();
-        final roomName = _safeText(room['roomName'] ?? room['name'] ?? room['room_type'] ?? room['roomType'], fallback: 'Room');
-        final roomQty = _safeText(room['quantity'] ?? room['stock'] ?? room['roomQuantity'], fallback: '-');
-        final packageName = _safeText(room['packageName'] ?? room['package'] ?? room['package_name'], fallback: '');
-        return Container(
-          margin: const EdgeInsets.only(top: 8),
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: AdminColors.surface, borderRadius: BorderRadius.circular(12)),
-          child: Row(
-            children: [
-              const Icon(Icons.bed, size: 16, color: AdminColors.textMuted),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  packageName.isEmpty ? roomName : '$roomName • $packageName',
-                  style: const TextStyle(color: AdminColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w600),
-                ),
-              ),
-              Text('Qty: $roomQty',
-                  style: const TextStyle(color: AdminColors.textSecond, fontSize: 12, fontWeight: FontWeight.w600)),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildStockCard(Map<String, dynamic> property) {
-    final propertyName = _safeText(property['propertyaddress'] ?? property['propertyAddress'], fallback: 'Unnamed Property');
-    final owner = _safeText(property['username'], fallback: 'Unknown owner');
-    final cluster = _safeText(property['clustername'], fallback: 'No cluster');
-    final category = _safeText(property['categoryname'], fallback: 'No category');
-    final status = _safeText(property['propertystatus'], fallback: 'Unknown');
-    final quantity = _toInt(property['quantity']);
-    final stockColor = _stockLevelColor(quantity);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AdminColors.cardBg,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AdminColors.border),
-        boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: stockColor.withOpacity(0.14),
-                child: Icon(Icons.home_work, color: stockColor, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(propertyName,
-                    style: const TextStyle(color: AdminColors.textPrimary, fontSize: 15, fontWeight: FontWeight.bold)),
-              ),
-              _buildStatusChip(status),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(child: _smallInfoBox(label: 'Stock', value: quantity.toString(), color: stockColor)),
-              const SizedBox(width: 10),
-              Expanded(child: _smallInfoBox(label: 'Owner', value: owner, color: AdminColors.primaryLight)),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(child: _smallInfoBox(label: 'Cluster', value: cluster, color: AdminColors.accent)),
-              const SizedBox(width: 10),
-              Expanded(child: _smallInfoBox(label: 'Category', value: category, color: AdminColors.textMuted)),
-            ],
-          ),
-          const SizedBox(height: 14),
-          const Text('Room Details',
-              style: TextStyle(color: AdminColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 13)),
-          const SizedBox(height: 4),
-          _buildRoomDetails(property['room_details']),
-        ],
-      ),
-    );
-  }
-
-  Widget _smallInfoBox({required String label, required String value, required Color color}) {
-    return Container(
-      padding: const EdgeInsets.all(11),
-      decoration: BoxDecoration(color: color.withOpacity(0.10), borderRadius: BorderRadius.circular(14)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 11)),
-          const SizedBox(height: 4),
-          Text(value, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: AdminColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 13)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStockFilterCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AdminColors.cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AdminColors.border),
-        boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 3))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TextField(
-            controller: _stockSearchCtrl,
-            style: const TextStyle(color: AdminColors.textPrimary),
-            decoration: InputDecoration(
-              hintText: 'Search properties...',
-              hintStyle: const TextStyle(color: AdminColors.textMuted),
-              prefixIcon: const Icon(Icons.search, color: AdminColors.textMuted),
-              filled: true,
-              fillColor: AdminColors.surface,
-              contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AdminColors.border)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AdminColors.border)),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AdminColors.primary)),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Status', style: TextStyle(fontSize: 12, color: AdminColors.textSecond, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: AdminColors.surface,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AdminColors.border),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _stockStatusFilter,
-                          isExpanded: true,
-                          style: const TextStyle(fontSize: 12, color: AdminColors.textPrimary),
-                          items: const ['All Status', 'Paid', 'Partially Paid', 'Expired', 'Cancelled']
-                              .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                              .toList(),
-                          onChanged: (v) => setState(() => _stockStatusFilter = v ?? 'All Status'),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(child: _buildDatePickerBox(label: 'Check-in', date: _stockCheckIn, onTap: () => _pickStockDate(isCheckIn: true))),
-              const SizedBox(width: 10),
-              Expanded(child: _buildDatePickerBox(label: 'Check-out', date: _stockCheckOut, onTap: () => _pickStockDate(isCheckIn: false))),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isLoadingReservations ? null : _applyStockFilters,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AdminColors.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: _isLoadingReservations
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Apply Filters', style: TextStyle(fontWeight: FontWeight.w600)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDatePickerBox({required String label, required DateTime? date, required VoidCallback onTap}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: AdminColors.textSecond, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 6),
-        GestureDetector(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
-            decoration: BoxDecoration(
-              color: AdminColors.surface,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AdminColors.border),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    date == null
-                        ? 'mm/dd/yyyy'
-                        : '${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}/${date.year}',
-                    style: TextStyle(fontSize: 11, color: date == null ? AdminColors.textMuted : AdminColors.textPrimary),
-                  ),
-                ),
-                const Icon(Icons.calendar_today, size: 13, color: AdminColors.textMuted),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ── Tab 2: Daily Occupancy ──
-  Widget _buildOccupancyTab() {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              GestureDetector(
-                onTap: _pickDateRange,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-                  decoration: BoxDecoration(
-                    color: AdminColors.cardBg,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AdminColors.border),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.date_range, color: AdminColors.accent),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _dateRange == null
-                              ? 'Select date range'
-                              : '${_formatDate(_dateRange!.start.toIso8601String())}  →  ${_formatDate(_dateRange!.end.toIso8601String())}',
-                          style: TextStyle(
-                            color: _dateRange == null ? AdminColors.textMuted : AdminColors.textPrimary,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                      if (_dateRange != null)
-                        GestureDetector(
-                          onTap: () { setState(() => _dateRange = null); if (_occupancyLoaded) _applyOccupancyFilter(); },
-                          child: const Icon(Icons.clear, size: 18, color: AdminColors.textMuted),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _propertySearchCtrl,
-                style: const TextStyle(color: AdminColors.textPrimary),
-                decoration: InputDecoration(
-                  hintText: 'Search property…',
-                  hintStyle: const TextStyle(color: AdminColors.textMuted),
-                  prefixIcon: const Icon(Icons.search, color: AdminColors.accent),
-                  filled: true,
-                  fillColor: AdminColors.cardBg,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AdminColors.border)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AdminColors.border)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AdminColors.primary)),
-                ),
-                onChanged: (_) { if (_occupancyLoaded) _applyOccupancyFilter(); },
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _isLoadingReservations ? null : _loadOccupancyData,
-                  icon: _isLoadingReservations
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Icon(Icons.download),
-                  label: const Text('Load Reservations'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AdminColors.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (_occupancyLoaded)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(children: [
-              Text('${_filteredReservations.length} result(s)',
-                  style: const TextStyle(color: AdminColors.textMuted, fontSize: 13)),
-            ]),
-          ),
-        Expanded(
-          child: !_occupancyLoaded
-              ? const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.calendar_today, size: 48, color: AdminColors.border),
-                      SizedBox(height: 12),
-                      Text('Press "Load Reservations" to view data',
-                          style: TextStyle(color: AdminColors.textMuted)),
-                    ],
-                  ),
-                )
-              : _filteredReservations.isEmpty
-                  ? const Center(child: Text('No reservations match the selected filters.',
-                      style: TextStyle(color: AdminColors.textMuted)))
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _filteredReservations.length,
-                      itemBuilder: (ctx, i) {
-                        final r = Map<String, dynamic>.from(
-                            _filteredReservations[i] is Map ? _filteredReservations[i] : {});
-                        final reservationId = r['reservationid'] ?? r['reservationId'] ?? r['id'] ?? '-';
-                        final property = _safeText(r['propertyaddress'] ?? r['propertyAddress'], fallback: 'Unknown Property');
-                        final customer = _safeText(r['customername'] ?? r['customerName'] ?? r['username'], fallback: 'Unknown');
-                        final room = _safeText(r['roomname'] ?? r['roomName'] ?? r['room_type'], fallback: '-');
-                        final checkIn = _formatDate(r['checkindate'] ?? r['checkInDate'] ?? r['check_in_date']);
-                        final checkOut = _formatDate(r['checkoutdate'] ?? r['checkOutDate'] ?? r['check_out_date']);
-                        final statusRaw = _safeText(r['reservationstatus'] ?? r['reservationStatus'], fallback: 'Unknown');
-
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: AdminColors.cardBg,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: AdminColors.border),
-                            boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 3))],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Text('#$reservationId',
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AdminColors.accent)),
-                                  const Spacer(),
-                                  _buildStatusChip(statusRaw),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Text(property, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AdminColors.textPrimary)),
-                              const SizedBox(height: 4),
-                              Row(children: [
-                                const Icon(Icons.person, size: 14, color: AdminColors.textMuted),
-                                const SizedBox(width: 4),
-                                Text(customer, style: const TextStyle(fontSize: 13, color: AdminColors.textSecond)),
-                                const SizedBox(width: 12),
-                                const Icon(Icons.bed, size: 14, color: AdminColors.textMuted),
-                                const SizedBox(width: 4),
-                                Text(room, style: const TextStyle(fontSize: 13, color: AdminColors.textSecond)),
-                              ]),
-                              const SizedBox(height: 4),
-                              Row(children: [
-                                const Icon(Icons.login, size: 14, color: AdminColors.success),
-                                const SizedBox(width: 4),
-                                Text(checkIn, style: const TextStyle(fontSize: 12, color: AdminColors.success)),
-                                const SizedBox(width: 12),
-                                const Icon(Icons.logout, size: 14, color: AdminColors.accent),
-                                const SizedBox(width: 4),
-                                Text(checkOut, style: const TextStyle(fontSize: 12, color: AdminColors.accent)),
-                              ]),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-        ),
-      ],
-    );
-  }
-
-  // ── Tab 3: Blackout Dates ──
-  Widget _buildBlackoutTab() {
+  List<dynamic> get _filteredBlackouts {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final filtered = _blackouts.where((b) {
-      final bMap = b is Map ? b : {};
-      final isActive = bMap['is_active'] == true || bMap['is_active'] == 1;
-      final isOverridden = bMap['is_overridden'] == true || bMap['is_overridden'] == 1 ||
-          (bMap['status'] ?? '').toString().toLowerCase() == 'overridden';
-      final endDate = _parseDate(bMap['end_date']);
+    return _blackouts.where((b) {
+      final m = b is Map ? b : <dynamic, dynamic>{};
+      final isActive = m['is_active'] == true || m['is_active'] == 1;
+      final isOverridden = m['is_overridden'] == true || m['is_overridden'] == 1 ||
+          (m['status'] ?? '').toString().toLowerCase() == 'overridden';
+      final endDate = _parseDate(m['end_date']);
       final isExpired = endDate != null && endDate.isBefore(today);
 
       if (_blackoutFilter == 'Active' && !(isActive && !isExpired)) return false;
       if (_blackoutFilter == 'Overridden' && !isOverridden) return false;
       if (_blackoutFilter == 'Expired' && !isExpired) return false;
       if (_blackoutRoleFilter != 'All') {
-        final role = (bMap['created_by_role'] ?? '').toString().toLowerCase();
+        final role = (m['created_by_role'] ?? '').toString().toLowerCase();
         if (role != _blackoutRoleFilter.toLowerCase()) return false;
       }
       return true;
     }).toList();
+  }
 
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+  int _toInt(dynamic v) {
+    if (v == null) return 0;
+    if (v is int) return v;
+    if (v is double) return v.toInt();
+    if (v is String) return int.tryParse(v) ?? 0;
+    return 0;
+  }
+
+  String _safeText(dynamic v, {String fallback = '-'}) {
+    if (v == null) return fallback;
+    final t = v.toString().trim();
+    return t.isEmpty ? fallback : t;
+  }
+
+  String _formatDate(dynamic v) {
+    if (v == null) return '-';
+    try {
+      final dt = DateTime.parse(v.toString()).toLocal();
+      return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+    } catch (_) { return v.toString(); }
+  }
+
+  DateTime? _parseDate(dynamic v) {
+    if (v == null) return null;
+    try { return DateTime.parse(v.toString()); } catch (_) { return null; }
+  }
+
+  static const String _baseUrl = 'http://167.99.113.105:8080';
+
+  String _resolveImageUrl(String url) {
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    return '$_baseUrl${url.startsWith('/') ? '' : '/'}$url';
+  }
+
+  /// Returns a list where each entry is either:
+  ///   - a String (http/https URL — use Image.network)
+  ///   - a Uint8List (decoded base64 — use Image.memory)
+  List<dynamic> _decodeImages(dynamic v) {
+    if (v == null) return [];
+    List<dynamic> parts;
+    if (v is List) {
+      parts = v;
+    } else {
+      try {
+        final decoded = jsonDecode(v.toString());
+        parts = decoded is List ? decoded : [v.toString()];
+      } catch (_) {
+        parts = v.toString().split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      }
+    }
+    final result = <dynamic>[];
+    for (final item in parts) {
+      final s = item?.toString().trim() ?? '';
+      if (s.isEmpty) continue;
+      if (s.startsWith('http://') || s.startsWith('https://')) {
+        result.add(s);
+      } else if (s.startsWith('/')) {
+        result.add(_resolveImageUrl(s));
+      } else {
+        try {
+          var b64 = s;
+          final rem = b64.length % 4;
+          if (rem != 0) b64 += '=' * (4 - rem);
+          result.add(base64Decode(b64));
+        } catch (_) {
+          result.add(_resolveImageUrl(s));
+        }
+      }
+    }
+    return result;
+  }
+
+  // ── Navigation ───────────────────────────────────────────────────────────────
+  void _handleBottomNavTap(int index) {
+    if (index == 4) return;
+    if (index == 0) { Navigator.of(context).pushNamed('/admin'); return; }
+    if (index == 3) { Navigator.of(context).pushNamed('/profile'); return; }
+    if (index == 1) { Navigator.of(context).pushNamed('/manage-services'); return; }
+    if (index == 2) { Navigator.of(context).pushNamed('/manage-booking'); return; }
+    setState(() => _selectedNavIndex = index);
+  }
+
+  void _handleMenuSelection(String label) {
+    Navigator.of(context).pop();
+    switch (label) {
+      case 'Dashboard':       Navigator.of(context).pushNamed('/admin'); break;
+      case 'User Management': Navigator.of(context).pushNamed('/user-management', arguments: AppRole.admin); break;
+      case 'Properties':      Navigator.of(context).pushNamed('/manage-services'); break;
+      case 'Stock Manager': Navigator.of(context).pushNamed('/admin-stock-manager'); break;
+      case 'Activity Logs': Navigator.of(context).pushNamed('/admin-activity-logs'); break;
+      case 'Ledger': Navigator.of(context).pushNamed('/admin-ledger'); break;
+      case 'Customer Review': Navigator.of(context).pushNamed('/admin-customer-reviews'); break;
+      case 'Profile':         Navigator.of(context).pushNamed('/profile'); break;
+    }
+  }
+
+  Future<void> _handleLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text('Logout', style: _ts(18, FontWeight.w600, _C.textPrimary)),
+        content: Text('Are you sure you want to logout?', style: _ts(15, FontWeight.w400, _C.textSecond)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel', style: _ts(14, FontWeight.w500, _C.textMuted))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Logout', style: _ts(14, FontWeight.w600, _C.error))),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await Session.clear();
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil('/login', (_) => false);
+    }
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top;
+
+    return Scaffold(
+      key: _scaffoldKey,
+      backgroundColor: _C.cream,
+      endDrawer: MoreMenuDrawer(
+        role: nav.UserRole.admin,
+        onItemSelected: _handleMenuSelection,
+        onLogout: _handleLogout,
+        currentPageLabel: 'Stock Manager',
+      ),
+      body: Column(
+        children: [
+          _buildHeader(topPad),
+          _buildTabBar(),
+          Expanded(child: _buildTabContent()),
+        ],
+      ),
+      bottomNavigationBar: SharedBottomNavigationBar(
+        selectedIndex: _selectedNavIndex,
+        onTap: _handleBottomNavTap,
+        scaffoldKey: _scaffoldKey,
+        role: nav.UserRole.admin,
+      ),
+    );
+  }
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  Widget _buildHeader(double topPad) {
+    return Container(
+      width: double.infinity,
+      child: Stack(
+        children: [
+          // Full-opacity background image
+          Positioned.fill(
+            child: Image.asset(
+              'assets/stock_manager.png',
+              fit: BoxFit.cover,
+            ),
+          ),
+          // Light dark overlay so text stays readable
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF3D1E0C).withOpacity(0.62),
+                    const Color(0xFF8B4A2F).withOpacity(0.55),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+        padding: EdgeInsets.fromLTRB(20, topPad + 24, 20, 36),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.18),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withOpacity(0.25)),
+              ),
+              child: const Icon(Icons.inventory_2_outlined, color: Colors.white, size: 26),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Stock Manager',
+                      style: _ts(24, FontWeight.w600, Colors.white, height: 1.2)),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Monitor property stock, room\nquantity, and availability.',
+                    style: _ts(13, FontWeight.w400, Colors.white.withOpacity(0.72), height: 1.4),
+                  ),
+                ],
+              ),
+            ),
+            GestureDetector(
+              onTap: () => Navigator.push(
+                context, MaterialPageRoute(builder: (_) => AdminNotifications()),
+              ).then((_) => _loadUnreadCount()),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(9),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white.withOpacity(0.25)),
+                    ),
+                    child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 15),
+                  ),
+                  if (_unreadCount > 0)
+                    Positioned(
+                      top: -4, right: -4,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(color: Color(0xFFE0A43A), shape: BoxShape.circle),
+                        child: Text('$_unreadCount', style: _ts(9, FontWeight.w700, Colors.white)),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Tab Bar — horizontally scrollable ─────────────────────────────────────
+  Widget _buildTabBar() {
+    final tabs = [
+      (Icons.inventory_2_outlined,     'Stock Overview'),
+      (Icons.calendar_today_outlined,  'Daily Occupancy'),
+      (Icons.block_outlined,           'Blackout Dates'),
+    ];
+
+    return Container(
+      color: _C.cream,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: List.generate(tabs.length, (i) {
+            final isActive = _selectedSection == tabs[i].$2;
+            return GestureDetector(
+              onTap: () => setState(() => _selectedSection = tabs[i].$2),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: EdgeInsets.only(right: i < tabs.length - 1 ? 10 : 0),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isActive ? _C.primary : _C.surface,
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(color: isActive ? _C.primary : _C.border),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(tabs[i].$1, size: 14,
+                        color: isActive ? Colors.white : _C.textMuted),
+                    const SizedBox(width: 6),
+                    Text(tabs[i].$2,
+                        style: _ts(12,
+                            isActive ? FontWeight.w600 : FontWeight.w400,
+                            isActive ? Colors.white : _C.textMuted)),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  // ── Tab Content ──────────────────────────────────────────────────────────
+  Widget _buildTabContent() {
+    switch (_selectedSection) {
+      case 'Daily Occupancy': return _buildOccupancyTab();
+      case 'Blackout Dates':  return _buildBlackoutTab();
+      default:                return _buildStockTab();
+    }
+  }
+
+  // ── Stock Overview Tab ────────────────────────────────────────────────────
+  Widget _buildStockTab() {
+    if (_stockError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.error_outline, color: _C.error, size: 48),
+            const SizedBox(height: 12),
+            Text('Unable to load stock data', style: _ts(17, FontWeight.w600, _C.textPrimary)),
+            const SizedBox(height: 8),
+            Text(_stockError!, textAlign: TextAlign.center, style: _ts(13, FontWeight.w400, _C.textMuted)),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _loadStockData,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Try Again'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: _C.primary, foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+            ),
+          ]),
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadStockData,
+      color: _C.primary,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          _buildStatsGrid(),
+          const SizedBox(height: 12),
+          _buildStockFilterCard(),
+          const SizedBox(height: 14),
+          if (_isLoadingStock || _isFilteringStock)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: CircularProgressIndicator(color: _C.primary),
+              ),
+            )
+          else ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Property Stock List', style: _ts(15, FontWeight.w600, _C.textPrimary)),
+                Text('${_displayProperties.length} properties',
+                    style: _ts(13, FontWeight.w400, _C.textMuted)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (_properties.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 40),
+                child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.inventory_2_outlined, size: 56, color: _C.border),
+                  const SizedBox(height: 12),
+                  Text('No stock records found', style: _ts(17, FontWeight.w600, _C.textMuted)),
+                ])),
+              )
+            else if (_displayProperties.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 32),
+                child: Center(child: Text('No properties match the selected filters.',
+                    style: _ts(14, FontWeight.w400, _C.textMuted))),
+              )
+            else
+              ..._displayProperties.map(_buildPropertyCard),
+          ],
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  // ── Stats Grid ────────────────────────────────────────────────────────────
+  Widget _buildStatsGrid() {
+    final stats = [
+      _StatData(icon: Icons.apartment_outlined,          label: 'Properties',   count: _statProperties, iconColor: _C.primary,  iconBg: _C.surface,    accent: _C.primary),
+      _StatData(icon: Icons.inventory_2_outlined,        label: 'Total Stock',  count: _statTotalStock, iconColor: _C.success,  iconBg: _C.successBg,  accent: _C.success),
+      _StatData(icon: Icons.warning_amber_outlined,      label: 'Low Stock',    count: _statLowStock,   iconColor: _C.warning,  iconBg: _C.warningBg,  accent: _C.warning),
+      _StatData(icon: Icons.do_not_disturb_on_outlined,  label: 'Out of Stock', count: _statOutOfStock, iconColor: _C.error,    iconBg: _C.errorBg,    accent: _C.error),
+    ];
+
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 1.15,
+      children: stats.map(_buildStatCard).toList(),
+    );
+  }
+
+  Widget _buildStatCard(_StatData s) {
+    return Container(
+      decoration: BoxDecoration(
+        color: _C.cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _C.border),
+        boxShadow: [BoxShadow(
+            color: _C.primary.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          Positioned(right: -10, bottom: -10,
+              child: Icon(s.icon, size: 68, color: s.accent.withOpacity(0.07))),
+          Positioned(left: 0, right: 0, bottom: 0,
+              child: Container(height: 3,
+                  decoration: BoxDecoration(
+                    color: s.accent.withOpacity(0.5),
+                    borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
+                  ))),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(13, 13, 13, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(color: s.iconBg, borderRadius: BorderRadius.circular(10)),
+                  child: Icon(s.icon, size: 16, color: s.iconColor),
+                ),
+                const SizedBox(height: 8),
+                Text(s.label, style: _ts(11, FontWeight.w500, _C.textMuted)),
+                const SizedBox(height: 2),
+                Text(_isLoadingStock ? '-' : _fmtCount(s.count),
+                    style: _ts(20, FontWeight.w700, _C.textPrimary)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _fmtCount(int n) => n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
+
+  // ── Stock Filter Card ─────────────────────────────────────────────────────
+  Widget _buildStockFilterCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _C.cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _C.border),
+        boxShadow: [BoxShadow(color: _C.primary.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 3))],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        TextField(
+          controller: _stockSearchCtrl,
+          style: _ts(14, FontWeight.w400, _C.textPrimary),
+          decoration: InputDecoration(
+            hintText: 'Search properties...',
+            hintStyle: _ts(14, FontWeight.w400, _C.textMuted),
+            prefixIcon: const Icon(Icons.search, color: _C.textMuted),
+            filled: true, fillColor: _C.surface,
+            contentPadding: const EdgeInsets.symmetric(vertical: 12),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: _C.border)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: _C.border)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: _C.primary)),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Status', style: _ts(12, FontWeight.w600, _C.textSecond)),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                  color: _C.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _C.border)),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _stockStatusFilter,
+                  isExpanded: true,
+                  style: _ts(13, FontWeight.w400, _C.textPrimary),
+                  icon: const Icon(Icons.keyboard_arrow_down, color: _C.textMuted, size: 18),
+                  items: ['All', 'Available', 'Pending', 'Booked', 'Rejected'].map((s) =>
+                      DropdownMenuItem(value: s, child: Text(s))).toList(),
+                  onChanged: (v) {
+                    setState(() => _stockStatusFilter = v ?? 'All');
+                    _applyStockFilters();
+                  },
+                ),
+              ),
+            ),
+          ])),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Check-in', style: _ts(12, FontWeight.w600, _C.textSecond)),
+            const SizedBox(height: 6),
+            _dateBtn(_stockCheckIn, () => _pickDate(true)),
+          ])),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Check-out', style: _ts(12, FontWeight.w600, _C.textSecond)),
+            const SizedBox(height: 6),
+            _dateBtn(_stockCheckOut, () => _pickDate(false)),
+          ])),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _dateBtn(DateTime? date, VoidCallback onTap) {
+    final label = date == null ? 'Select' : '${date.day}/${date.month}/${date.year}';
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+        decoration: BoxDecoration(
+            color: _C.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: _C.border)),
+        child: Row(children: [
+          const Icon(Icons.calendar_month_outlined, size: 14, color: _C.textMuted),
+          const SizedBox(width: 4),
+          Expanded(child: Text(label,
+              style: _ts(11, FontWeight.w400, _C.textMuted), overflow: TextOverflow.ellipsis)),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _pickDate(bool isCheckIn) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+            colorScheme: const ColorScheme.light(primary: _C.primary, onPrimary: Colors.white)),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      setState(() { if (isCheckIn) _stockCheckIn = picked; else _stockCheckOut = picked; });
+      _applyStockFilters();
+    }
+  }
+
+  // ── Property Card (Stock Overview) ────────────────────────────────────────
+  Widget _buildPropertyCard(Map<String, dynamic> p) {
+    final name    = _safeText(p['propertyaddress'] ?? p['propertyAddress'], fallback: 'Unnamed Property');
+    final owner   = _safeText(p['username'], fallback: 'Unknown');
+    final status  = _safeText(p['propertystatus'], fallback: 'Unknown');
+    final qty     = _toInt(p['quantity']);
+    final imgs    = (p['_preImgs'] as List<dynamic>?) ?? _decodeImages(p['propertyimage'] ?? p['propertyimages']);
+    final qtyColor = qty <= 0 ? _C.error : qty <= 2 ? _C.warning : _C.success;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: _C.cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _C.border),
+        boxShadow: [BoxShadow(
+            color: _C.primary.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Image
+          ClipRRect(
+            borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20), bottomLeft: Radius.circular(20)),
+            child: SizedBox(
+              width: 110, height: 130,
+              child: Stack(fit: StackFit.expand, children: [
+                if (imgs.isNotEmpty && imgs.first is Uint8List)
+                  Image.memory(imgs.first as Uint8List, fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _imgPlaceholder())
+                else if (imgs.isNotEmpty && imgs.first is String)
+                  Image.network(imgs.first as String, fit: BoxFit.cover,
+                      loadingBuilder: (_, child, progress) {
+                        if (progress == null) return child;
+                        return Container(color: const Color(0xFFF1EBE6),
+                            child: const Center(child: SizedBox(width: 20, height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFC09174)))));
+                      },
+                      errorBuilder: (_, __, ___) => _imgPlaceholder())
+                else
+                  _imgPlaceholder(),
+                Positioned(
+                  bottom: 6, left: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.55),
+                        borderRadius: BorderRadius.circular(7)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.photo_outlined, size: 10, color: Colors.white),
+                      const SizedBox(width: 3),
+                      Text('${imgs.length} Photos', style: _ts(9, FontWeight.w500, Colors.white)),
+                    ]),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+          // Details
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: Text(name,
+                          style: _ts(13, FontWeight.w600, _C.textPrimary),
+                          maxLines: 2, overflow: TextOverflow.ellipsis)),
+                      const SizedBox(width: 6),
+                      _buildStatusChip(status),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Expanded(child: _infoBox('Stock', '$qty', qtyColor)),
+                    const SizedBox(width: 8),
+                    Expanded(child: _infoBox('Owner', owner, _C.primaryLight)),
+                  ]),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    const Icon(Icons.person_outline, size: 12, color: _C.textMuted),
+                    const SizedBox(width: 4),
+                    Expanded(child: Text(owner,
+                        style: _ts(11, FontWeight.w400, _C.textMuted),
+                        overflow: TextOverflow.ellipsis)),
+                    const Icon(Icons.chevron_right, size: 16, color: _C.primaryLight),
+                  ]),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoBox(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: _ts(10, FontWeight.w600, color)),
+        const SizedBox(height: 2),
+        Text(value, style: _ts(12, FontWeight.w700, _C.textPrimary), overflow: TextOverflow.ellipsis),
+      ]),
+    );
+  }
+
+  Widget _buildStatusChip(String status) {
+    final lower = status.toLowerCase();
+    Color color;
+    if (lower == 'available') color = _C.success;
+    else if (lower == 'pending') color = _C.accent;
+    else if (lower == 'unavailable' || lower == 'rejected') color = _C.error;
+    else color = _C.textMuted;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(999)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 5, height: 5, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 4),
+        Text(status, style: _ts(10, FontWeight.w700, color)),
+      ]),
+    );
+  }
+
+  Widget _imgPlaceholder() => Container(
+    color: _C.surface,
+    child: const Center(child: Icon(Icons.image_outlined, color: _C.border, size: 28)),
+  );
+
+  // ── Daily Occupancy Tab ───────────────────────────────────────────────────
+  Widget _buildOccupancyTab() {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: ['All', 'Active', 'Overridden', 'Expired'].map((f) {
-                    final selected = _blackoutFilter == f;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        label: Text(f),
-                        selected: selected,
-                        onSelected: (_) => setState(() => _blackoutFilter = f),
-                        selectedColor: AdminColors.primary,
-                        backgroundColor: AdminColors.surface,
-                        labelStyle: TextStyle(
-                          color: selected ? Colors.white : AdminColors.textSecond,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        side: BorderSide(color: selected ? AdminColors.primary : AdminColors.border),
-                      ),
-                    );
-                  }).toList(),
+          padding: const EdgeInsets.all(16),
+          child: Column(children: [
+            // Date range picker
+            GestureDetector(
+              onTap: _pickDateRange,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: _C.cardBg,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: _dateRange != null ? _C.primary : _C.border),
+                  boxShadow: [BoxShadow(color: _C.primary.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 3))],
+                ),
+                child: Row(children: [
+                  const Icon(Icons.date_range_outlined, color: _C.primary, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(
+                    _dateRange == null
+                        ? 'Select date range...'
+                        : '${_formatDate(_dateRange!.start)}  →  ${_formatDate(_dateRange!.end)}',
+                    style: _ts(14, FontWeight.w400,
+                        _dateRange == null ? _C.textMuted : _C.textPrimary),
+                  )),
+                  if (_dateRange != null)
+                    GestureDetector(
+                      onTap: () { setState(() { _dateRange = null; if (_occupancyLoaded) _applyOccupancyFilter(); }); },
+                      child: const Icon(Icons.close, size: 16, color: _C.textMuted),
+                    ),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 10),
+            // Property search
+            TextField(
+              controller: _occupancySearchCtrl,
+              onChanged: (_) { if (_occupancyLoaded) _applyOccupancyFilter(); },
+              style: _ts(14, FontWeight.w400, _C.textPrimary),
+              decoration: InputDecoration(
+                hintText: 'Search property name...',
+                hintStyle: _ts(14, FontWeight.w400, _C.textMuted),
+                prefixIcon: const Icon(Icons.search, color: _C.textMuted),
+                filled: true, fillColor: _C.cardBg,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _C.border)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _C.border)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _C.primary)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Load button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isLoadingOccupancy ? null : _loadOccupancyData,
+                icon: _isLoadingOccupancy
+                    ? const SizedBox(width: 16, height: 16,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Icon(Icons.refresh),
+                label: Text(_isLoadingOccupancy ? 'Loading...' : 'Load Reservations'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _C.primary, foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  textStyle: _ts(14, FontWeight.w600, Colors.white),
                 ),
               ),
-              const SizedBox(height: 8),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: ['All', 'Admin', 'Moderator'].map((r) {
-                    final selected = _blackoutRoleFilter == r;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        label: Text(r),
-                        selected: selected,
-                        onSelected: (_) => setState(() => _blackoutRoleFilter = r),
-                        selectedColor: AdminColors.accent,
-                        backgroundColor: AdminColors.surface,
-                        labelStyle: TextStyle(
-                          color: selected ? Colors.white : AdminColors.textSecond,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        side: BorderSide(color: selected ? AdminColors.accent : AdminColors.border),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ]),
         ),
-        if (_isLoadingBlackouts)
-          const Expanded(child: Center(child: CircularProgressIndicator(color: AdminColors.primary)))
-        else if (_blackoutError != null)
+        // Results
+        if (_occupancyLoaded)
           Expanded(
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.error_outline, color: AdminColors.danger, size: 42),
-                  const SizedBox(height: 8),
-                  Text(_blackoutError!, textAlign: TextAlign.center,
-                      style: const TextStyle(color: AdminColors.textMuted)),
-                  const SizedBox(height: 12),
-                  ElevatedButton(
-                    onPressed: _loadBlackouts,
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: AdminColors.primary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                    child: const Text('Retry'),
+            child: _filteredReservations.isEmpty
+                ? Center(child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Text('No reservations found for the selected filters.',
+                        textAlign: TextAlign.center,
+                        style: _ts(14, FontWeight.w400, _C.textMuted)),
+                  ))
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    itemCount: _filteredReservations.length,
+                    itemBuilder: (ctx, i) {
+                      final r = _filteredReservations[i];
+                      final m = r is Map ? Map<String, dynamic>.from(r) : <String, dynamic>{};
+                      return _buildReservationCard(m);
+                    },
                   ),
-                ],
-              ),
-            ),
-          )
-        else if (filtered.isEmpty)
-          Expanded(
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.event_busy, size: 48, color: AdminColors.border),
-                  const SizedBox(height: 12),
-                  Text(
-                    _blackoutFilter == 'All' && _blackoutRoleFilter == 'All'
-                        ? 'No blackout dates found'
-                        : 'No matching blackout dates',
-                    style: const TextStyle(color: AdminColors.textMuted),
-                  ),
-                ],
-              ),
-            ),
           )
         else
           Expanded(
-            child: RefreshIndicator(
-              onRefresh: _loadBlackouts,
-              color: AdminColors.primary,
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: filtered.length,
-                itemBuilder: (ctx, i) {
-                  final b = Map<String, dynamic>.from(filtered[i] is Map ? filtered[i] : {});
-                  final id = b['id'] ?? b['blackoutid'];
-                  final propertyName = _safeText(b['property_name'], fallback: 'Unknown Property');
-                  final roomName = _safeText(b['room_name'], fallback: 'All Rooms');
-                  final startDate = _formatDate(b['start_date']);
-                  final endDate = _formatDate(b['end_date']);
-                  final reason = _safeText(b['reason'], fallback: 'No reason provided');
-                  final isActive = b['is_active'] == true || b['is_active'] == 1;
-                  final createdBy = _safeText(b['created_by_username'], fallback: '-');
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AdminColors.cardBg,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AdminColors.border),
-                      boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 3))],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(propertyName,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AdminColors.textPrimary)),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: isActive ? AdminColors.success.withOpacity(0.12) : AdminColors.textMuted.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                isActive ? 'Active' : 'Inactive',
-                                style: TextStyle(
-                                  color: isActive ? AdminColors.success : AdminColors.textMuted,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            if (id != null)
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline, color: AdminColors.danger, size: 20),
-                                onPressed: () => _deleteBlackout(id is int ? id : int.parse(id.toString())),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Row(children: [
-                          const Icon(Icons.bed, size: 14, color: AdminColors.textMuted),
-                          const SizedBox(width: 4),
-                          Text(roomName, style: const TextStyle(fontSize: 13, color: AdminColors.textSecond)),
-                        ]),
-                        const SizedBox(height: 4),
-                        Row(children: [
-                          const Icon(Icons.date_range, size: 14, color: AdminColors.accent),
-                          const SizedBox(width: 4),
-                          Text('$startDate → $endDate',
-                              style: const TextStyle(fontSize: 12, color: AdminColors.accent)),
-                        ]),
-                        const SizedBox(height: 4),
-                        Row(children: [
-                          const Icon(Icons.info_outline, size: 14, color: AdminColors.textMuted),
-                          const SizedBox(width: 4),
-                          Expanded(child: Text(reason, style: const TextStyle(fontSize: 12, color: AdminColors.textMuted))),
-                        ]),
-                        const SizedBox(height: 4),
-                        Row(children: [
-                          const Icon(Icons.person, size: 14, color: AdminColors.textMuted),
-                          const SizedBox(width: 4),
-                          Text('By: $createdBy', style: const TextStyle(fontSize: 11, color: AdminColors.textMuted)),
-                        ]),
-                      ],
-                    ),
-                  );
-                },
-              ),
+            child: Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.calendar_today_outlined, size: 56, color: _C.border),
+                const SizedBox(height: 12),
+                Text('Select filters and tap\n"Load Reservations"',
+                    textAlign: TextAlign.center,
+                    style: _ts(14, FontWeight.w400, _C.textMuted, height: 1.5)),
+              ]),
             ),
           ),
       ],
     );
   }
+
+  Widget _buildReservationCard(Map<String, dynamic> r) {
+    final resId    = _safeText(r['reservationid'], fallback: '');
+    final property = _safeText(r['propertyaddress']);
+    final room     = _safeText(r['roomname'], fallback: '');
+    final checkIn  = _formatDate(r['checkindate']);
+    final checkOut = _formatDate(r['checkoutdate']);
+    final guest    = _safeText(r['customername']);
+    final status   = _safeText(r['reservationstatus']);
+
+    Color statusColor;
+    final sl = status.toLowerCase();
+    if (sl == 'paid') statusColor = _C.success;
+    else if (sl.contains('partial')) statusColor = _C.warning;
+    else if (sl == 'expired' || sl == 'cancelled') statusColor = _C.error;
+    else statusColor = _C.accent;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _C.cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _C.border),
+        boxShadow: [BoxShadow(color: _C.primary.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 3))],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(property,
+              style: _ts(14, FontWeight.w600, _C.textPrimary),
+              maxLines: 1, overflow: TextOverflow.ellipsis)),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(20)),
+            child: Text(status, style: _ts(11, FontWeight.w600, statusColor)),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        Row(children: [
+          const Icon(Icons.person_outline, size: 13, color: _C.textMuted),
+          const SizedBox(width: 4),
+          Expanded(child: Text(guest, style: _ts(12, FontWeight.w400, _C.textMuted),
+              overflow: TextOverflow.ellipsis)),
+          if (resId.isNotEmpty)
+            Text('#$resId', style: _ts(11, FontWeight.w500, _C.textMuted)),
+        ]),
+        if (room.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Row(children: [
+            const Icon(Icons.bed_outlined, size: 13, color: _C.textMuted),
+            const SizedBox(width: 4),
+            Text(room, style: _ts(12, FontWeight.w400, _C.textMuted)),
+          ]),
+        ],
+        const SizedBox(height: 6),
+        Row(children: [
+          const Icon(Icons.login_outlined, size: 13, color: _C.primary),
+          const SizedBox(width: 4),
+          Text(checkIn, style: _ts(12, FontWeight.w500, _C.textSecond)),
+          const SizedBox(width: 16),
+          const Icon(Icons.logout_outlined, size: 13, color: _C.accent),
+          const SizedBox(width: 4),
+          Text(checkOut, style: _ts(12, FontWeight.w500, _C.textSecond)),
+        ]),
+      ]),
+    );
+  }
+
+  // ── Blackout Dates Tab ────────────────────────────────────────────────────
+  Widget _buildBlackoutTab() {
+    return Column(
+      children: [
+        // Filters
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Status', style: _ts(12, FontWeight.w600, _C.textSecond)),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: ['All', 'Active', 'Overridden', 'Expired'].map((f) {
+                  final active = _blackoutFilter == f;
+                  return GestureDetector(
+                    onTap: () => setState(() => _blackoutFilter = f),
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: active ? _C.primary : _C.surface,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: active ? _C.primary : _C.border),
+                      ),
+                      child: Text(f, style: _ts(12,
+                          active ? FontWeight.w600 : FontWeight.w400,
+                          active ? Colors.white : _C.textMuted)),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text('Role', style: _ts(12, FontWeight.w600, _C.textSecond)),
+            const SizedBox(height: 8),
+            Row(
+              children: ['All', 'Admin', 'Moderator'].map((f) {
+                final active = _blackoutRoleFilter == f;
+                return GestureDetector(
+                  onTap: () => setState(() => _blackoutRoleFilter = f),
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: active ? _C.primary : _C.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: active ? _C.primary : _C.border),
+                    ),
+                    child: Text(f, style: _ts(12,
+                        active ? FontWeight.w600 : FontWeight.w400,
+                        active ? Colors.white : _C.textMuted)),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+          ]),
+        ),
+        // List
+        Expanded(
+          child: _isLoadingBlackouts
+              ? const Center(child: CircularProgressIndicator(color: _C.primary))
+              : _blackoutError != null
+                  ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.error_outline, color: _C.error, size: 48),
+                      const SizedBox(height: 12),
+                      Text('Failed to load blackouts', style: _ts(16, FontWeight.w600, _C.textPrimary)),
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        onPressed: _loadBlackouts,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: _C.primary, foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      ),
+                    ]))
+                  : _filteredBlackouts.isEmpty
+                      ? Center(child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.block_outlined, size: 56, color: _C.border),
+                            const SizedBox(height: 12),
+                            Text('No blackout dates found', style: _ts(16, FontWeight.w600, _C.textMuted)),
+                          ]),
+                        ))
+                      : RefreshIndicator(
+                          onRefresh: _loadBlackouts,
+                          color: _C.primary,
+                          child: ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            itemCount: _filteredBlackouts.length,
+                            itemBuilder: (ctx, i) {
+                              final b = _filteredBlackouts[i];
+                              final m = b is Map ? Map<String, dynamic>.from(b) : <String, dynamic>{};
+                              return _buildBlackoutCard(m);
+                            },
+                          ),
+                        ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBlackoutCard(Map<String, dynamic> b) {
+    final property  = _safeText(
+        b['property_name'] ?? b['propertyname'] ?? b['propertyaddress'] ?? b['property']);
+    final room      = _safeText(
+        b['room_name'] ?? b['roomname'] ?? b['room'], fallback: '');
+    final startDate = _formatDate(b['start_date']);
+    final endDate   = _formatDate(b['end_date']);
+    final reason    = _safeText(b['reason'], fallback: 'No reason provided');
+    final creator   = _safeText(
+        b['created_by_username'] ?? b['username'] ?? b['createdby'], fallback: 'Unknown');
+    final role      = _safeText(
+        b['created_by_role'] ?? b['usergroup'] ?? b['role'], fallback: '');
+    final id        = _toInt(b['id']);
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final endDt = _parseDate(b['end_date']);
+    final isExpired = endDt != null && endDt.isBefore(today);
+    final isOverridden = b['is_overridden'] == true || b['is_overridden'] == 1;
+    final isActive = b['is_active'] == true || b['is_active'] == 1;
+
+    final String status;
+    final Color statusColor;
+    if (isOverridden) {
+      status = 'Overridden'; statusColor = _C.success;
+    } else if (isExpired) {
+      status = 'Expired'; statusColor = _C.textMuted;
+    } else if (isActive) {
+      status = 'Active'; statusColor = _C.warning;
+    } else {
+      status = 'Inactive'; statusColor = _C.textMuted;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: _C.cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _C.border),
+        boxShadow: [BoxShadow(color: _C.primary.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 3))],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+        title: Row(children: [
+          Expanded(child: Text(property,
+              style: _ts(14, FontWeight.w600, _C.textPrimary),
+              maxLines: 1, overflow: TextOverflow.ellipsis)),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(20)),
+            child: Text(status, style: _ts(11, FontWeight.w600, statusColor)),
+          ),
+        ]),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (room.isNotEmpty) ...[
+              Row(children: [
+                const Icon(Icons.bed_outlined, size: 13, color: _C.textMuted),
+                const SizedBox(width: 4),
+                Text(room, style: _ts(12, FontWeight.w400, _C.textMuted)),
+              ]),
+              const SizedBox(height: 4),
+            ],
+            Row(children: [
+              const Icon(Icons.login_outlined, size: 13, color: _C.primary),
+              const SizedBox(width: 4),
+              Text(startDate, style: _ts(12, FontWeight.w500, _C.textSecond)),
+              const SizedBox(width: 16),
+              const Icon(Icons.logout_outlined, size: 13, color: _C.accent),
+              const SizedBox(width: 4),
+              Text(endDate, style: _ts(12, FontWeight.w500, _C.textSecond)),
+            ]),
+            const SizedBox(height: 4),
+            Text(reason, style: _ts(12, FontWeight.w400, _C.textMuted),
+                maxLines: 2, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 4),
+            Row(children: [
+              const Icon(Icons.person_outline, size: 12, color: _C.textMuted),
+              const SizedBox(width: 3),
+              Text(creator, style: _ts(11, FontWeight.w400, _C.textMuted)),
+              if (role.isNotEmpty) ...[
+                const SizedBox(width: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                      color: _C.surface, borderRadius: BorderRadius.circular(10)),
+                  child: Text(role, style: _ts(10, FontWeight.w500, _C.textSecond)),
+                ),
+              ],
+            ]),
+          ]),
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.delete_outline, color: _C.error),
+          onPressed: id > 0 ? () => _deleteBlackout(id) : null,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Data Model ─────────────────────────────────────────────────────────────────
+class _StatData {
+  final IconData icon;
+  final String label;
+  final int count;
+  final Color iconColor;
+  final Color iconBg;
+  final Color accent;
+
+  const _StatData({
+    required this.icon,
+    required this.label,
+    required this.count,
+    required this.iconColor,
+    required this.iconBg,
+    required this.accent,
+  });
 }
