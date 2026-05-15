@@ -227,7 +227,7 @@ class _ModeratorLedgerState extends State<ModeratorLedger> {
                               color: Colors.white, fontSize: 24, height: 1.2)),
                       const SizedBox(height: 4),
                       Text(
-                        'Track booking movement, commission,\ncredit, debit, and expected amount.',
+                        'Track income, commission,\nand payment records.',
                         style: AppTextStyles.bodySmall.copyWith(
                             color: Colors.white.withOpacity(0.72), height: 1.4),
                       ),
@@ -279,46 +279,71 @@ class _ModeratorLedgerState extends State<ModeratorLedger> {
     required IconData icon,
     required Color color,
   }) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AdminColors.cardBg,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AdminColors.border),
-          boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
+    return Container(
+      decoration: BoxDecoration(
+        color: AdminColors.cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AdminColors.border),
+        boxShadow: [BoxShadow(
+            color: AdminColors.primary.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          Positioned(
+            right: -10, bottom: -10,
+            child: Icon(icon, size: 68, color: color.withOpacity(0.07)),
+          ),
+          Positioned(
+            left: 0, right: 0, bottom: 0,
+            child: Container(
+              height: 3,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 18),
-            ),
-            const SizedBox(height: 10),
-            _isLoading
-              ? Container(
-                  height: 20,
-                  width: 60,
-                  decoration: BoxDecoration(
-                    color: AdminColors.surface,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                )
-              : Text(
-                  value,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary),
+                color: color.withOpacity(0.5),
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(20),
+                  bottomRight: Radius.circular(20),
                 ),
-            const SizedBox(height: 3),
-            Text(title,
-                style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted)),
-          ],
-        ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(13, 13, 13, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, size: 16, color: color),
+                ),
+                const SizedBox(height: 8),
+                Text(title,
+                    style: AppTextStyles.caption.copyWith(
+                        color: AdminColors.textMuted, fontWeight: FontWeight.w500, fontSize: 11)),
+                const SizedBox(height: 2),
+                _isLoading
+                    ? Container(
+                        height: 20, width: 60,
+                        decoration: BoxDecoration(
+                          color: AdminColors.surface,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      )
+                    : Text(
+                        value,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.bodyDefault.copyWith(
+                            color: AdminColors.textPrimary, fontSize: 20, fontWeight: FontWeight.w700),
+                      ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -330,25 +355,21 @@ class _ModeratorLedgerState extends State<ModeratorLedger> {
     final totalExpected = _money(_summary['total_expected']);
     final totalCommission = _money(_summary['total_commission']);
 
-    return Column(
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 1.15,
       children: [
-        Row(children: [
-          _buildSummaryCard(title: 'Transactions', value: totalTransactions, icon: Icons.receipt_long, color: AdminColors.primaryLight),
-          const SizedBox(width: 12),
-          _buildSummaryCard(title: 'Credit', value: totalCredit, icon: Icons.trending_up, color: AdminColors.success),
-        ]),
-        const SizedBox(height: 12),
-        Row(children: [
-          _buildSummaryCard(title: 'Debit', value: totalDebit, icon: Icons.trending_down, color: AdminColors.danger),
-          const SizedBox(width: 12),
-          _buildSummaryCard(title: 'Expected', value: totalExpected, icon: Icons.pending_actions, color: AdminColors.accent),
-        ]),
-        const SizedBox(height: 12),
-        Row(children: [
-          _buildSummaryCard(title: 'Commission', value: totalCommission, icon: Icons.percent, color: AdminColors.accentLight),
-          const SizedBox(width: 12),
-          _buildSummaryCard(title: 'Records', value: _ledgerRows.length.toString(), icon: Icons.list_alt, color: AdminColors.textMuted),
-        ]),
+        _buildSummaryCard(title: 'Transactions', value: totalTransactions, icon: Icons.receipt_long,    color: AdminColors.primaryLight),
+        _buildSummaryCard(title: 'Credit',       value: totalCredit,       icon: Icons.trending_up,     color: AdminColors.success),
+        _buildSummaryCard(title: 'Debit',        value: totalDebit,        icon: Icons.trending_down,   color: AdminColors.danger),
+        _buildSummaryCard(title: 'Expected',     value: totalExpected,     icon: Icons.pending_actions, color: AdminColors.accent),
+        _buildSummaryCard(title: 'Commission',   value: totalCommission,   icon: Icons.percent,         color: AdminColors.accentLight),
+        _buildSummaryCard(title: 'Records',      value: _ledgerRows.length.toString(), icon: Icons.list_alt, color: AdminColors.textMuted),
       ],
     );
   }
@@ -461,8 +482,8 @@ class _ModeratorLedgerState extends State<ModeratorLedger> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Date',
-              style: AppTextStyles.label.copyWith(
-                  color: AdminColors.textSecond, fontWeight: FontWeight.w700)),
+              style: AppTextStyles.caption.copyWith(
+                  color: AdminColors.textSecond, fontWeight: FontWeight.w600, fontSize: 12)),
           const SizedBox(height: 6),
           GestureDetector(
             onTap: () async {
@@ -505,8 +526,8 @@ class _ModeratorLedgerState extends State<ModeratorLedger> {
           ),
           const SizedBox(height: 12),
           Text('Status',
-              style: AppTextStyles.label.copyWith(
-                  color: AdminColors.textSecond, fontWeight: FontWeight.w700)),
+              style: AppTextStyles.caption.copyWith(
+                  color: AdminColors.textSecond, fontWeight: FontWeight.w600, fontSize: 12)),
           const SizedBox(height: 6),
           _filterDropdown<String>(
             value: _statusFilter,
@@ -522,8 +543,8 @@ class _ModeratorLedgerState extends State<ModeratorLedger> {
           ),
           const SizedBox(height: 12),
           Text('Sort By',
-              style: AppTextStyles.label.copyWith(
-                  color: AdminColors.textSecond, fontWeight: FontWeight.w700)),
+              style: AppTextStyles.caption.copyWith(
+                  color: AdminColors.textSecond, fontWeight: FontWeight.w600, fontSize: 12)),
           const SizedBox(height: 6),
           _filterDropdown<String>(
             value: _sortOrder,
@@ -535,8 +556,8 @@ class _ModeratorLedgerState extends State<ModeratorLedger> {
           ),
           const SizedBox(height: 12),
           Text('Search',
-              style: AppTextStyles.label.copyWith(
-                  color: AdminColors.textSecond, fontWeight: FontWeight.w700)),
+              style: AppTextStyles.caption.copyWith(
+                  color: AdminColors.textSecond, fontWeight: FontWeight.w600, fontSize: 12)),
           const SizedBox(height: 6),
           TextField(
             controller: _searchController,
@@ -548,9 +569,9 @@ class _ModeratorLedgerState extends State<ModeratorLedger> {
               filled: true,
               fillColor: AdminColors.surface,
               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AdminColors.border)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AdminColors.border)),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AdminColors.primary)),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AdminColors.border)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AdminColors.border)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AdminColors.primary)),
             ),
           ),
           const SizedBox(height: 12),
@@ -560,7 +581,7 @@ class _ModeratorLedgerState extends State<ModeratorLedger> {
             child: ElevatedButton(
               onPressed: _resetFilters,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AdminColors.danger,
+                backgroundColor: AdminColors.accent,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 elevation: 0,

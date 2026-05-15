@@ -680,12 +680,7 @@ class _AdminStockManagerPageState extends State<AdminStockManagerPage> {
           _buildStockFilterCard(),
           const SizedBox(height: 14),
           if (_isLoadingStock || _isFilteringStock)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 40),
-                child: CircularProgressIndicator(color: _C.primary),
-              ),
-            )
+            Column(children: List.generate(4, (_) => _buildSkeletonCard()))
           else ...[
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -776,8 +771,17 @@ class _AdminStockManagerPageState extends State<AdminStockManagerPage> {
                 const SizedBox(height: 8),
                 Text(s.label, style: _ts(11, FontWeight.w500, _C.textMuted)),
                 const SizedBox(height: 2),
-                Text(_isLoadingStock ? '-' : _fmtCount(s.count),
-                    style: _ts(20, FontWeight.w700, _C.textPrimary)),
+                _isLoadingStock
+                    ? Container(
+                        height: 20,
+                        width: 60,
+                        decoration: BoxDecoration(
+                          color: _C.surface,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      )
+                    : Text(_fmtCount(s.count),
+                        style: _ts(20, FontWeight.w700, _C.textPrimary)),
               ],
             ),
           ),
@@ -896,6 +900,57 @@ class _AdminStockManagerPageState extends State<AdminStockManagerPage> {
       setState(() { if (isCheckIn) _stockCheckIn = picked; else _stockCheckOut = picked; });
       _applyStockFilters();
     }
+  }
+
+  // ── Skeleton Card (loading placeholder) ──────────────────────────────────
+  Widget _buildSkeletonCard() {
+    Widget line(double w, double h) => Container(
+          width: w,
+          height: h,
+          decoration: BoxDecoration(
+            color: _C.surface,
+            borderRadius: BorderRadius.circular(6),
+          ),
+        );
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: _C.cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _C.border),
+        boxShadow: [BoxShadow(color: _C.primary.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20), bottomLeft: Radius.circular(20)),
+            child: Container(width: 110, height: 130, color: _C.surface),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  line(double.infinity, 14),
+                  const SizedBox(height: 8),
+                  line(110, 12),
+                  const SizedBox(height: 14),
+                  line(80, 10),
+                  const SizedBox(height: 7),
+                  line(100, 10),
+                  const SizedBox(height: 7),
+                  line(60, 10),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // ── Property Card (Stock Overview) ────────────────────────────────────────

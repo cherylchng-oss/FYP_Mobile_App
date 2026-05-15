@@ -391,46 +391,71 @@ class _ModeratorCustomerReviewState extends State<ModeratorCustomerReview> {
     required IconData icon,
     required Color color,
   }) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AdminColors.cardBg,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AdminColors.border),
-          boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
+    return Container(
+      decoration: BoxDecoration(
+        color: AdminColors.cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AdminColors.border),
+        boxShadow: [BoxShadow(
+            color: AdminColors.primary.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          Positioned(
+            right: -10, bottom: -10,
+            child: Icon(icon, size: 68, color: color.withOpacity(0.07)),
+          ),
+          Positioned(
+            left: 0, right: 0, bottom: 0,
+            child: Container(
+              height: 3,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 18),
-            ),
-            const SizedBox(height: 10),
-            _isLoading
-              ? Container(
-                  height: 20,
-                  width: 60,
-                  decoration: BoxDecoration(
-                    color: AdminColors.surface,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                )
-              : Text(
-                  value,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary),
+                color: color.withOpacity(0.5),
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(20),
+                  bottomRight: Radius.circular(20),
                 ),
-            const SizedBox(height: 3),
-            Text(title,
-                style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted)),
-          ],
-        ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(13, 13, 13, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, size: 16, color: color),
+                ),
+                const SizedBox(height: 8),
+                Text(title,
+                    style: AppTextStyles.caption.copyWith(
+                        color: AdminColors.textMuted, fontWeight: FontWeight.w500, fontSize: 11)),
+                const SizedBox(height: 2),
+                _isLoading
+                    ? Container(
+                        height: 20, width: 60,
+                        decoration: BoxDecoration(
+                          color: AdminColors.surface,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      )
+                    : Text(
+                        value,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.bodyDefault.copyWith(
+                            color: AdminColors.textPrimary, fontSize: 20, fontWeight: FontWeight.w700),
+                      ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -443,19 +468,19 @@ class _ModeratorCustomerReviewState extends State<ModeratorCustomerReview> {
         ? 0.0
         : _allReviews.fold<double>(0.0, (sum, r) => sum + _toDouble(r['rating'])) / total;
 
-    return Column(
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 1.15,
       children: [
-        Row(children: [
-          _buildSummaryCard(title: 'Total Reviews', value: total.toString(), icon: Icons.reviews, color: AdminColors.primaryLight),
-          const SizedBox(width: 12),
-          _buildSummaryCard(title: 'Avg Rating', value: avgRating.toStringAsFixed(2), icon: Icons.star, color: AdminColors.accent),
-        ]),
-        const SizedBox(height: 12),
-        Row(children: [
-          _buildSummaryCard(title: 'Replied', value: replied.toString(), icon: Icons.mark_email_read, color: AdminColors.success),
-          const SizedBox(width: 12),
-          _buildSummaryCard(title: 'Pending Reply', value: pending.toString(), icon: Icons.pending_actions, color: AdminColors.danger),
-        ]),
+        _buildSummaryCard(title: 'Total Reviews', value: total.toString(),             icon: Icons.reviews,         color: AdminColors.primaryLight),
+        _buildSummaryCard(title: 'Avg Rating',    value: avgRating.toStringAsFixed(2), icon: Icons.star,            color: AdminColors.accent),
+        _buildSummaryCard(title: 'Replied',       value: replied.toString(),           icon: Icons.mark_email_read, color: AdminColors.success),
+        _buildSummaryCard(title: 'Pending Reply', value: pending.toString(),           icon: Icons.pending_actions, color: AdminColors.danger),
       ],
     );
   }
@@ -657,10 +682,10 @@ class _ModeratorCustomerReviewState extends State<ModeratorCustomerReview> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AdminColors.cardBg,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AdminColors.border),
         boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 3))],
       ),
@@ -707,38 +732,20 @@ class _ModeratorCustomerReviewState extends State<ModeratorCustomerReview> {
   }
 
   Widget _buildSearchField() {
-    return Container(
-      height: 42,
-      decoration: BoxDecoration(
-        border: Border.all(color: AdminColors.border),
-        borderRadius: BorderRadius.circular(10),
-        color: AdminColors.surface,
+    return TextField(
+      controller: _searchController,
+      style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
+      decoration: InputDecoration(
+        hintText: 'Search property name or customer name...',
+        hintStyle: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted),
+        prefixIcon: const Icon(Icons.search, color: AdminColors.textMuted, size: 18),
+        filled: true,
+        fillColor: AdminColors.surface,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AdminColors.border)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AdminColors.border)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AdminColors.primary)),
       ),
-      child: Row(children: [
-        const SizedBox(width: 10),
-        const Icon(Icons.search, size: 16, color: AdminColors.textMuted),
-        const SizedBox(width: 6),
-        Expanded(
-          child: TextField(
-            controller: _searchController,
-            style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
-            decoration: InputDecoration(
-              hintText: 'Search property name or customer name...',
-              hintStyle: AppTextStyles.caption.copyWith(color: AdminColors.textMuted),
-              border: InputBorder.none,
-              isDense: true,
-            ),
-          ),
-        ),
-        if (_searchController.text.isNotEmpty)
-          GestureDetector(
-            onTap: () => _searchController.clear(),
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8),
-              child: Icon(Icons.close, size: 14, color: AdminColors.textMuted),
-            ),
-          ),
-      ]),
     );
   }
 
@@ -748,8 +755,8 @@ class _ModeratorCustomerReviewState extends State<ModeratorCustomerReview> {
       children: [
         Text(label,
             style: AppTextStyles.caption.copyWith(
-                color: AdminColors.textMuted, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 4),
+                color: AdminColors.textSecond, fontWeight: FontWeight.w600, fontSize: 12)),
+        const SizedBox(height: 6),
         GestureDetector(
           onTap: () async {
             final picked = await showDatePicker(
@@ -761,12 +768,12 @@ class _ModeratorCustomerReviewState extends State<ModeratorCustomerReview> {
             if (picked != null) onChanged(picked);
           },
           child: Container(
-            height: 40,
+            height: 44,
             padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: BoxDecoration(
               border: Border.all(color: AdminColors.border),
-              borderRadius: BorderRadius.circular(8),
-              color: AdminColors.cardBg,
+              borderRadius: BorderRadius.circular(10),
+              color: AdminColors.surface,
             ),
             child: Row(children: [
               Expanded(
@@ -793,15 +800,15 @@ class _ModeratorCustomerReviewState extends State<ModeratorCustomerReview> {
       children: [
         Text('Sort',
             style: AppTextStyles.caption.copyWith(
-                color: AdminColors.textMuted, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 4),
+                color: AdminColors.textSecond, fontWeight: FontWeight.w600, fontSize: 12)),
+        const SizedBox(height: 6),
         Container(
-          height: 40,
+          height: 44,
           padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
             border: Border.all(color: AdminColors.border),
-            borderRadius: BorderRadius.circular(8),
-            color: AdminColors.cardBg,
+            borderRadius: BorderRadius.circular(10),
+            color: AdminColors.surface,
           ),
           child: DropdownButton<String>(
             value: _sortOrder,

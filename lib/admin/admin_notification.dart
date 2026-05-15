@@ -151,8 +151,8 @@ class _AdminNotificationsState extends State<AdminNotifications> {
 
   // ===== Stock Manager style header =====
   Widget _buildHeader(double topPad) {
-    return SizedBox(
-      height: topPad + 110,
+    return Container(
+      width: double.infinity,
       child: Stack(
         children: [
           Positioned.fill(
@@ -176,54 +176,46 @@ class _AdminNotificationsState extends State<AdminNotifications> {
             ),
           ),
           Padding(
-            padding: EdgeInsets.only(top: topPad + 24, left: 18, right: 18, bottom: 16),
+            padding: EdgeInsets.fromLTRB(20, topPad + 24, 20, 36),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.18),
                     borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white.withOpacity(0.25)),
                   ),
-                  child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 24),
+                  child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 26),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
-                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         'Notifications',
                         style: GoogleFonts.outfit(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w600,
                           color: Colors.white,
+                          height: 1.2,
                         ),
                       ),
+                      const SizedBox(height: 4),
                       Text(
-                        unreadCount > 0 ? '$unreadCount unread' : 'All caught up',
+                        unreadCount > 0
+                            ? '$unreadCount unread message${unreadCount == 1 ? '' : 's'}.\nStay on top of your alerts.'
+                            : 'All caught up!\nNo new notifications.',
                         style: GoogleFonts.outfit(
                           fontSize: 13,
-                          color: Colors.white70,
+                          fontWeight: FontWeight.w400,
+                          color: Colors.white.withOpacity(0.72),
+                          height: 1.4,
                         ),
                       ),
                     ],
-                  ),
-                ),
-                // Back button
-                GestureDetector(
-                  onTap: () => Navigator.of(context).maybePop(),
-                  child: Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.18),
-                      borderRadius: BorderRadius.circular(13),
-                    ),
-                    child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
                   ),
                 ),
               ],

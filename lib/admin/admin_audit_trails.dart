@@ -407,9 +407,9 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
         border: Border.all(color: AdminColors.border),
         boxShadow: [
           BoxShadow(
-              color: AdminColors.primary.withOpacity(0.06),
-              blurRadius: 10,
-              offset: const Offset(0, 4)),
+              color: AdminColors.primary.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 3)),
         ],
       ),
       child: Column(
@@ -417,8 +417,8 @@ class _AdminAuditTrailsState extends State<AdminAuditTrails> {
         children: [
           Text('Filter by Action Type',
               style: AppTextStyles.caption.copyWith(
-                  color: AdminColors.textMuted, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 10),
+                  color: AdminColors.textSecond, fontWeight: FontWeight.w600, fontSize: 12)),
+          const SizedBox(height: 6),
           Container(
             decoration: BoxDecoration(
               color: AdminColors.surface,

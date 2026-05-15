@@ -451,6 +451,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
       body: Column(
         children: [
           _buildHeader(topPad),
+          _buildTypeChips(),
           Expanded(
             child: RefreshIndicator(
               onRefresh: _loadUsers,
@@ -459,8 +460,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                 physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                 slivers: [
                   SliverToBoxAdapter(child: _buildTopBar()),
-                  SliverToBoxAdapter(child: _buildTypeChips()),
-                  const SliverToBoxAdapter(child: SizedBox(height: 10)),
+                  const SliverToBoxAdapter(child: SizedBox(height: 4)),
                   _buildUserSliver(),
                   const SliverToBoxAdapter(child: SizedBox(height: 16)),
                 ],
@@ -555,28 +555,16 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
       return GestureDetector(
         onTap: () => setState(() => _selectedUserType = label),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          duration: const Duration(milliseconds: 200),
+          margin: EdgeInsets.zero,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
-            gradient: selected
-                ? const LinearGradient(colors: [AdminColors.primary, AdminColors.primaryLight])
-                : LinearGradient(colors: [Colors.white, Colors.white.withOpacity(.9)]),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected ? Colors.transparent : AdminColors.border,
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: selected ? AdminColors.primary.withOpacity(.22) : Colors.black.withOpacity(.03),
-                blurRadius: selected ? 12 : 6,
-                offset: const Offset(0, 3),
-              ),
-            ],
+            color: selected ? AdminColors.primary : AdminColors.surface,
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: selected ? AdminColors.primary : AdminColors.border),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 label == 'Admin'
@@ -584,21 +572,17 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                     : label == 'Moderator'
                         ? Icons.verified_user
                         : Icons.person,
-                size: 15,
+                size: 14,
                 color: selected ? Colors.white : AdminColors.textMuted,
               ),
               const SizedBox(width: 6),
               Text(
                 label,
-                style: AppTextStyles.label.copyWith(
+                style: AppTextStyles.caption.copyWith(
+                  fontSize: 12,
                   color: selected ? Colors.white : AdminColors.textMuted,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                 ),
-              ),
-              const SizedBox(width: 5),
-              _countPill(
-                _users.where((u) => u['type'] == label).length,
-                selected ? Colors.white.withOpacity(.2) : AdminColors.primary.withOpacity(.08),
-                selected ? Colors.white : AdminColors.primary,
               ),
             ],
           ),
@@ -606,16 +590,19 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
       );
     }
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-      child: Row(
-        children: [
-          for (int i = 0; i < _availableTypes.length; i++) ...[
-            chip(_availableTypes[i]),
-            if (i < _availableTypes.length - 1) const SizedBox(width: 8),
+    return Container(
+      color: AdminColors.cream,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            for (int i = 0; i < _availableTypes.length; i++) ...[
+              chip(_availableTypes[i]),
+              if (i < _availableTypes.length - 1) const SizedBox(width: 10),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

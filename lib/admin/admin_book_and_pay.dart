@@ -382,15 +382,15 @@ class _AdminBooknPayLogState extends State<AdminBooknPayLog> {
         color: AdminColors.cardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AdminColors.border),
-        boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.06),
-            blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.05),
+            blurRadius: 8, offset: const Offset(0, 3))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Filter by Action Type',
-              style: AppTextStyles.label.copyWith(color: AdminColors.textSecond)),
-          const SizedBox(height: 10),
+              style: AppTextStyles.caption.copyWith(color: AdminColors.textSecond, fontWeight: FontWeight.w600, fontSize: 12)),
+          const SizedBox(height: 6),
           Container(
             decoration: BoxDecoration(
               color: AdminColors.surface,

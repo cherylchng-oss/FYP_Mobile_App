@@ -478,7 +478,7 @@ class _ModeratorStockManagerPageState extends State<ModeratorStockManagerPage> {
         currentPageLabel: 'Stock Manager',
       ),
       bottomNavigationBar: SharedBottomNavigationBar(
-        selectedIndex: 4,
+        selectedIndex: 2,
         onTap: _handleBottomNavTap,
         scaffoldKey: _scaffoldKey,
         role: nav.UserRole.moderator,
@@ -675,12 +675,7 @@ class _ModeratorStockManagerPageState extends State<ModeratorStockManagerPage> {
           _buildStockFilterCard(),
           const SizedBox(height: 14),
           if (_isLoadingStock || _isFilteringStock)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 40),
-                child: CircularProgressIndicator(color: AdminColors.primary),
-              ),
-            )
+            Column(children: List.generate(4, (_) => _buildSkeletonCard()))
           else ...[
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -771,8 +766,17 @@ class _ModeratorStockManagerPageState extends State<ModeratorStockManagerPage> {
                 const SizedBox(height: 8),
                 Text(s.label, style: _mts(11, FontWeight.w500, AdminColors.textMuted)),
                 const SizedBox(height: 2),
-                Text(_isLoadingStock ? '-' : _fmtCount(s.count),
-                    style: _mts(20, FontWeight.w700, AdminColors.textPrimary)),
+                _isLoadingStock
+                    ? Container(
+                        height: 20,
+                        width: 60,
+                        decoration: BoxDecoration(
+                          color: AdminColors.surface,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      )
+                    : Text(_fmtCount(s.count),
+                        style: _mts(20, FontWeight.w700, AdminColors.textPrimary)),
               ],
             ),
           ),
@@ -871,6 +875,57 @@ class _ModeratorStockManagerPageState extends State<ModeratorStockManagerPage> {
               style: _mts(11, FontWeight.w400, AdminColors.textMuted),
               overflow: TextOverflow.ellipsis)),
         ]),
+      ),
+    );
+  }
+
+  // ── Skeleton Card (loading placeholder) ──────────────────────────────────
+  Widget _buildSkeletonCard() {
+    Widget line(double w, double h) => Container(
+          width: w,
+          height: h,
+          decoration: BoxDecoration(
+            color: AdminColors.surface,
+            borderRadius: BorderRadius.circular(6),
+          ),
+        );
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: AdminColors.cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AdminColors.border),
+        boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20), bottomLeft: Radius.circular(20)),
+            child: Container(width: 110, height: 130, color: AdminColors.surface),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  line(double.infinity, 14),
+                  const SizedBox(height: 8),
+                  line(110, 12),
+                  const SizedBox(height: 14),
+                  line(80, 10),
+                  const SizedBox(height: 7),
+                  line(100, 10),
+                  const SizedBox(height: 7),
+                  line(60, 10),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

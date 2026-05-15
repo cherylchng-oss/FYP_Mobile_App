@@ -105,6 +105,8 @@ flutter:
     - assets/customer_review.png
     - assets/user_management.png
     - assets/notification.png
+    - assets/dashboard.png
+    - assets/profile.png
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 

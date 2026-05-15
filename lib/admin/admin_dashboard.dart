@@ -228,9 +228,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   const SizedBox(height: 4),
                   const Text(
                     'Monitor platform statistics',
-                    style: TextStyle(fontSize: 13, color: AdminColors.textMuted),
+                    style: TextStyle(fontSize: 13, color: AdminColors.textMuted, height: 1.0),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 0),
                   _buildStatsGrid(),
                   const SizedBox(height: 24),
                   _buildQuickActions(),
@@ -257,69 +257,96 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Widget _buildSliverHeader() {
+    final topPad = MediaQuery.of(context).padding.top;
     return SliverToBoxAdapter(
       child: Container(
-        decoration: const BoxDecoration(
-          color: AdminColors.primary,
-          borderRadius: BorderRadius.only(
-            bottomLeft: Radius.circular(32),
-            bottomRight: Radius.circular(32),
-          ),
-        ),
-        child: SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(Icons.admin_panel_settings, color: Colors.white, size: 26),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Hello Sarawak',
-                              style: TextStyle(color: Colors.white70, fontSize: 13)),
-                          Text('Admin Panel',
-                              style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.notifications_outlined, color: Colors.white),
-                      onPressed: () => Navigator.of(context).pushNamed('/admin-notifications'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'Welcome back,',
-                  style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 14),
-                ),
-                Text(
-                  _username ?? (_currentUserRole != null
-                      ? rbac.RBACService.getRoleDisplayName(_currentUserRole!)
-                      : 'Administrator'),
-                  style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Manage your platform from here',
-                  style: TextStyle(color: Colors.white.withOpacity(0.65), fontSize: 13),
-                ),
-              ],
+        width: double.infinity,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Image.asset('assets/dashboard.png', fit: BoxFit.cover),
             ),
-          ),
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF3D1E0C).withOpacity(0.62),
+                      const Color(0xFF8B4A2F).withOpacity(0.55),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(20, topPad + 24, 20, 36),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.white.withOpacity(0.25)),
+                        ),
+                        child: const Icon(Icons.admin_panel_settings, color: Colors.white, size: 26),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Hello Sarawak',
+                                style: AppTextStyles.bodySmall.copyWith(
+                                    color: Colors.white.withOpacity(0.72), height: 1.4)),
+                            Text('Admin Panel',
+                                style: AppTextStyles.h2.copyWith(
+                                    color: Colors.white, height: 1.2)),
+                          ],
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () => Navigator.of(context).pushNamed('/admin-notifications'),
+                        child: Container(
+                          padding: const EdgeInsets.all(9),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white.withOpacity(0.25)),
+                          ),
+                          child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 15),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Welcome back,',
+                    style: AppTextStyles.bodySmall.copyWith(
+                        color: Colors.white.withOpacity(0.75)),
+                  ),
+                  Text(
+                    _username ?? (_currentUserRole != null
+                        ? rbac.RBACService.getRoleDisplayName(_currentUserRole!)
+                        : 'Administrator'),
+                    style: AppTextStyles.h1.copyWith(color: Colors.white),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Manage your platform from here',
+                    style: AppTextStyles.bodySmall.copyWith(
+                        color: Colors.white.withOpacity(0.65)),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -358,7 +385,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         crossAxisCount: 2,
         mainAxisSpacing: 14,
         crossAxisSpacing: 14,
-        childAspectRatio: 0.92,
+        childAspectRatio: 1.15,
       ),
       itemCount: stats.length,
       itemBuilder: (_, i) => _buildStatCard(stats[i]),
@@ -369,69 +396,71 @@ class _AdminDashboardState extends State<AdminDashboard> {
     return GestureDetector(
       onTap: item.onTap,
       child: Container(
-        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AdminColors.cardBg,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: AdminColors.border),
-          boxShadow: [
-            BoxShadow(
-              color: AdminColors.primary.withOpacity(0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          boxShadow: [BoxShadow(
+              color: AdminColors.primary.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(9),
-                  decoration: BoxDecoration(
-                    color: item.color.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(item.icon, color: item.color, size: 20),
-                ),
-                if (item.onTap != null)
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: AdminColors.surface,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.arrow_forward_ios, size: 12, color: AdminColors.textMuted),
-                  ),
-              ],
+            Positioned(
+              right: -10, bottom: -10,
+              child: Icon(item.icon, size: 68, color: item.color.withOpacity(0.07)),
             ),
-            const Spacer(),
-            _isLoadingStats
-                ? Container(
-                    height: 20,
-                    width: 60,
+            Positioned(
+              left: 0, right: 0, bottom: 0,
+              child: Container(
+                height: 3,
+                decoration: BoxDecoration(
+                  color: item.color.withOpacity(0.5),
+                  borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(13, 13, 13, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: AdminColors.surface,
-                      borderRadius: BorderRadius.circular(6),
+                      color: item.color.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                  )
-                : FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      item.value,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: AdminColors.textPrimary,
-                      ),
-                    ),
+                    child: Icon(item.icon, size: 16, color: item.color),
                   ),
-            const SizedBox(height: 4),
-            Text(item.title,
-                style: const TextStyle(fontSize: 12, color: AdminColors.textMuted, fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 8),
+                  Text(item.title,
+                      style: AppTextStyles.caption.copyWith(
+                          color: AdminColors.textMuted, fontWeight: FontWeight.w500, fontSize: 11)),
+                  const SizedBox(height: 2),
+                  _isLoadingStats
+                      ? Container(
+                          height: 20,
+                          width: 60,
+                          decoration: BoxDecoration(
+                            color: AdminColors.surface,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        )
+                      : FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(item.value,
+                              style: AppTextStyles.bodyDefault.copyWith(
+                                  color: AdminColors.textPrimary,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
