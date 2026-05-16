@@ -32,3 +32,7 @@ doc/api/
 
 # Logs
 *.log
+
+# Kotlin compiler cache
+.kotlin/
+*.kotlin_module
