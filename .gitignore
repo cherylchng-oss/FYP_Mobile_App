@@ -25,3 +25,9 @@ doc/api/
 
 .flutter-plugins
 .flutter-plugins-dependencies
+
+# Logs
+*.log
+
+# Claude memory/context
+.claude/claude.md
