@@ -189,16 +189,7 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined,
-                color: Color(0xFF64748B)),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => ModeratorNotifications()),
-              );
-            },
-          ),
+          
           IconButton(
             icon: const Icon(Icons.logout, color: Color(0xFF64748B)),
             onPressed: _handleLogout,

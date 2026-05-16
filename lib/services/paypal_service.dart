@@ -662,43 +662,44 @@ class _PayPalPaymentDialogState extends State<_PayPalPaymentDialog> {
                           onConsoleMessage: (controller, consoleMessage) {
                             final level = consoleMessage.messageLevel.toString();
                             final message = consoleMessage.message;
-
-                            // PayPal pages may show third-party JS warnings/errors such as Datadog,
-                            // CSP, CORS, postMessage, tracking, or worker errors inside WebView.
-                            // Do not block the payment screen because of these console messages.
-                            print('PayPal Console [$level]: $message');
-
-                            if (message.contains('Datadog') ||
-                                message.contains('Session Replay') ||
-                                message.contains('worker') ||
-                                message.contains('Content Security Policy') ||
+                            
+                            // Suppress expected errors from PayPal's pages (non-critical)
+                            if (message.contains('Content Security Policy') || 
                                 message.contains('unsafe-eval') ||
                                 message.contains('CSP directive') ||
                                 message.contains('CORS policy') ||
                                 message.contains('Access-Control-Allow-Origin') ||
-                                message.contains('XMLHttpRequest') ||
-                                message.contains('postMessage') ||
-                                message.contains('Global messaging')) {
-                              print('PayPal non-critical WebView warning ignored.');
+                                message.contains('XMLHttpRequest') && message.contains('blocked by CORS')) {
+                              // These are expected on PayPal's payment pages - don't show as errors
+                              print('PayPal Console [INFO]: Expected warning (CSP/CORS): ${message.substring(0, message.length > 100 ? 100 : message.length)}...');
                               return;
                             }
-
-                            // Important:
-                            // Do not call setState(_errorMessage = ...) here.
-                            // Real payment errors should be handled by PayPal onError/paymentError only.
+                            
+                            print('PayPal Console [$level]: $message');
+                            
+                            if (consoleMessage.messageLevel == ConsoleMessageLevel.ERROR) {
+                              // Only show non-expected errors
+                              if (!message.contains('Content Security Policy') && 
+                                  !message.contains('unsafe-eval') &&
+                                  !message.contains('CSP directive') &&
+                                  !message.contains('CORS policy') &&
+                                  !message.contains('Access-Control-Allow-Origin')) {
+                                print('⚠️ PayPal JavaScript Error: $message');
+                                if (mounted) {
+                                  setState(() {
+                                    if (_errorMessage == null) {
+                                      _errorMessage = 'JavaScript Error: $message';
+                                    }
+                                  });
+                                }
+                              }
+                            }
                           },
                           onReceivedError: (controller, request, error) {
-                            print('PayPal WebView load error: ${error.description}');
-                            print('Failed URL: ${request.url}');
-
-                            // Only show error if the MAIN frame failed.
-                            // Ignore image/script/tracking/subresource failures.
-                            if (request.isForMainFrame == true) {
-                              setState(() {
-                                _isLoading = false;
-                                _errorMessage = 'Error loading PayPal: ${error.description}';
-                              });
-                            }
+                            setState(() {
+                              _isLoading = false;
+                              _errorMessage = 'Error loading PayPal: ${error.description}';
+                            });
                           },
                           shouldOverrideUrlLoading: (controller, navigationAction) async {
                             final url = navigationAction.request.url.toString();

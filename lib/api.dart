@@ -1376,44 +1376,67 @@ Future<List<dynamic>> fetchReservationsForAdminModerator() async {
 
 // Update reservation status
 Future<Map<String, dynamic>> updateReservationStatus(
-  dynamic reservationid,
-  String status,
-) async {
-  final userid = await Session.getUserId();
+  int reservationid,
+  String status, {
+  String creatorid = '',
+  String creatorUsername = '',
+}) async {
+  final userid =
+      await Session.getUserId();
+
+  final storedUsername =
+      await Session.getUsername();
+
+  final isExpiredStatus =
+      status.trim().toLowerCase() == 'expired';
+
+  final finalCreatorId = isExpiredStatus
+      ? ''
+      : (creatorid.isNotEmpty ? creatorid : (userid?.toString() ?? ''));
+
+  final finalCreatorUsername = isExpiredStatus
+      ? ''
+      : (creatorUsername.isNotEmpty ? creatorUsername : (storedUsername ?? ''));
+
+  final queryParams = <String, String>{
+    'userid': userid?.toString() ?? '',
+  };
+
+  if (finalCreatorId.isNotEmpty) {
+    queryParams['creatorid'] = finalCreatorId;
+  }
+
+  if (finalCreatorUsername.isNotEmpty) {
+    queryParams['creatorUsername'] = finalCreatorUsername;
+  }
+
+  final uri = Uri.parse(
+    '$API_URL/updateReservationStatus/$reservationid',
+  ).replace(
+    queryParameters: queryParams,
+  );
 
   try {
-    print('API: Updating reservation status - reservationId: $reservationid, status: $status');
-
     final response = await http.patch(
-      Uri.parse('$API_URL/updateReservationStatus/$reservationid?userid=$userid'),
+      uri,
       headers: {
         ...await _authHeaders(),
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
         'reservationStatus': status,
-        'reservationstatus': status,
       }),
-    ).timeout(const Duration(seconds: 30));
-
-    print('API: updateReservationStatus response status: ${response.statusCode}');
-    print('API: updateReservationStatus response body: ${response.body}');
+    );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
-        response.body.isNotEmpty
-            ? response.body
-            : 'Failed to update reservation status: ${response.statusCode}',
+        'Failed to update reservation status (${response.statusCode}): ${response.body}',
       );
     }
 
-    if (response.body.trim().isEmpty) {
-      return {'success': true};
-    }
-
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    return jsonDecode(response.body);
   } catch (error) {
-    print('API error updating reservation status: $error');
+    print('API error: $error');
     rethrow;
   }
 }
@@ -2455,111 +2478,129 @@ Future<Map<String, dynamic>> paymentSuccess(int reservationid) async {
   }
 }
 
-// Fetch Notifications for User
-Future<List<dynamic>> fetchNotifications() async {
-  final userid = await Session.getUserId();
-  final usergroup = await Session.getUserGroup();
-  
+// Notification History Feature
+// Fetch Notification
+Future<List<dynamic>> fetchNotifications(int userid) async {
   try {
-    if (userid == null) {
-      print('API: User ID not found, returning empty notifications');
-      return [];
-    }
+    final uri = Uri.parse('$API_URL/notifications?userid=$userid');
 
-    final uri = Uri.parse('$API_URL/notifications?userid=$userid${usergroup != null ? '&usergroup=${Uri.encodeComponent(usergroup)}' : ''}');
-    print('API: Fetching notifications from: $uri');
-    print('API: User ID: $userid, User Group: $usergroup');
-    
+    print('API: Fetch notifications URL: $uri');
+
     final response = await http.get(
       uri,
       headers: await _authHeaders(),
     );
 
-    print('API: Notifications response status: ${response.statusCode}');
-    print('API: Notifications response body: ${response.body.substring(0, response.body.length > 500 ? 500 : response.body.length)}');
-
-    if (response.statusCode == 404) {
-      print('API: No notifications found (404), returning empty list');
-      return [];
-    }
+    print('API: Fetch notifications status: ${response.statusCode}');
+    print('API: Fetch notifications body: ${response.body}');
 
     if (response.statusCode != 200) {
-      print('API: Unexpected status ${response.statusCode}, returning empty list');
-      return [];
+      throw Exception('Failed to fetch notifications');
     }
 
     final data = jsonDecode(response.body);
-    
-    if (data['notifications'] != null && data['notifications'] is List) {
-      print('API: Found ${(data['notifications'] as List).length} notifications');
-      return data['notifications'];
-    } else if (data is List) {
-      print('API: Response is direct list with ${data.length} notifications');
+
+    if (data is List) {
       return data;
     }
-    
+
+    if (data is Map && data['notifications'] is List) {
+      return data['notifications'];
+    }
+
     return [];
   } catch (error) {
     print('API error fetching notifications: $error');
-    return [];
+    rethrow;
   }
 }
 
-// Mark Notification as Read
-Future<bool> markNotificationAsRead(int notificationId) async {
-  final userid = await Session.getUserId();
-  
+Future<Map<String, dynamic>> syncBookingAlertNotifications(int userid) async {
   try {
-    if (userid == null) {
-      throw Exception('User ID not found');
-    }
-
-    final response = await http.patch(
-      Uri.parse('$API_URL/notifications/$notificationId/read'),
+    final response = await http.post(
+      Uri.parse('$API_URL/notifications/sync-booking-alerts/$userid'),
       headers: await _authHeaders(),
-      body: jsonEncode({
-        'userid': userid,
-      }),
     );
 
+    print('API: Sync booking alerts status: ${response.statusCode}');
+    print('API: Sync booking alerts body: ${response.body}');
+
+    final data = jsonDecode(response.body);
+
     if (response.statusCode != 200) {
-      final errorData = jsonDecode(response.body);
-      throw Exception(errorData['message'] ?? 'Failed to mark notification as read');
+      throw Exception(data['message'] ?? 'Failed to sync booking alerts');
     }
 
-    return true;
+    return data;
+  } catch (error) {
+    print('API error syncing booking alerts: $error');
+    rethrow;
+  }
+}
+
+// Create Notification
+Future<Map<String, dynamic>> createNotification(Map<String, dynamic> data) async {
+  try {
+    final response = await http.post(
+      Uri.parse('$API_URL/notifications'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(data),
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('Failed to create notification');
+    }
+
+    return jsonDecode(response.body);
+  } catch (error) {
+    print('API error: $error');
+    rethrow;
+  }
+}
+
+// Mark a Notification as Read
+Future<Map<String, dynamic>> markNotificationAsRead(int notificationid) async {
+  try {
+    final response = await http.put(
+      Uri.parse('$API_URL/notifications/$notificationid/read'),
+      headers: await _authHeaders(),
+    );
+
+    print('API: Mark notification read status: ${response.statusCode}');
+    print('API: Mark notification read body: ${response.body}');
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to mark notification as read');
+    }
+
+    return jsonDecode(response.body);
   } catch (error) {
     print('API error marking notification as read: $error');
-    return false;
+    rethrow;
   }
 }
 
-// Mark All Notifications as Read
-Future<bool> markAllNotificationsAsRead() async {
-  final userid = await Session.getUserId();
-  
+// Mark All Notification as Read
+Future<Map<String, dynamic>> markAllNotificationsAsRead(int userid) async {
   try {
-    if (userid == null) {
-      throw Exception('User ID not found');
-    }
-
-    final response = await http.patch(
-      Uri.parse('$API_URL/notifications/read-all'),
+    final response = await http.put(
+      Uri.parse('$API_URL/notifications/read-all/$userid'),
       headers: await _authHeaders(),
-      body: jsonEncode({
-        'userid': userid,
-      }),
     );
 
+    print('API: Mark all notifications read status: ${response.statusCode}');
+    print('API: Mark all notifications read body: ${response.body}');
+
     if (response.statusCode != 200) {
-      final errorData = jsonDecode(response.body);
-      throw Exception(errorData['message'] ?? 'Failed to mark all notifications as read');
+      throw Exception('Failed to mark all notifications as read');
     }
 
-    return true;
+    return jsonDecode(response.body);
   } catch (error) {
     print('API error marking all notifications as read: $error');
-    return false;
+    rethrow;
   }
 }
 
