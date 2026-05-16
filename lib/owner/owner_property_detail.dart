@@ -3,18 +3,21 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../api.dart' as api;
-import '../shared/colors.dart'; 
+import '../shared/colors.dart';
 import 'owner_widgets.dart';
 
 class OwnerPropertyDetailPage extends StatefulWidget {
   final Map<String, dynamic> property;
+
   const OwnerPropertyDetailPage({super.key, required this.property});
 
   @override
-  State<OwnerPropertyDetailPage> createState() => _OwnerPropertyDetailPageState();
+  State<OwnerPropertyDetailPage> createState() =>
+      _OwnerPropertyDetailPageState();
 }
 
-class _OwnerPropertyDetailPageState extends State<OwnerPropertyDetailPage> {
+class _OwnerPropertyDetailPageState
+    extends State<OwnerPropertyDetailPage> {
   final _pageController = PageController();
   int _currentImage = 0;
   List<Map<String, dynamic>> _recentBookings = [];
@@ -26,15 +29,22 @@ class _OwnerPropertyDetailPageState extends State<OwnerPropertyDetailPage> {
     _loadRecentBookings();
   }
 
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadRecentBookings() async {
-    await Future.delayed(const Duration(milliseconds: 1000));
-    final mockBookings = [
+    // Mock data — swap for api.fetchReservation() when ready
+    await Future.delayed(const Duration(milliseconds: 900));
+    final mock = [
       {'guest': 'Alex Smith', 'status': 'Confirmed', 'price': 240.0},
       {'guest': 'Maria Garcia', 'status': 'Checkout', 'price': 120.0},
     ];
     if (!mounted) return;
     setState(() {
-      _recentBookings = mockBookings;
+      _recentBookings = mock;
       _loadingBookings = false;
     });
   }
@@ -42,53 +52,67 @@ class _OwnerPropertyDetailPageState extends State<OwnerPropertyDetailPage> {
   @override
   Widget build(BuildContext context) {
     final p = widget.property;
-    final images = (p['images'] as List?)?.cast<String>() ?? const <String>[];
-    
+    final images =
+        (p['images'] as List?)?.cast<String>() ?? const <String>[];
+
     return Scaffold(
       backgroundColor: AdminColors.cream,
       body: CustomScrollView(
-        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
         slivers: [
           _buildCinematicHeader(images, p),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.only(bottom: 40),
+              padding: const EdgeInsets.only(bottom: 48),
               child: Column(
                 children: [
-                  const SizedBox(height: 16),
-                  _buildFloatingBentoHero(p), 
+                  const SizedBox(height: 20),
+                  _buildHeroCard(p),
                   if ((p['description'] ?? '').toString().isNotEmpty) ...[
                     const OwnerSectionHeader(title: 'About Property'),
-                    _buildTextCard((p['description'] ?? '').toString()),
+                    _buildTextCard(
+                        (p['description'] ?? '').toString()),
                   ],
                   const OwnerSectionHeader(title: 'Created by'),
-                  _buildCreatorCard((p['creator'] ?? '').toString(), (p['creatorRole'] ?? '').toString()),
-                  OwnerSectionHeader(title: 'Recent Bookings', count: _recentBookings.length),
+                  _buildCreatorCard(
+                    (p['creator'] ?? '').toString(),
+                    (p['creatorRole'] ?? '').toString(),
+                  ),
+                  OwnerSectionHeader(
+                    title: 'Recent Bookings',
+                    count: _recentBookings.length,
+                  ),
                   if (_loadingBookings)
                     const OwnerLoading()
                   else if (_recentBookings.isEmpty)
                     const OwnerEmptyState(message: 'No recent bookings')
                   else
-                    ..._recentBookings.map((b) => _buildBookingTicket(b)),
-                  const SizedBox(height: 16),
+                    ..._recentBookings.map((b) => _buildBookingTile(b)),
+                  const SizedBox(height: 12),
                   const OwnerInfoBanner(),
                 ],
               ),
             ),
-          )
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildCinematicHeader(List<String> images, Map<String, dynamic> p) {
-    // Determine screen height to set a smart max image height
-    final screenHeight = MediaQuery.of(context).size.height;
-    
+  // ---------------------------------------------------------------------------
+  // Cinematic SliverAppBar with image carousel
+  // expandedHeight = 35% of screen → looks great on all Android sizes
+  // ---------------------------------------------------------------------------
+  SliverAppBar _buildCinematicHeader(
+      List<String> images, Map<String, dynamic> p) {
+    final expandedH = MediaQuery.of(context).size.height * 0.35;
+
     return SliverAppBar(
-      expandedHeight: screenHeight * 0.35, // 35% of the screen height ensures it looks good everywhere
+      expandedHeight: expandedH,
       pinned: true,
-      stretch: true, 
+      stretch: true,
       backgroundColor: AdminColors.drawerBg,
       leading: IconButton(
         icon: ClipRRect(
@@ -97,42 +121,101 @@ class _OwnerPropertyDetailPageState extends State<OwnerPropertyDetailPage> {
             filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
             child: Container(
               padding: const EdgeInsets.all(8),
-              color: Colors.black.withOpacity(0.2),
-              child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
+              color: Colors.black.withOpacity(0.22),
+              child: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: Colors.white,
+                size: 16,
+              ),
             ),
           ),
         ),
         onPressed: () => Navigator.pop(context),
       ),
       flexibleSpace: FlexibleSpaceBar(
-        stretchModes: const [StretchMode.zoomBackground, StretchMode.blurBackground],
+        stretchModes: const [
+          StretchMode.zoomBackground,
+          StretchMode.blurBackground,
+        ],
         background: Stack(
           fit: StackFit.expand,
           children: [
+            // Image carousel or placeholder
             images.isNotEmpty
                 ? PageView.builder(
                     controller: _pageController,
                     itemCount: images.length,
-                    onPageChanged: (i) => setState(() => _currentImage = i),
-                    itemBuilder: (_, i) => Image.network(images[i], fit: BoxFit.cover),
+                    onPageChanged: (i) =>
+                        setState(() => _currentImage = i),
+                    itemBuilder: (_, i) => Image.network(
+                      images[i],
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: AdminColors.primaryLight,
+                        child: const Icon(Icons.apartment,
+                            size: 56, color: Colors.white54),
+                      ),
+                    ),
                   )
-                : Container(color: AdminColors.primaryLight, child: const Icon(Icons.apartment, size: 60, color: Colors.white54)),
-            
+                : Container(
+                    color: AdminColors.primaryLight,
+                    child: const Icon(Icons.apartment,
+                        size: 56, color: Colors.white54),
+                  ),
+            // Gradient scrim at bottom
             Positioned(
-              bottom: 0, left: 0, right: 0, height: 160,
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 160,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, AdminColors.cream]),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      AdminColors.cream,
+                    ],
+                  ),
                 ),
               ),
             ),
+            // Page indicator (only if multiple images)
+            if (images.length > 1)
+              Positioned(
+                bottom: 72,
+                right: 20,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      color: Colors.black.withOpacity(0.28),
+                      child: Text(
+                        '${_currentImage + 1} / ${images.length}',
+                        style: GoogleFonts.plusJakartaSans(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildFloatingBentoHero(Map<String, dynamic> p) {
+  // ---------------------------------------------------------------------------
+  // Hero stats card (name + status + bento stats)
+  // ---------------------------------------------------------------------------
+  Widget _buildHeroCard(Map<String, dynamic> p) {
     final active = p['active'] == true;
     final rate = p['rate'] ?? 0.0;
     final rooms = p['rooms'] ?? 0;
@@ -141,15 +224,29 @@ class _OwnerPropertyDetailPageState extends State<OwnerPropertyDetailPage> {
       tween: Tween(begin: 0.0, end: 1.0),
       duration: const Duration(milliseconds: 700),
       curve: Curves.easeOutQuart,
-      builder: (context, value, child) => Transform.translate(offset: Offset(0, 30 * (1 - value)), child: Opacity(opacity: value, child: child)),
+      builder: (context, value, child) => Transform.translate(
+        offset: Offset(0, 28 * (1 - value)),
+        child: Opacity(opacity: value, child: child),
+      ),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 20),
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.black.withOpacity(0.02), width: 1),
-          boxShadow: [BoxShadow(color: AdminColors.textPrimary.withOpacity(0.06), blurRadius: 24, offset: const Offset(0, 10))],
+          boxShadow: [
+            BoxShadow(
+              color: AdminColors.drawerBg.withOpacity(0.10),
+              blurRadius: 32,
+              offset: const Offset(0, 14),
+              spreadRadius: -4,
+            ),
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -158,21 +255,54 @@ class _OwnerPropertyDetailPageState extends State<OwnerPropertyDetailPage> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: Text((p['name'] ?? '').toString(), style: GoogleFonts.outfit(color: AdminColors.textPrimary, fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5, height: 1.1), maxLines: 2, overflow: TextOverflow.ellipsis)),
+                Expanded(
+                  child: Text(
+                    (p['name'] ?? '').toString(),
+                    style: GoogleFonts.plusJakartaSans(
+                      color: AdminColors.textPrimary,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
+                      height: 1.15,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
                 const SizedBox(width: 12),
-                OwnerStatusBadge(active: active), 
+                OwnerStatusBadge(active: active),
               ],
             ),
-            const SizedBox(height: 24),
-            // Flex row prevents horizontal squishing on tiny Android screens!
+            const SizedBox(height: 22),
+            // Bento stat row — Expanded children prevent overflow on narrow screens
             Row(
               children: [
-                Expanded(child: _buildAnimatedNumberStat(Icons.bed_rounded, rooms, 'Rooms')),
-                Container(width: 1, height: 40, color: AdminColors.border, margin: const EdgeInsets.symmetric(horizontal: 10)),
-                Expanded(child: _buildAnimatedNumberStat(Icons.category_rounded, (p['type'] ?? 'N/A').toString(), 'Type', isString: true)),
+                Expanded(
+                  child: _BentoStat(
+                    icon: Icons.bed_rounded,
+                    value: '$rooms',
+                    label: 'Rooms',
+                  ),
+                ),
+                _verticalDivider(),
+                Expanded(
+                  child: _BentoStat(
+                    icon: Icons.category_rounded,
+                    value: (p['type'] ?? 'N/A').toString(),
+                    label: 'Type',
+                  ),
+                ),
                 if (p['rate'] != null) ...[
-                  Container(width: 1, height: 40, color: AdminColors.border, margin: const EdgeInsets.symmetric(horizontal: 10)),
-                  Expanded(flex: 2, child: _buildAnimatedNumberStat(Icons.attach_money_rounded, rate, 'Per Night', isHighlight: true)),
+                  _verticalDivider(),
+                  Expanded(
+                    flex: 2,
+                    child: _BentoStat(
+                      icon: Icons.attach_money_rounded,
+                      value: 'RM ${rate.toStringAsFixed(0)}',
+                      label: 'Per night',
+                      highlight: true,
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -182,97 +312,235 @@ class _OwnerPropertyDetailPageState extends State<OwnerPropertyDetailPage> {
     );
   }
 
-  Widget _buildAnimatedNumberStat(IconData icon, dynamic targetValue, String label, {bool isHighlight = false, bool isString = false}) {
-    double target = targetValue is num ? targetValue.toDouble() : double.tryParse(targetValue.toString()) ?? 0;
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 14, color: isHighlight ? AdminColors.success : AdminColors.primaryLight),
-            const SizedBox(width: 4),
-            Expanded( // Allows text to wrap or scale if the number is huge
-              child: isString 
-                ? Text(targetValue.toString(), style: GoogleFonts.outfit(color: AdminColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis)
-                : TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0, end: target),
-                    duration: const Duration(milliseconds: 1500), 
-                    curve: Curves.easeOutExpo,
-                    builder: (context, value, child) {
-                      return Text(isHighlight ? '\$${value.toInt()}' : value.toInt().toString(), style: GoogleFonts.outfit(color: AdminColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis);
-                    },
-                  ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(label, style: GoogleFonts.outfit(color: AdminColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600)),
-      ],
-    );
-  }
+  Widget _verticalDivider() => Container(
+        width: 1,
+        height: 36,
+        color: AdminColors.border,
+        margin: const EdgeInsets.symmetric(horizontal: 12),
+      );
 
+  // ---------------------------------------------------------------------------
+  // Description card
+  // ---------------------------------------------------------------------------
   Widget _buildTextCard(String text) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.black.withOpacity(0.02), width: 1), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
-      child: Text(text, style: GoogleFonts.outfit(color: AdminColors.textMuted, fontSize: 14, height: 1.6, fontWeight: FontWeight.w500)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Text(
+        text,
+        style: GoogleFonts.plusJakartaSans(
+          color: AdminColors.textMuted,
+          fontSize: 14,
+          height: 1.65,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Creator card
+  // ---------------------------------------------------------------------------
   Widget _buildCreatorCard(String name, String role) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.black.withOpacity(0.02), width: 1), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Row(
         children: [
-          CircleAvatar(backgroundColor: AdminColors.primaryLight.withOpacity(0.15), radius: 22, child: Text(name.isNotEmpty ? name[0].toUpperCase() : '?', style: GoogleFonts.outfit(color: AdminColors.primary, fontWeight: FontWeight.w800, fontSize: 16))),
+          CircleAvatar(
+            backgroundColor: AdminColors.primaryLight.withOpacity(0.15),
+            radius: 22,
+            child: Text(
+              name.isNotEmpty ? name[0].toUpperCase() : '?',
+              style: GoogleFonts.plusJakartaSans(
+                color: AdminColors.primary,
+                fontWeight: FontWeight.w800,
+                fontSize: 16,
+              ),
+            ),
+          ),
           const SizedBox(width: 14),
-          Expanded( // Added Expanded
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name.isEmpty ? 'Unknown' : name, style: GoogleFonts.outfit(color: AdminColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis),
-                Text(role, style: GoogleFonts.outfit(color: AdminColors.textMuted, fontSize: 13, fontWeight: FontWeight.w500)),
+                Text(
+                  name.isEmpty ? 'Unknown' : name,
+                  style: GoogleFonts.plusJakartaSans(
+                    color: AdminColors.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  role.isEmpty ? 'Team' : role,
+                  style: GoogleFonts.plusJakartaSans(
+                    color: AdminColors.textMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
-          )
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildBookingTicket(Map<String, dynamic> booking) {
-    return BouncyInteractiveCard(
-      onTap: () {}, 
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.black.withOpacity(0.02), width: 1), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: AdminColors.success.withOpacity(0.12), borderRadius: BorderRadius.circular(14)),
-              child: const Icon(Icons.receipt_long_rounded, size: 18, color: AdminColors.success),
+  // ---------------------------------------------------------------------------
+  // Booking tile
+  // ---------------------------------------------------------------------------
+  Widget _buildBookingTile(Map<String, dynamic> booking) {
+    final isCancelled = (booking['status'] ?? '')
+        .toString()
+        .toLowerCase()
+        .contains('cancel');
+    final color = isCancelled ? AdminColors.danger : AdminColors.success;
+    final price = booking['price'];
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(14),
             ),
-            const SizedBox(width: 16),
-            Expanded( // Ensures the text collapses cleanly instead of overflowing
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(booking['guest'].toString(), style: GoogleFonts.outfit(color: AdminColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  Text('Status: ${booking['status']}', style: GoogleFonts.outfit(color: AdminColors.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
-                ],
+            child: Icon(Icons.receipt_long_rounded,
+                size: 17, color: color),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  booking['guest'].toString(),
+                  style: GoogleFonts.plusJakartaSans(
+                    color: AdminColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  'Status: ${booking['status']}',
+                  style: GoogleFonts.plusJakartaSans(
+                    color: AdminColors.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            price != null ? 'RM ${price.toStringAsFixed(0)}' : '—',
+            style: GoogleFonts.plusJakartaSans(
+              color: AdminColors.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Bento stat widget
+// ---------------------------------------------------------------------------
+class _BentoStat extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String label;
+  final bool highlight;
+
+  const _BentoStat({
+    required this.icon,
+    required this.value,
+    required this.label,
+    this.highlight = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color =
+        highlight ? AdminColors.success : AdminColors.primaryLight;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 13, color: color),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                value,
+                style: GoogleFonts.plusJakartaSans(
+                  color: AdminColors.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            const SizedBox(width: 8),
-            Text('\$${booking['price'] ?? '-'}', style: GoogleFonts.outfit(color: AdminColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800)),
           ],
         ),
-      ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: GoogleFonts.plusJakartaSans(
+            color: AdminColors.textMuted,
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }
