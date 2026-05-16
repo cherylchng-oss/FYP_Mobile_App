@@ -124,18 +124,14 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
               title: 'Clusters',
               subtitle: 'Regional property groups',
               notifCount: 3,
-              bottomPadding: 80,
+              bottomPadding: 40,
             ),
           ),
           SafeArea(
             bottom: false,
             child: Column(
               children: [
-                Builder(
-                  builder: (ctx) => SizedBox(
-                    height: MediaQuery.of(ctx).size.height * 0.115,
-                  ),
-                ),
+                SizedBox(height: OwnerHeader.spacerHeight()),
                 Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
