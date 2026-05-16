@@ -1,15 +1,15 @@
 import 'dart:math' show min;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../services/session.dart';
-import '../../api.dart' as api;
-import '../../app.dart';
+import '../services/session.dart';
+import '../api.dart' as api;
+import '../app.dart';
 import 'manage_service.dart';
-import '../navigation_menu.dart';
-import '../bottom_navigation_bar.dart';
-import '../colors.dart';
-import '../../admin/admin_notification.dart';
-import '../../moderator/moderator_notification.dart';
+import '../shared/navigation_menu.dart';
+import '../shared/bottom_navigation_bar.dart';
+import '../shared/colors.dart';
+import '../admin/admin_notification.dart';
+import '../moderator/moderator_notification.dart';
 
 // Who is using the page right now?
 enum AppRole { admin, moderator }

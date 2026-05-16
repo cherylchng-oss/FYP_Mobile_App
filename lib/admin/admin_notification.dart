@@ -236,7 +236,6 @@ class _AdminNotificationsState extends State<AdminNotifications> {
         role: nav.UserRole.admin,
         onItemSelected: _handleMenuSelection,
         onLogout: _handleLogout,
-        currentPageLabel: 'Notifications',
       ),
       body: Column(
         children: [

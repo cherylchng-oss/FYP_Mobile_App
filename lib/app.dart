@@ -25,8 +25,8 @@ import 'moderator/moderator_ledger.dart';
 import 'moderator/moderator_activity_logs.dart';
 import 'moderator/moderator_stock_manager.dart';
 import 'moderator/moderator_customer_review.dart';
-import 'shared/shared_admin_moderator/manage_service.dart';
-import 'shared/shared_admin_moderator/user_management.dart';
+import 'shared_admin_moderator/manage_service.dart';
+import 'shared_admin_moderator/user_management.dart';
 import 'owner/owner_logs_page.dart';
 import 'shared/colors.dart';
 import 'profile_page.dart';
@@ -37,9 +37,8 @@ import 'screens/rbac_test_screen.dart';
 import 'forget_password.dart';
 import 'services/session.dart';
 import 'services/rbac_service.dart';
-// Export AppRole and MoreMenuDrawer for use in navigation
-export 'shared/shared_admin_moderator/user_management.dart' show AppRole;
-export 'shared/more_menu_drawer.dart';
+
+export 'shared_admin_moderator/user_management.dart' show AppRole;
 
 // Global navigator key
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();

@@ -10,7 +10,8 @@ import 'shared/colors.dart';
 import 'customer/customer_cart.dart';
 import 'customer/customer_bookings.dart';
 import 'customer/customer_notification.dart';
-import 'shared/shared_admin_moderator/user_management.dart';
+import 'owner/owner_property_detail.dart';
+import 'shared_admin_moderator/user_management.dart';
 
 enum _PasswordStrength { none, weak, medium, strong }
 

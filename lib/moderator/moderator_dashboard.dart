@@ -6,7 +6,7 @@ import '../shared/navigation_menu.dart' as nav;
 import '../shared/bottom_navigation_bar.dart';
 import '../shared/colors.dart';
 import '../api.dart' as api;
-import '../shared/shared_admin_moderator/user_management.dart';
+import '../shared_admin_moderator/user_management.dart';
 
 class ModeratorDashboard extends StatefulWidget {
   const ModeratorDashboard({super.key});
