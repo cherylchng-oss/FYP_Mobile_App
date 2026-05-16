@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
-import '../services/session.dart';
-import '../services/rbac_service.dart' as rbac;
-import '../api.dart' as api;
-import '../shared/navigation_menu.dart' as nav;
+import 'package:google_fonts/google_fonts.dart';
+
+import '../shared/colors.dart';
 import '../shared/bottom_navigation_bar.dart';
-import '../app.dart';
-import 'owner_property_listing.dart';
-import 'owner_reservation.dart';
-import 'owner_manage_customer.dart';
+import '../shared/navigation_menu.dart' as nav;
+
+import 'owner_widgets.dart';
 
 class OwnerDashboard extends StatefulWidget {
   const OwnerDashboard({super.key});
@@ -17,366 +15,232 @@ class OwnerDashboard extends StatefulWidget {
   State<OwnerDashboard> createState() => _OwnerDashboardState();
 }
 
-enum _StatCategory { user, booking, finance, cluster }
-
 class _OwnerDashboardState extends State<OwnerDashboard> {
-  int _selectedIndex = 0;
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  String? _currentUserRole;
+  bool _isLoading = true;
+  final String _selectedPeriod = 'This month';
 
-  _StatCategory _selectedCategory = _StatCategory.user;
-  
-  // Dashboard statistics
-  int _totalUsers = 0;
-  int _totalProperties = 0;
-  int _totalReservations = 0;
-  double _occupancyRate = 0.0;
-  double _revPAR = 0.0;
-  double _totalRevenue = 0.0;
-  double _averageRevenue = 0.0;
-  double _guestSatisfaction = 0.0;
-  int _totalClusters = 0;
-  bool _isLoadingStats = false;
+  // Mock data — replace with real API calls
+  final double _totalRevenue = 12450.00;
+  final int _totalUsers = 142;
+  final int _totalProperties = 34;
+  final int _totalReservations = 89;
+  final double _guestRating = 4.8;
+  final int _totalClusters = 6;
+  final double _netEarnings = 9876.50;
 
   @override
   void initState() {
     super.initState();
-    _loadUserRole();
-    _loadDashboardStats();
+    _loadDashboard();
   }
 
-  Future<void> _loadUserRole() async {
-    final userRole = await Session.getUserGroup();
-    setState(() {
-      _currentUserRole = userRole;
-    });
+  Future<void> _loadDashboard() async {
+    await Future.delayed(const Duration(milliseconds: 700));
+    if (mounted) setState(() => _isLoading = false);
   }
 
-  // Helper method to extract list from different possible keys
-  List<dynamic> _extractList(Map<String, dynamic> data, List<String> possibleKeys) {
-    for (var key in possibleKeys) {
-      if (data[key] != null && data[key] is List) {
-        return List<dynamic>.from(data[key]);
-      }
-    }
-    return [];
-  }
-
-  // Helper method to parse double values
-  double _parseDouble(dynamic value) {
-    if (value == null) return 0.0;
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? 0.0;
-    return 0.0;
-  }
-
-  Future<void> _loadDashboardStats() async {
-    setState(() {
-      _isLoadingStats = true;
-    });
-
-    print('═══════════════════════════════════════');
-    print('OwnerDashboard: Loading statistics at ${DateTime.now()}');
-    print('═══════════════════════════════════════');
-
-    // Fetch Total Users
-    try {
-      final customersData = await api.fetchCustomers();
-      final customers = _extractList(customersData, ['customers', 'data', 'users']);
-      
-      final ownersData = await api.fetchOwners();
-      final owners = _extractList(ownersData, ['owners', 'data', 'users']);
-      
-      final moderatorsData = await api.fetchModerators();
-      final moderators = _extractList(moderatorsData, ['moderators', 'data', 'users']);
-      
-      final adminsData = await api.fetchAdministrators();
-      final admins = _extractList(adminsData, ['administrators', 'admins', 'data', 'users']);
-      
-      final totalUsers = customers.length + owners.length + moderators.length + admins.length;
-      
-      if (mounted) {
-        setState(() {
-          _totalUsers = totalUsers;
-        });
-      }
-      print('OwnerDashboard: Total users loaded: $_totalUsers');
-    } catch (error) {
-      print('OwnerDashboard: Error fetching users: $error');
-    }
-
-    // Fetch Total Properties
-    try {
-      final propertiesData = await api.fetchPropertiesListingTable();
-      
-      int propertyCount = 0;
-      if (propertiesData['properties'] != null) {
-        propertyCount = (propertiesData['properties'] as List).length;
-      } else if (propertiesData['data'] != null) {
-        propertyCount = (propertiesData['data'] as List).length;
-      }
-      
-      if (mounted) {
-        setState(() {
-          _totalProperties = propertyCount;
-        });
-      }
-      print('OwnerDashboard: Total properties loaded: $_totalProperties');
-    } catch (error) {
-      print('OwnerDashboard: Error fetching properties: $error');
-    }
-
-    // Fetch Total Reservations
-    try {
-      final reservations = await api.fetchReservation();
-      
-      if (mounted) {
-        setState(() {
-          _totalReservations = reservations.length;
-        });
-      }
-      print('OwnerDashboard: Total reservations loaded: $_totalReservations');
-    } catch (error) {
-      print('OwnerDashboard: Error fetching reservations: $error');
-    }
-
-    // Fetch Total Clusters
-    try {
-      final clustersData = await api.fetchClusters();
-      
-      int clusterCount = 0;
-      if (clustersData['clusters'] != null && clustersData['clusters'] is List) {
-        clusterCount = (clustersData['clusters'] as List).length;
-      } else if (clustersData is List) {
-        clusterCount = clustersData.length;
-      } else if (clustersData['data'] != null && clustersData['data'] is List) {
-        clusterCount = (clustersData['data'] as List).length;
-      }
-      
-      if (mounted) {
-        setState(() {
-          _totalClusters = clusterCount;
-        });
-      }
-      print('OwnerDashboard: Total clusters loaded: $_totalClusters');
-    } catch (error) {
-      print('OwnerDashboard: Error fetching clusters: $error');
-    }
-
-    // Fetch Occupancy Rate, RevPAR, Revenue, Guest Satisfaction
-    final userid = await Session.getUserId();
-    if (userid != null) {
-      try {
-        final occupancyData = await api.fetchOccupancyRate(userid, paidOnly: true);
-        print('OwnerDashboard: Occupancy data structure: ${occupancyData.keys.toList()}');
-        
-        double occupancyRate = 0.0;
-        
-        // Try direct value first
-        if (occupancyData['occupancyRate'] != null) {
-          occupancyRate = _parseDouble(occupancyData['occupancyRate']);
-        } else if (occupancyData['rate'] != null) {
-          occupancyRate = _parseDouble(occupancyData['rate']);
-        } else if (occupancyData['value'] != null) {
-          occupancyRate = _parseDouble(occupancyData['value']);
-        } else if (occupancyData['monthlyData'] != null && occupancyData['monthlyData'] is List) {
-          // Calculate from monthlyData
-          final monthlyData = occupancyData['monthlyData'] as List;
-          if (monthlyData.isNotEmpty) {
-            print('OwnerDashboard: Occupancy monthlyData sample: ${monthlyData[0]}');
-            print('OwnerDashboard: Occupancy month keys: ${(monthlyData[0] as Map).keys.toList()}');
-            // Get the latest month's data (last item in array)
-            final latestMonth = monthlyData.last;
-            occupancyRate = _parseDouble(
-              latestMonth['occupancy_rate'] ?? 
-              latestMonth['occupancyRate'] ?? 
-              latestMonth['rate'] ?? 
-              latestMonth['value']
-            );
-          }
-        }
-        
-        if (mounted) {
-          setState(() {
-            _occupancyRate = occupancyRate;
-          });
-        }
-        print('OwnerDashboard: Occupancy rate loaded: $_occupancyRate%');
-      } catch (error) {
-        print('OwnerDashboard: Error fetching occupancy rate: $error');
-      }
-
-      try {
-        final revPARData = await api.fetchRevPAR(userid, paidOnly: true);
-        
-        double revPAR = 0.0;
-        if (revPARData['monthlyData'] != null && revPARData['monthlyData'] is List) {
-          final monthlyData = revPARData['monthlyData'] as List;
-          print('OwnerDashboard: RevPAR monthlyData: $monthlyData');
-          if (monthlyData.isNotEmpty) {
-            final latestMonth = monthlyData.last;
-            print('OwnerDashboard: RevPAR latestMonth: $latestMonth');
-            print('OwnerDashboard: RevPAR latestMonth keys: ${(latestMonth as Map).keys.toList()}');
-            revPAR = _parseDouble(latestMonth['revpar']); // Backend uses 'revpar' (lowercase)
-            print('OwnerDashboard: RevPAR raw value: ${latestMonth['revpar']}');
-          }
-        }
-        
-        if (mounted) {
-          setState(() {
-            _revPAR = revPAR;
-          });
-        }
-        print('OwnerDashboard: RevPAR loaded: $_revPAR');
-      } catch (error) {
-        print('OwnerDashboard: Error fetching RevPAR: $error');
-      }
-
-      try {
-        final financeData = await api.fetchFinance(userid, paidOnly: true);
-        
-        double revenue = 0.0;
-        if (financeData['monthlyData'] != null && financeData['monthlyData'] is List) {
-          final monthlyData = financeData['monthlyData'] as List;
-          if (monthlyData.isNotEmpty) {
-            // call backend api to get total revenue
-            final latestMonth = monthlyData.last;
-            revenue = _parseDouble(latestMonth['monthlyrevenue']);
-          }
-        }
-        
-        if (mounted) {
-          setState(() {
-            _totalRevenue = revenue;
-          });
-        }
-        print('OwnerDashboard: Total revenue loaded: $_totalRevenue');
-      } catch (error) {
-        print('OwnerDashboard: Error fetching revenue: $error');
-      }
-
-      // Fetch Average Revenue (from backend)
-      try {
-        final avgRevenue = await api.fetchAverageRevenue(userid);
-        if (mounted) {
-          setState(() {
-            _averageRevenue = avgRevenue;
-          });
-        }
-        print('OwnerDashboard: Average revenue loaded: $_averageRevenue');
-      } catch (error) {
-        print('OwnerDashboard: Error fetching average revenue: $error');
-      }
-
-      try {
-        final satisfactionData = await api.fetchGuestSatisfactionScore(userid, paidOnly: true);
-        
-        double satisfaction = 0.0;
-        if (satisfactionData['monthlyData'] != null && satisfactionData['monthlyData'] is List) {
-          final monthlyData = satisfactionData['monthlyData'] as List;
-          if (monthlyData.isNotEmpty) {
-            // call backend api to get guest satisfaction score
-            final latestMonth = monthlyData.last;
-            satisfaction = _parseDouble(latestMonth['guest_satisfaction_score']);
-          }
-        }
-        
-        if (mounted) {
-          setState(() {
-            _guestSatisfaction = satisfaction;
-          });
-        }
-        print('OwnerDashboard: Guest satisfaction loaded: $_guestSatisfaction');
-      } catch (error) {
-        print('OwnerDashboard: Error fetching guest satisfaction: $error');
-      }
-    }
-
-    if (mounted) {
-      setState(() {
-        _isLoadingStats = false;
-      });
-    }
-    
-    print('OwnerDashboard: Statistics loading complete');
-  }
-
-  Future<void> _handleLogout() async {
-    // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFFE7F0FF),
-        title: const Text('Logout', style: TextStyle(color: Colors.black)),
-        content: const Text('Are you sure you want to logout?', style: TextStyle(color: Colors.black)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.black)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0077B6),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-    // Clear the session data
-    await Session.clear();
-    if (mounted) {
-      // Navigate back to the login screen and remove all previous routes
-        Navigator.pushNamedAndRemoveUntil(context, '/before-login', (route) => false);
-      }
+  void _onNavTap(int index) {
+    if (index == 0) return;
+    switch (index) {
+      case 1:
+        Navigator.of(context).pushReplacementNamed('/owner-users');
+        break;
+      case 2:
+        Navigator.of(context).pushReplacementNamed('/owner-cluster');
+        break;
+      case 3:
+        Navigator.of(context).pushReplacementNamed('/owner-logs');
+        break;
+      case 4:
+        Navigator.of(context).pushNamed('/profile');
+        break;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: const Color(0xFFE7F0FF),
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF6366F1), Color(0xFF4188FF)],
-                ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.dashboard, color: Colors.white, size: 24),
+      backgroundColor: AdminColors.cream,
+      body: Stack(
+        children: [
+          // ── Sticky photo header (sits behind everything) ──────────────────
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: OwnerHeader(
+              greeting: 'Good morning, Owner',
+              title: 'Owner Panel',
+              notifCount: 3,
+              // Extra bottom padding creates the "shelf" the revenue card
+              // slides up into, giving the floating overlap effect.
+              bottomPadding: 80.0,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Owner Dashboard',
-                    style: TextStyle(
-                      color: Color(0xFF1E293B),
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+          ),
+
+          // ── Scrollable content ────────────────────────────────────────────
+          SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                // Spacer height = header content height below status bar
+                // (greeting 22 + gap 6 + title 30 + bottomPad 80) − overlap 48
+                // ≈ 90. Wrapped in Builder so context reads correct MediaQuery.
+                Builder(
+                  builder: (ctx) => SizedBox(
+                    // Use a proportion of the LOGICAL content area so the
+                    // floating card lands correctly on all Android sizes.
+                    height: MediaQuery.of(ctx).size.height * 0.115,
                   ),
+                ),
+                Expanded(
+                  child: _isLoading
+                      ? const OwnerLoading()
+                      : RefreshIndicator(
+                          onRefresh: _loadDashboard,
+                          color: AdminColors.success,
+                          backgroundColor: Colors.white,
+                          child: ListView(
+                            physics: const BouncingScrollPhysics(),
+                            padding: const EdgeInsets.only(bottom: 60),
+                            children: [
+                              _buildHeroRevenueCard(),
+                              const OwnerSectionHeader(title: 'Overview'),
+                              _buildStatsGrid(),
+                            ],
+                          ),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: SharedBottomNavigationBar(
+        selectedIndex: 0,
+        onTap: _onNavTap,
+        role: nav.UserRole.owner,
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Hero Revenue Card — white floating card with warm shadow
+  // ---------------------------------------------------------------------------
+  Widget _buildHeroRevenueCard() {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 700),
+      curve: Curves.easeOutQuart,
+      builder: (context, value, child) => Transform.translate(
+        offset: Offset(0, 28 * (1 - value)),
+        child: Opacity(opacity: value, child: child),
+      ),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          // 2025 trend: colored ambient shadow (warm espresso tint)
+          boxShadow: [
+            BoxShadow(
+              color: AdminColors.drawerBg.withOpacity(0.14),
+              blurRadius: 40,
+              offset: const Offset(0, 20),
+              spreadRadius: -4,
+            ),
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Label + period selector ───────────────────────────────────
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'TOTAL REVENUE',
+                  style: GoogleFonts.plusJakartaSans(
+                    color: AdminColors.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AdminColors.cream,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        _selectedPeriod,
+                        style: GoogleFonts.plusJakartaSans(
+                          color: AdminColors.textPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      const Icon(Icons.keyboard_arrow_down_rounded,
+                          color: AdminColors.textMuted, size: 15),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 14),
+
+            // ── Animated revenue counter ──────────────────────────────────
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: _totalRevenue),
+              duration: const Duration(milliseconds: 1600),
+              curve: Curves.easeOutExpo,
+              builder: (context, value, _) => Text(
+                'RM ${value.toStringAsFixed(2)}',
+                style: GoogleFonts.plusJakartaSans(
+                  color: AdminColors.textPrimary,
+                  // Responsive: slightly smaller on narrow phones
+                  fontSize: MediaQuery.of(context).size.width < 380 ? 36 : 42,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -2.0,
+                  height: 1.0,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // ── Growth pill ───────────────────────────────────────────────
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AdminColors.success.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.trending_up_rounded,
+                      color: AdminColors.success, size: 15),
+                  const SizedBox(width: 7),
                   Text(
-                    'Welcome, ${_currentUserRole != null ? rbac.RBACService.getRoleDisplayName(_currentUserRole!) : 'User'}',
-                    style: const TextStyle(
-                      color: Color(0xFF64748B),
+                    '12.5% from last month',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: AdminColors.success,
                       fontSize: 12,
-                      fontWeight: FontWeight.normal,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
@@ -384,410 +248,223 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Color(0xFF64748B)),
-            onPressed: _handleLogout,
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stats Grid
+  // LayoutBuilder → childAspectRatio adapts to the actual card width,
+  // so cards never clip on narrow (360px) or wide (480px) phones.
+  // ---------------------------------------------------------------------------
+  Widget _buildStatsGrid() {
+    final stats = [
+      _StatData(
+        label: 'TOTAL USERS',
+        value: '$_totalUsers',
+        icon: Icons.people_outline_rounded,
+        isSuccess: false,
+      ),
+      _StatData(
+        label: 'PROPERTIES',
+        value: '$_totalProperties',
+        icon: Icons.apartment_outlined,
+        isSuccess: true,
+      ),
+      _StatData(
+        label: 'RESERVATIONS',
+        value: '$_totalReservations',
+        icon: Icons.calendar_today_outlined,
+        isSuccess: false,
+      ),
+      _StatData(
+        label: 'GUEST RATING',
+        value: '$_guestRating',
+        icon: Icons.star_outline_rounded,
+        isSuccess: true,
+      ),
+      _StatData(
+        label: 'NET EARNINGS',
+        value: 'RM ${_netEarnings.toStringAsFixed(0)}',
+        icon: Icons.account_balance_wallet_outlined,
+        isSuccess: false,
+      ),
+      _StatData(
+        label: 'CLUSTERS',
+        value: '$_totalClusters',
+        icon: Icons.location_city_outlined,
+        isSuccess: true,
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Available width for the grid (minus outer padding)
+        final gridWidth = constraints.maxWidth - 40;
+        final cardWidth = (gridWidth - 16) / 2; // 16 = column gap
+        // Clamp ensures comfortable content height on all screen sizes
+        final cardHeight = cardWidth.clamp(155.0, 210.0);
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              childAspectRatio: cardWidth / cardHeight,
+            ),
+            itemCount: stats.length,
+            itemBuilder: (_, i) => _buildStatCard(stats[i], i),
           ),
-        ],
-      ),
-      endDrawer: MoreMenuDrawer(
-        role: nav.UserRole.owner,
-        onItemSelected: _handleMenuSelection,
-        onLogout: _handleLogout,
-        currentPageLabel: 'Dashboard',
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadDashboardStats,
-        color: const Color(0xFF0077B6),
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Platform Overview',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Monitor platform statistics and pending approvals',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF64748B),
-                ),
-              ),
-              const SizedBox(height: 24),
+        );
+      },
+    );
+  }
 
-              _buildCategoryFilters(),
-              const SizedBox(height: 16),
+  Widget _buildStatCard(_StatData stat, int index) {
+    final baseColor =
+        stat.isSuccess ? AdminColors.success : AdminColors.primary;
+    final iconBg = baseColor.withOpacity(0.09);
 
-              _buildStatsGrid(),
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: Duration(milliseconds: 380 + (index * 90)),
+      curve: Curves.easeOutQuart,
+      builder: (context, val, child) => Transform.translate(
+        offset: Offset(0, 18 * (1 - val)),
+        child: Opacity(opacity: val, child: child),
+      ),
+      child: BouncyInteractiveCard(
+        onTap: () {},
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              // Colored ambient shadow — 2025 trend
+              BoxShadow(
+                color: baseColor.withOpacity(0.08),
+                blurRadius: 24,
+                offset: const Offset(0, 10),
+                spreadRadius: -2,
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
             ],
           ),
-        ),
-      ),
-      bottomNavigationBar: SharedBottomNavigationBar(
-        selectedIndex: _selectedIndex,
-        onTap: _handleBottomNavTap,
-        scaffoldKey: _scaffoldKey,
-        role: nav.UserRole.owner,
-      ),
-    );
-  }
-
-  Widget _buildCategoryFilters() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          _buildCategoryChip('User', _StatCategory.user),
-          const SizedBox(width: 8),
-          _buildCategoryChip('Booking', _StatCategory.booking),
-          const SizedBox(width: 8),
-          _buildCategoryChip('Finance', _StatCategory.finance),
-          const SizedBox(width: 8),
-          _buildCategoryChip('Cluster', _StatCategory.cluster),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCategoryChip(String label, _StatCategory category) {
-    final bool isSelected = _selectedCategory == category;
-    return ChoiceChip(
-      label: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: isSelected ? Colors.white : const Color(0xFF0F172A),
-        ),
-      ),
-      selected: isSelected,
-      onSelected: (_) {
-        setState(() {
-          _selectedCategory = category;
-        });
-      },
-      selectedColor: const Color(0xFF0077B6),
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(
-          color: isSelected ? const Color(0xFF0077B6) : const Color(0xFFE2E8F0),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatsGrid() {
-    // Build cards based on the selected category
-    final List<Widget> cards = [];
-
-    switch (_selectedCategory) {
-      case _StatCategory.user:
-        // User: total users
-        cards.add(
-          _buildStatCard(
-            title: 'Total Users',
-            value: '$_totalUsers',
-            icon: Icons.people_outline,
-            iconColor: const Color(0xFF8B5CF6),
-            route: '/owner-manage-customer',
-          ),
-        );
-        break;
-
-      case _StatCategory.booking:
-        // Booking: total properties, total reservations
-        cards.add(
-          _buildStatCard(
-            title: 'Total Properties',
-            value: '$_totalProperties',
-            icon: Icons.apartment,
-            iconColor: const Color(0xFF10B981),
-            route: '/owner-property-listing',
-          ),
-        );
-        cards.add(
-          _buildStatCard(
-            title: 'Total Reservations',
-            value: '$_totalReservations',
-            icon: Icons.calendar_today,
-            iconColor: const Color(0xFF3B82F6),
-            route: '/owner-reservation',
-          ),
-        );
-        break;
-
-      case _StatCategory.finance:
-        // Finance: occupancy rate, revPAR, total revenue, guest satisfaction
-        cards.add(
-          _buildStatCard(
-            title: 'Occupancy Rate',
-            value: '${_occupancyRate.toStringAsFixed(1)}%',
-            icon: Icons.trending_up,
-            iconColor: const Color(0xFF8B5CF6),
-            route: '/occupancy',
-            showButton: false,
-          ),
-        );
-        cards.add(
-          _buildStatCard(
-            title: 'RevPAR',
-            value: 'MYR ${_revPAR.toStringAsFixed(2)}',
-            icon: Icons.account_balance_wallet,
-            iconColor: const Color(0xFF8B5CF6),
-            route: '/revpar',
-            showButton: false,
-          ),
-        );
-        cards.add(
-          _buildStatCard(
-            title: 'Total Revenue',
-            value: 'MYR ${_totalRevenue.toStringAsFixed(2)}',
-            icon: Icons.attach_money,
-            iconColor: const Color(0xFF10B981),
-            route: '/revenue',
-            showButton: false,
-          ),
-        );
-        // Average Revenue card
-        cards.add(
-          _buildStatCard(
-            title: 'Average Revenue',          
-            value: 'MYR ${_averageRevenue.toStringAsFixed(2)}',           
-            icon: Icons.pie_chart_outline,  
-            iconColor: const Color(0xFF3B82F6),
-            route: '/average-revenue',
-            showButton: false, 
-          ),
-        );
-        cards.add(
-          _buildStatCard(
-            title: 'Guest Satisfaction',
-            value: '${_guestSatisfaction.toStringAsFixed(1)}/5.0',
-            icon: Icons.bar_chart,
-            iconColor: const Color(0xFFEF4444),
-            route: '/satisfaction',
-            showButton: false,
-          ),
-        );
-        break;
-
-      case _StatCategory.cluster:
-        // Cluster: total clusters
-        cards.add(
-          _buildStatCard(
-            title: 'Total Clusters',
-            value: '$_totalClusters',
-            icon: Icons.location_on_outlined,
-            iconColor: const Color(0xFFEF4444),
-            route: '/owner-cluster',
-          ),
-        );
-        break;
-    }
-
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 16,
-      crossAxisSpacing: 16,
-      childAspectRatio: 0.9,
-      children: cards,
-    );
-  }
-
-  Widget _buildStatCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color iconColor,
-    required String route,
-    bool showButton = true,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: Stack(
               children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF64748B),
-                      fontWeight: FontWeight.w500,
-                    ),
+                // 1. Ghost watermark icon (bottom-right, 7% opacity)
+                Positioned(
+                  right: -14,
+                  bottom: -14,
+                  child: Icon(
+                    stat.icon,
+                    size: 88,
+                    color: AdminColors.textMuted.withOpacity(0.07),
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: iconColor, size: 18),
-                ),
-              ],
-            ),
-            const Spacer(),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B),
-                ),
-                maxLines: 1,
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (showButton)
-            SizedBox(
-              width: double.infinity,
-              height: 40,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pushNamed(route);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0077B6),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min, 
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Flexible(
-                        child: Text(
-                          'View Details',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          softWrap: false,
-                          overflow: TextOverflow.ellipsis,
+
+                // 2. Card content
+                Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Circular icon badge
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: iconBg,
+                          shape: BoxShape.circle,
                         ),
+                        child: Icon(stat.icon, color: baseColor, size: 20),
                       ),
-                      SizedBox(width: 4),
-                      Icon(Icons.arrow_forward, size: 14),
+                      // Bottom stats
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            stat.label,
+                            style: GoogleFonts.plusJakartaSans(
+                              color: AdminColors.textMuted,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.7,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            stat.value,
+                            style: GoogleFonts.plusJakartaSans(
+                              color: AdminColors.textPrimary,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -1.0,
+                              height: 1.0,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
-              ),
+
+                // 3. Gradient accent bar — bottom edge (2025 trend)
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    height: 3,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          baseColor.withOpacity(0.25),
+                          baseColor,
+                        ],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
+}
 
-  void _handleBottomNavTap(int index) {
-    if (index == 4) {
-      // More button - handled by SharedBottomNavigationBar to open drawer
-      return;
-    }
-    if (index == 0) {
-      // Dashboard - already on this page
-      if (_selectedIndex != 0) {
-        setState(() => _selectedIndex = 0);
-      }
-      return;
-    }
-    if (index == 1) {
-      // Properties
-      Navigator.of(context).pushNamed('/owner-property-listing');
-      return;
-    }
-    if (index == 2) {
-      // Bookings/Reservations
-      Navigator.of(context).pushNamed('/owner-reservation');
-      return;
-    }
-    if (index == 3) {
-      // Profile
-      Navigator.of(context).pushNamed('/profile');
-      return;
-    }
-  }
+// ---------------------------------------------------------------------------
+// Data model
+// ---------------------------------------------------------------------------
+class _StatData {
+  final String label;
+  final String value;
+  final IconData icon;
+  final bool isSuccess;
 
-  void _handleMenuSelection(String label) {
-    Navigator.pop(context);
-    if (label == 'Dashboard') {
-      // Already on dashboard
-      return;
-    }
-    if (label == 'Profile') {
-      Navigator.of(context).pushNamed('/profile');
-      return;
-    }
-    if (label == 'PropertyListing' || label == 'Properties') {
-      Navigator.of(context).pushNamed('/owner-property-listing');
-      return;
-    }
-    if (label == 'Reservation' || label == 'Bookings') {
-      Navigator.of(context).pushNamed('/owner-reservation');
-      return;
-    }
-    if (label == 'Customer') {
-      Navigator.of(context).pushNamed('/owner-manage-customer');
-      return;
-    }
-    if (label == 'Moderator/Admin') {
-      Navigator.of(context).pushNamed('/owner-manage-moderatoradmin');
-      return;
-    }
-    if (label == 'AuditTrails') {
-      Navigator.of(context).pushNamed('/owner-audit-trails');
-      return;
-    }
-    if (label == 'BooknPayLog') {
-      Navigator.of(context).pushNamed('/owner-book-and-pay');
-      return;
-    }
-    if (label == 'Cluster') {
-      Navigator.of(context).pushNamed('/owner-cluster');
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Navigating to $label', style: const TextStyle(color: Colors.black)),
-        backgroundColor: const Color(0xFF468FAF),
-        duration: const Duration(seconds: 1),
-      ),
-    );
-  }
+  const _StatData({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.isSuccess,
+  });
 }
