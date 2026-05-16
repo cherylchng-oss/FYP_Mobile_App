@@ -234,6 +234,7 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
         role: nav.UserRole.moderator,
         onItemSelected: _handleMenuSelection,
         onLogout: _handleLogout,
+        currentPageLabel: 'Notifications',
       ),
       body: Column(
         children: [

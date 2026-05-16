@@ -1,14 +1,5 @@
-// ============================================================================
-// app.dart — Owner-only test entry point
-//
-// Boots directly to OwnerDashboard so you can test without admin/customer pages.
-// The class is named CamsApp so main.dart (which calls CamsApp()) works as-is.
-//
-// When merging to main, restore the full app.dart with the login flow and
-// all role routes. Swap _StubProfilePage for the real ProfilePage import.
-// ============================================================================
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'customer/customer_rooms.dart';
 import 'customer/customer_cart.dart';
@@ -34,10 +25,10 @@ import 'moderator/moderator_ledger.dart';
 import 'moderator/moderator_activity_logs.dart';
 import 'moderator/moderator_stock_manager.dart';
 import 'moderator/moderator_customer_review.dart';
-import 'shared_admin_moderator/manage_service.dart';
-import 'shared_admin_moderator/user_management.dart';
-// Export AppRole for use in navigation
-export 'shared_admin_moderator/user_management.dart' show AppRole;
+import 'shared/shared_admin_moderator/manage_service.dart';
+import 'shared/shared_admin_moderator/user_management.dart';
+import 'owner/owner_logs_page.dart';
+import 'shared/colors.dart';
 import 'profile_page.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/login_screen.dart';
@@ -46,8 +37,11 @@ import 'screens/rbac_test_screen.dart';
 import 'forget_password.dart';
 import 'services/session.dart';
 import 'services/rbac_service.dart';
+// Export AppRole and MoreMenuDrawer for use in navigation
+export 'shared/shared_admin_moderator/user_management.dart' show AppRole;
+export 'shared/more_menu_drawer.dart';
 
-// Global navigator key (kept inside app.dart as requested)
+// Global navigator key
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 // Wraps a widget with Outfit font theme for admin/moderator pages
@@ -57,8 +51,6 @@ Widget _outfit(BuildContext context, Widget child) => Theme(
   ),
   child: child,
 );
-import 'owner/owner_logs_page.dart';
-import 'shared/colors.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -78,7 +70,8 @@ class CamsApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Hello Sarawak — Owner',
+      navigatorKey: appNavigatorKey,
+      title: 'Hello Sarawak',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         fontFamily: GoogleFonts.outfit().fontFamily,
@@ -95,19 +88,17 @@ class CamsApp extends StatelessWidget {
         splashFactory: NoSplash.splashFactory,
         highlightColor: Colors.transparent,
       ),
-      initialRoute: OwnerDashboard.routeName,
+      home: const _LaunchRouter(),
       routes: {
         OwnerDashboard.routeName: (_) => const OwnerDashboard(),
         OwnerUsersPage.routeName: (_) => const OwnerUsersPage(),
         OwnerClusterPage.routeName: (_) => const OwnerClusterPage(),
         OwnerLogsPage.routeName: (_) => const OwnerLogsPage(),
-        '/profile': (_) => const _StubProfilePage(),
         '/onboarding': (context) => const OnboardingScreen(),
         '/before-login': (context) => const CustomerRoomsNotLogin(),
         '/login': (context) => const LoginScreen(),
         '/signup': (context) => const SignupScreen(),
         '/forget-password': (context) => const ForgotPasswordRequestPage(),
-        // Centralized post-login redirect so routing happens in app.dart
         '/after-login': (context) => const _PostLoginRedirect(),
         '/home': (context) => const RoomsPage(),
         '/profile': (context) => const ProfilePage(),
@@ -132,24 +123,16 @@ class CamsApp extends StatelessWidget {
         '/customer-notifications': (context) => const CustomerNotifications(),
         // Admin routes
         '/admin-notifications': (context) => _outfit(context, const AdminNotifications()),
-        '/admin-customers': (context) => _outfit(context, const AdminUserManagementPage(viewerRole: AppRole.admin)),
-        '/admin-moderators': (context) => _outfit(context, const AdminUserManagementPage(viewerRole: AppRole.admin)),
+        '/admin-customers': (context) => _outfit(context, AdminUserManagementPage(viewerRole: AppRole.admin)),
+        '/admin-moderators': (context) => _outfit(context, AdminUserManagementPage(viewerRole: AppRole.admin)),
         '/admin-stock-manager': (context) => _outfit(context, const AdminStockManagerPage()),
         '/admin-activity-logs': (context) => _outfit(context, const AdminActivityLogsPage()),
         '/admin-ledger': (context) => _outfit(context, const AdminLedgerPage()),
         '/admin-customer-reviews': (context) => _outfit(context, const AdminCustomerReviewsPage()),
-        // Moderator routes
-        '/moderator-notifications': (context) => _outfit(context, const ModeratorNotifications()),
-        // Owner routes
-        '/owner-property-listing': (context) => const OwnerPropertyListingPage(),
-        '/owner-reservation': (context) => const OwnerReservationPage(),
-        '/owner-manage-customer': (context) => const OwnerManageCustomers(),
-        '/owner-manage-moderatoradmin': (context) => const OwnerManageOperators(),
-        '/owner-audit-trails': (context) => const OwnerAuditTrails(),
-        '/owner-book-and-pay': (context) => const OwnerBooknPayLog(),
-        '/owner-cluster': (context) => const OwnerClusterPage(),
         '/admin-audit-trails': (context) => _outfit(context, const AdminAuditTrails()),
         '/admin-book-and-pay': (context) => _outfit(context, const AdminBooknPayLog()),
+        // Moderator routes
+        '/moderator-notifications': (context) => _outfit(context, const ModeratorNotifications()),
         '/moderator-audit-trails': (context) => _outfit(context, const ModeratorAuditTrails()),
         '/moderator-book-and-pay': (context) => _outfit(context, const ModeratorBooknPayLog()),
         '/moderator-ledger': (context) => _outfit(context, const ModeratorLedger()),
@@ -162,104 +145,81 @@ class CamsApp extends StatelessWidget {
   }
 }
 
-// =============================================================================
-// Stub Profile Page
-// Replace this with: import 'profile/profile_page.dart'; once it's available.
-// =============================================================================
-class _StubProfilePage extends StatelessWidget {
-  const _StubProfilePage();
+// Checks session on launch and routes accordingly
+class _LaunchRouter extends StatefulWidget {
+  const _LaunchRouter();
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AdminColors.cream,
-      body: Column(
-        children: [
-          Container(
-            color: AdminColors.drawerBg,
-            height: MediaQuery.of(context).padding.top,
-          ),
-          Container(
-            color: AdminColors.drawerBg,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  child: const Icon(
-                    Icons.arrow_back_ios_new_rounded,
-                    color: Colors.white,
-                    size: 18,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Text(
-                  'Profile',
-                  style: GoogleFonts.outfit(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircleAvatar(
-                    radius: 36,
-                    backgroundColor: AdminColors.primaryLight,
-                    child: Text(
-                      'O',
-                      style: GoogleFonts.outfit(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Owner',
-                    style: GoogleFonts.outfit(
-                      color: AdminColors.textPrimary,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Profile page — coming soon',
-                    style: GoogleFonts.outfit(
-                      color: AdminColors.textMuted,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  TextButton.icon(
-                    onPressed: () =>
-                        Navigator.of(context).pushReplacementNamed('/owner'),
-                    icon: const Icon(
-                      Icons.arrow_back_rounded,
-                      color: AdminColors.primary,
-                    ),
-                    label: Text(
-                      'Back to Dashboard',
-                      style: GoogleFonts.outfit(
-                        color: AdminColors.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+  State<_LaunchRouter> createState() => _LaunchRouterState();
+}
+
+class _LaunchRouterState extends State<_LaunchRouter> {
+  @override
+  void initState() {
+    super.initState();
+    _route();
   }
+
+  Future<void> _route() async {
+    final userId = await Session.getUserId();
+    if (!mounted) return;
+
+    if (userId == null || userId.toString().isEmpty) {
+      Navigator.of(context).pushReplacementNamed('/onboarding');
+      return;
+    }
+
+    final role = (await Session.getUserGroup() ?? '').toLowerCase().trim();
+    if (!mounted) return;
+    if (role == 'admin' || role == 'administrator') {
+      Navigator.of(context).pushReplacementNamed('/admin');
+    } else if (role == 'moderator') {
+      Navigator.of(context).pushReplacementNamed('/moderator');
+    } else if (role == 'owner') {
+      Navigator.of(context).pushReplacementNamed('/owner');
+    } else {
+      Navigator.of(context).pushReplacementNamed('/home');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => const Scaffold(
+    body: Center(child: CircularProgressIndicator()),
+  );
+}
+
+// Routes users to their role-specific home after login
+class _PostLoginRedirect extends StatefulWidget {
+  const _PostLoginRedirect();
+
+  @override
+  State<_PostLoginRedirect> createState() => _PostLoginRedirectState();
+}
+
+class _PostLoginRedirectState extends State<_PostLoginRedirect> {
+  @override
+  void initState() {
+    super.initState();
+    _redirect();
+  }
+
+  Future<void> _redirect() async {
+    final role = await Session.getUserGroup();
+    if (!mounted) return;
+    final normalized = (role ?? '').toLowerCase().trim();
+    if (normalized == 'admin' || normalized == 'administrator') {
+      Navigator.of(context).pushReplacementNamed('/admin');
+    } else if (normalized == 'moderator') {
+      Navigator.of(context).pushReplacementNamed('/moderator');
+    } else if (normalized == 'owner') {
+      Navigator.of(context).pushReplacementNamed('/owner');
+    } else {
+      Navigator.of(context).pushReplacementNamed('/home');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => const Scaffold(
+    body: Center(child: CircularProgressIndicator()),
+  );
 }

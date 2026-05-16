@@ -16,7 +16,6 @@ class BottomNavItem {
 // ---------------------------------------------------------------------------
 // SharedBottomNavigationBar — role-aware bottom nav
 // ---------------------------------------------------------------------------
-import 'colors.dart';
 
 class SharedBottomNavigationBar extends StatelessWidget {
   final int selectedIndex;
@@ -140,8 +139,6 @@ class SharedBottomNavigationBar extends StatelessWidget {
     final isMoreButton =
         index == 4 &&
         (role == UserRole.admin || role == UserRole.moderator);
-
-    final isMoreButton = index == 4 && role != UserRole.customer;
     return Expanded(
       child: InkWell(
         onTap: () {

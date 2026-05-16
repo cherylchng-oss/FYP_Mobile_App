@@ -1,29 +1,85 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'customer_rooms.dart';
-import 'customer_bookings.dart';
-import '../api.dart' as api;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/session.dart';
 import '../services/paypal_service.dart';
-import 'dart:convert';
-import 'dart:typed_data';
+import '../shared/customer_layout.dart';
+import '../api.dart' as api;
 
-class CustomerCart extends StatefulWidget {
-  const CustomerCart({super.key});
-
-  @override
-  State<CustomerCart> createState() => _CustomerCartState();
+// ─────────────────────────────────────────────
+// Design Tokens
+// ─────────────────────────────────────────────
+class _C {
+  static const primary       = Color(0xFF6B3F1A);
+  static const primaryLight  = Color(0xFF8B5E3C);
+  static const accent        = Color(0xFFBF8040);
+  static const accentLight   = Color(0xFFE8B97A);
+  static const cream         = Color(0xFFFAF6F0);
+  static const surface       = Color(0xFFF5EDE0);
+  static const border        = Color(0xFFE8D9C5);
+  static const textPrimary   = Color(0xFF2C1A0E);
+  static const textSecond    = Color(0xFF6B4C30);
+  static const textMuted     = Color(0xFFA07850);
+  static const success       = Color(0xFF3D7A5C);
+  static const successBg     = Color(0xFFEBF7F2);
+  static const successBorder = Color(0xFFB2DDD0);
+  static const danger        = Color(0xFFB83232);
+  static const dangerBg      = Color(0xFFFBECEC);
+  static const dangerBorder  = Color(0xFFEFB8B8);
+  static const warning       = Color(0xFF9A6200);
+  static const warningBg     = Color(0xFFFFF8EC);
+  static const warningBorder = Color(0xFFE8C56A);
+  static const blue          = Color(0xFF2563EB);
+  static const blueBg        = Color(0xFFEFF6FF);
+  static const blueBorder    = Color(0xFFBFDBFE);
+  static const starGold      = Color(0xFFD4980A);
 }
 
-class _CustomerCartState extends State<CustomerCart> {
-  int _selectedIndex = 1;
-  String sortOrder = 'Latest First';
-  String filterStatus = 'All Statuses';
-  String dateRange = 'All Time';
+BoxDecoration _card({double radius = 18, Color? bg}) => BoxDecoration(
+  color: bg ?? Colors.white,
+  borderRadius: BorderRadius.circular(radius),
+  border: Border.all(color: _C.border),
+  boxShadow: [BoxShadow(color: _C.primary.withOpacity(0.06), blurRadius: 14, offset: const Offset(0, 4))],
+);
 
-  List<Map<String, dynamic>> cartItems = [];
-  List<Map<String, dynamic>> allBookings = [];
-  bool _isLoading = true;
-  String? _errorMessage;
+// ─────────────────────────────────────────────
+// Page
+// ─────────────────────────────────────────────
+class CustomerCart extends StatefulWidget {
+  const CustomerCart({super.key});
+  @override State<CustomerCart> createState() => _CustomerCartState();
+}
+
+class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderStateMixin {
+  int currentPage = 1;
+  String sortOrder = 'Latest';
+  String filterStatus = 'All status';
+  late TabController _tabController;
+
+  bool loading = true;
+  bool showPaymentModal = false;
+  bool showReviewModal = false;
+  bool showSupportModal = false;
+  bool showCartRefreshNotice = false;
+  bool isCancelProcessing = false;
+  bool isFetchingSupport = false;
+  bool isSubmittingReview = false;
+
+  String toastMessage = '';
+  String toastType = '';
+  String cartRefreshMessage = '';
+  String paymentStatus = 'idle';
+  String paymentError = '';
+  String? propertyOwnerPayPalId;
+  String? lastPaidReservationId;
+
+  int countdownTimer = 5;
+  int paymentCountdown = 300;
+  Timer? paymentTimer;
+  Timer? successTimer;
+  bool paymentExpired = false;
+
   List<Map<String, dynamic>> reservations = [];
   List<Map<String, dynamic>> userReviews = [];
   List<String> recentlyPaidReservationIds = [];
@@ -56,7 +112,8 @@ class _CustomerCartState extends State<CustomerCart> {
   @override
   void initState() {
     super.initState();
-    _loadCartData();
+    _tabController = TabController(length: 2, vsync: this);
+    _loadStoredUserAndData();
   }
 
   @override
@@ -91,219 +148,13 @@ class _CustomerCartState extends State<CustomerCart> {
       final data = await api.fetchCart();
       reservations = normalizeReservations(data);
       await expireOverdueReservations();
-  bool _isDateInFuture(dynamic dateString) {
-    try {
-      if (dateString == null) return false;
-      final date = DateTime.parse(dateString.toString());
-      final today = DateTime.now();
-      final todayOnly = DateTime(today.year, today.month, today.day);
-      final dateOnly = DateTime(date.year, date.month, date.day);
-      return dateOnly.isAfter(todayOnly) || dateOnly.isAtSameMomentAs(todayOnly);
     } catch (e) {
-      print('Error parsing date: $dateString, error: $e');
-      return false;
+      displayToast('error', 'Failed to load your reservations. Please try again.');
+    } finally {
+      if (mounted) setState(() => loading = false);
     }
   }
 
-  Future<void> _loadCartData() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      // Fetch reservations only for this customer via dedicated /cart endpoint
-      final allReservations = await api.fetchCustomerReservations();
-      final today = DateTime.now();
-      final todayOnly = DateTime(today.year, today.month, today.day);
-      
-      List<Map<String, dynamic>> loadedCartItems = [];
-      List<Map<String, dynamic>> loadedBookings = [];
-      
-      for (var item in allReservations) {
-        if (item is! Map<String, dynamic>) continue;
-        // Parse dates using backend field names: checkindatetime and checkoutdatetime
-        dynamic checkInDate = item['checkindatetime'];
-        dynamic checkOutDate = item['checkoutdatetime'];
-        
-        // Parse checkout date to check if it's in the future
-        DateTime? checkoutDateTime;
-        try {
-          if (checkOutDate != null) {
-            checkoutDateTime = DateTime.parse(checkOutDate.toString());
-            checkoutDateTime = DateTime(checkoutDateTime.year, checkoutDateTime.month, checkoutDateTime.day);
-          }
-        } catch (e) {
-          print('CustomerCart: Error parsing checkout date: $checkOutDate, error: $e');
-        }
-        
-        String checkIn = _formatDate(checkInDate);
-        String checkOut = _formatDate(checkOutDate);
-        int nights = _calculateNights(checkInDate, checkOutDate);
-        
-        // Debug logging only if dates are missing
-        if (checkIn == 'N/A' || checkOut == 'N/A') {
-          print('CustomerCart: Date parsing issue for reservation ${item['reservationid']}');
-          print('CustomerCart: checkindatetime: ${item['checkindatetime']}');
-          print('CustomerCart: checkoutdatetime: ${item['checkoutdatetime']}');
-        }
-        
-        // Get property image
-        String? imageUrl;
-        Uint8List? imageBytes;
-        if (item['propertyimage'] != null) {
-          if (item['propertyimage'] is List && (item['propertyimage'] as List).isNotEmpty) {
-            final firstImage = (item['propertyimage'] as List)[0];
-            if (firstImage != null && firstImage.toString().isNotEmpty) {
-              try {
-                // Decode base64 image
-                imageBytes = base64Decode(firstImage.toString());
-                imageUrl = 'base64'; // Marker to use Image.memory
-                print('CustomerCart: Successfully decoded base64 image for property ${item['propertyaddress']}');
-              } catch (e) {
-                print('CustomerCart: Error decoding base64 image: $e');
-                imageUrl = null;
-              }
-            }
-          } else if (item['propertyimage'] is String && (item['propertyimage'] as String).isNotEmpty) {
-            // Handle case where propertyimage is a single string
-            try {
-              imageBytes = base64Decode(item['propertyimage'].toString());
-              imageUrl = 'base64';
-              print('CustomerCart: Successfully decoded base64 image (string format)');
-            } catch (e) {
-              print('CustomerCart: Error decoding base64 image string: $e');
-              imageUrl = null;
-            }
-          }
-        }
-        
-        if (imageUrl == null) {
-          print('CustomerCart: No valid image found for property ${item['propertyaddress']}, propertyimage: ${item['propertyimage']}');
-        }
-
-        final status = (item['reservationstatus'] ?? 'Pending').toString().toLowerCase();
-        final isPending = status == 'pending';
-        final isEnquiry = status == 'enquiry';
-        final isFuture = checkoutDateTime != null && (checkoutDateTime.isAfter(todayOnly) || checkoutDateTime.isAtSameMomentAs(todayOnly));
-
-        // Cart: Pending and Enquiry reservations with future checkout dates
-        if ((isPending || isEnquiry) && isFuture) {
-          // Get propertyid from various possible field names
-          int? propertyId;
-          if (item['propertyid'] != null) {
-            propertyId = item['propertyid'] is int ? item['propertyid'] : int.tryParse(item['propertyid'].toString());
-          } else if (item['propertyId'] != null) {
-            propertyId = item['propertyId'] is int ? item['propertyId'] : int.tryParse(item['propertyId'].toString());
-          } else if (item['property_id'] != null) {
-            propertyId = item['property_id'] is int ? item['property_id'] : int.tryParse(item['property_id'].toString());
-          }
-          
-          loadedCartItems.add({
-            'id': item['reservationid'].toString(),
-            'propertyName': item['propertyaddress'] ?? 'Property',
-            'checkIn': checkIn,
-            'checkOut': checkOut,
-            'expiredDate': checkOut, // Expired date is the checkout date
-            'price': (item['totalprice'] ?? 0).toDouble(),
-            'nights': nights,
-            'status': item['reservationstatus'] ?? 'Pending',
-            'imageUrl': imageUrl,
-            'imageBytes': imageBytes,
-            'reservationid': item['reservationid'],
-            'propertyid': propertyId,
-            'rawCheckIn': checkInDate,
-            'rawCheckOut': checkOutDate,
-          });
-        } else {
-          // Booking history: All past reservations (regardless of status) + non-pending future reservations
-          // Reuse the same image processing logic
-          String? bookingImageUrl;
-          Uint8List? bookingImageBytes;
-          if (item['propertyimage'] != null) {
-            if (item['propertyimage'] is List && (item['propertyimage'] as List).isNotEmpty) {
-              final firstImage = (item['propertyimage'] as List)[0];
-              if (firstImage != null && firstImage.toString().isNotEmpty) {
-                try {
-                  bookingImageBytes = base64Decode(firstImage.toString());
-                  bookingImageUrl = 'base64';
-                } catch (e) {
-                  print('CustomerCart: Error decoding base64 image for booking: $e');
-                }
-              }
-            } else if (item['propertyimage'] is String && (item['propertyimage'] as String).isNotEmpty) {
-              try {
-                bookingImageBytes = base64Decode(item['propertyimage'].toString());
-                bookingImageUrl = 'base64';
-              } catch (e) {
-                print('CustomerCart: Error decoding base64 image string for booking: $e');
-              }
-            }
-          }
-          
-          loadedBookings.add({
-            'id': item['reservationid'].toString(),
-            'propertyName': item['propertyaddress'] ?? 'Property',
-            'checkIn': checkIn,
-            'checkOut': checkOut,
-            'expiredDate': checkOut,
-            'price': (item['totalprice'] ?? 0).toDouble(),
-            'status': item['reservationstatus'] ?? 'Pending',
-            'imageUrl': bookingImageUrl,
-            'imageBytes': bookingImageBytes,
-          });
-        }
-      }
-      
-      print('CustomerCart: Loaded ${loadedCartItems.length} cart items (pending + future checkout)');
-      print('CustomerCart: Loaded ${loadedBookings.length} booking history items (past or non-pending)');
-
-      if (mounted) {
-        setState(() {
-          cartItems = loadedCartItems;
-          allBookings = loadedBookings;
-          _isLoading = false;
-        });
-      }
-    } catch (error) {
-      print('CustomerCart: Error loading cart data: $error');
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'Failed to load cart data. Please try again.';
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  String _formatDate(dynamic date) {
-    if (date == null) return 'N/A';
-    try {
-      if (date is String) {
-        // Try to parse as DateTime first (handles ISO format with or without time)
-        try {
-          final dateTime = DateTime.parse(date);
-          // Format as DD/MM/YYYY
-          final day = dateTime.day.toString().padLeft(2, '0');
-          final month = dateTime.month.toString().padLeft(2, '0');
-          final year = dateTime.year.toString();
-          return '$day/$month/$year';
-        } catch (e) {
-          // If parsing fails, try simple split
-          final parts = date.split('-');
-          if (parts.length == 3) {
-            return '${parts[2]}/${parts[1]}/${parts[0]}';
-          }
-        }
-      }
-      // If it's already a DateTime object
-      if (date is DateTime) {
-        final day = date.day.toString().padLeft(2, '0');
-        final month = date.month.toString().padLeft(2, '0');
-        final year = date.year.toString();
-        return '$day/$month/$year';
-      }
-      return date.toString();
   Future<void> fetchMyReviews() async {
     if (!isCartUserLoggedIn) {
       userReviews = [];
@@ -658,7 +509,10 @@ class _CustomerCartState extends State<CustomerCart> {
 
   Future<void> handlePayPalApprove(String orderId) async {
     try {
-      final details = await api.capturePayPalOrder(orderId);
+      final details = await api.capturePayPalOrder(
+        orderId: orderId,
+        reservationId: int.tryParse('${selectedReservation?['reservationid']}') ?? 0,
+      );
       if (details['error'] != null) throw Exception(details['error']);
       paymentTimer?.cancel();
       final paidReservationId = selectedReservation?['reservationid'];
@@ -715,7 +569,6 @@ class _CustomerCartState extends State<CustomerCart> {
       propertyName: '${reservation['propertyaddress'] ?? 'Property'}',
       checkIn: toSafeIsoDate(reservation['checkindatetime']),
       checkOut: toSafeIsoDate(reservation['checkoutdatetime']),
-      isInstantPayment: false,
     );
 
     if (result == null || result['status'] != 'success') {
@@ -788,8 +641,11 @@ class _CustomerCartState extends State<CustomerCart> {
             }
           }});
     } catch (e) {
-      print('Error formatting date: $date, error: $e');
-      return date.toString();
+      print('Cart payment success update failed: $e');
+      setState(() {
+        paymentError = 'Payment was successful, but booking update failed. Please refresh your cart.';
+        paymentStatus = 'error';
+      });
     }
   }
 
@@ -819,7 +675,7 @@ class _CustomerCartState extends State<CustomerCart> {
   Future<void> openReviewModal(Map<String, dynamic> reservation) async {
     final prefs = await SharedPreferences.getInstance();
     final hasDeletedBefore = prefs.getString('deleted_review_${reservation['propertyid']}_$userId');
-    reviewProperty = reservation; reviewText = ''; existingReviewId = null;
+    reviewProperty = reservation; reviewText = ''; reviewError = ''; reviewController.text = ''; existingReviewId = null;
     subRatings.updateAll((key, value) => 0);
     if (hasDeletedBefore != null) {
       reviewState = 'deleted';
@@ -829,6 +685,7 @@ class _CustomerCartState extends State<CustomerCart> {
         final er = existing.first;
         existingReviewId = er['id'];
         reviewText = er['comment'] ?? '';
+        reviewController.text = reviewText;
         subRatings['location'] = int.tryParse('${er['location_score'] ?? er['rating'] ?? 5}') ?? 5;
         subRatings['cleanliness'] = int.tryParse('${er['cleanliness_score'] ?? er['rating'] ?? 5}') ?? 5;
         subRatings['value'] = int.tryParse('${er['value_score'] ?? er['rating'] ?? 5}') ?? 5;
@@ -837,39 +694,164 @@ class _CustomerCartState extends State<CustomerCart> {
         reviewState = 'view';
       } else { reviewState = 'create'; }
     }
-    setState(() => showReviewModal = true);
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        backgroundColor: Colors.transparent,
+        child: _reviewModalContent(),
+      ),
+    );  
   }
 
-  Future<void> handleReviewSubmit() async {
+  Future<void> handleReviewSubmit(StateSetter modalSet) async {
+    reviewText = reviewController.text;
+
     final allRated = subRatings.values.every((v) => v > 0);
-    if (!allRated) return displayToast('error', 'Please provide a star rating for all categories.');
-    if (reviewText.trim().isEmpty) return displayToast('error', 'Please write a review comment.');
+
+    if (!allRated) {
+      modalSet(() {
+        reviewError = 'Please provide a star rating for all categories.';
+      });
+      return;
+    }
+
+    if (reviewText.trim().isEmpty) {
+      modalSet(() {
+        reviewError = 'Please write a review comment.';
+      });
+      return;
+    }
+
+    modalSet(() {
+      reviewError = '';
+      isSubmittingReview = true;
+    });
+
     final sensitiveWords = ['badword1','badword2','scam','fraud','hate','racist','kill'];
     var safeText = reviewText;
-    for (final word in sensitiveWords) { safeText = safeText.replaceAll(RegExp('\\b$word\\b', caseSensitive: false), '*' * word.length); }
-    setState(() => isSubmittingReview = true);
-    final average = ((subRatings['location']! + subRatings['cleanliness']! + subRatings['value']! + subRatings['facilities']! + subRatings['service']!) / 5).round();
+
+    for (final word in sensitiveWords) {
+      safeText = safeText.replaceAll(
+        RegExp('\\b$word\\b', caseSensitive: false),
+        '*' * word.length,
+      );
+    }
+
+    final average = (
+      (
+        subRatings['location']! +
+        subRatings['cleanliness']! +
+        subRatings['value']! +
+        subRatings['facilities']! +
+        subRatings['service']!
+      ) / 5
+    ).round();
+
     final payload = {
-      'userid': int.tryParse(userId), 'propertyid': int.tryParse('${reviewProperty?['propertyid']}'),
-      'review': safeText, 'rating': average,
-      'location_score': subRatings['location'] ?? 5, 'cleanliness_score': subRatings['cleanliness'] ?? 5,
-      'value_score': subRatings['value'] ?? 5, 'facilities_score': subRatings['facilities'] ?? 5, 'service_score': subRatings['service'] ?? 5,
+      'userid': int.tryParse(userId),
+      'propertyid': int.tryParse('${reviewProperty?['propertyid']}'),
+      'review': safeText,
+      'rating': average,
+      'location_score': subRatings['location'] ?? 5,
+      'cleanliness_score': subRatings['cleanliness'] ?? 5,
+      'value_score': subRatings['value'] ?? 5,
+      'facilities_score': subRatings['facilities'] ?? 5,
+      'service_score': subRatings['service'] ?? 5,
     };
+
     try {
       if (reviewState == 'create') {
-        await api.submitReview(payload, username);
-        displayToast('success', 'Thank you! Your review has been submitted.');
-        await fetchMyReviews();
-        setState(() => showReviewModal = false);
+        await api.submitReview(payload);
+
+        final localReview = {
+          'userid': userId,
+          'propertyid': reviewProperty?['propertyid'],
+          'propertyId': reviewProperty?['propertyid'],
+          'comment': safeText,
+          'review': safeText,
+          'rating': average,
+          'location_score': subRatings['location'],
+          'cleanliness_score': subRatings['cleanliness'],
+          'value_score': subRatings['value'],
+          'facilities_score': subRatings['facilities'],
+          'service_score': subRatings['service'],
+        };
+
+        userReviews.add(localReview);
+
+        reviewState = 'view';
+        reviewController.text = safeText;
+        reviewText = safeText;
+
+        if (mounted) setState(() {});
+
+        Navigator.pop(context);
+
+        Future.delayed(const Duration(milliseconds: 250), () {
+          if (mounted) {
+            displayToast('success', 'Thank you! Your review has been submitted.');
+          }
+        });
       }
-    } catch (e) { displayToast('error', e.toString()); }
-    finally { setState(() => isSubmittingReview = false); }
+    } catch (e) {
+      final msg = e.toString().toLowerCase();
+
+      if (msg.contains('already submitted') || msg.contains('already')) {
+        await fetchMyReviews();
+
+        final existing = userReviews.where((r) =>
+          r['propertyId'].toString() == reviewProperty?['propertyid'].toString() ||
+          r['propertyid'].toString() == reviewProperty?['propertyid'].toString()
+        );
+
+        if (existing.isNotEmpty) {
+          final er = existing.first;
+
+          modalSet(() {
+            existingReviewId = er['id'] ?? er['reviewid'] ?? er['reviewId'];
+            reviewText = er['comment'] ?? er['review'] ?? '';
+            reviewController.text = reviewText;
+
+            subRatings['location'] = int.tryParse('${er['location_score'] ?? er['rating'] ?? 5}') ?? 5;
+            subRatings['cleanliness'] = int.tryParse('${er['cleanliness_score'] ?? er['rating'] ?? 5}') ?? 5;
+            subRatings['value'] = int.tryParse('${er['value_score'] ?? er['rating'] ?? 5}') ?? 5;
+            subRatings['facilities'] = int.tryParse('${er['facilities_score'] ?? er['rating'] ?? 5}') ?? 5;
+            subRatings['service'] = int.tryParse('${er['service_score'] ?? er['rating'] ?? 5}') ?? 5;
+
+            reviewState = 'view';
+            reviewError = '';
+          });
+
+          if (mounted) setState(() {});
+        } else {
+          modalSet(() {
+            reviewError = 'You have already submitted a review for this property.';
+          });
+        }
+
+        return;
+      }
+
+      modalSet(() {
+        reviewError = e.toString();
+      });
+    } finally {
+      modalSet(() {
+        isSubmittingReview = false;
+      });
+
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> handleDeleteReview() async {
     setState(() => isSubmittingReview = true);
     try {
-      await api.deleteReview(existingReviewId, username);
+      await api.deleteReview(existingReviewId);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('deleted_review_${reviewProperty?['propertyid']}_$userId', 'true');
       reviewState = 'deleted';
@@ -1088,7 +1070,6 @@ class _CustomerCartState extends State<CustomerCart> {
           if (showCartRefreshNotice) _refreshNotice(),
           if (isCancelProcessing) _cancelProcessingOverlay(),
           if (showPaymentModal && selectedReservation != null) _paymentModal(),
-          if (showReviewModal && reviewProperty != null) _reviewModal(),
           if (showSupportModal) _supportModal(),
         ],
       ),
@@ -1551,7 +1532,7 @@ class _CustomerCartState extends State<CustomerCart> {
         buttons.add(_actionBtn(
           icon: Icons.star_rounded,
           label: hasReviewed ? 'View My Review' : 'Write a Review',
-          color: hasReviewed ? _C.textMuted : _C.starGold,
+          color: hasReviewed ? Colors.grey : _C.starGold,
           filled: !hasReviewed,
           onPressed: () => openReviewModal(reservation),
         ));
@@ -1740,287 +1721,316 @@ class _CustomerCartState extends State<CustomerCart> {
             fontWeight: FontWeight.w800,
             color: sel ? Colors.white : _C.textSecond,
           ),
-        ],
+        ),
       ),
-      actions: [
-        IconButton(icon: const Icon(Icons.notifications_outlined, color: Color(0xFF64748B)), onPressed: () {}),
-        IconButton(icon: const Icon(Icons.logout, color: Color(0xFF64748B)), onPressed: _handleLogout),
-      ],
     );
   }
 
-  Widget _buildCartSection() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: const [
-              SizedBox(width: 8),
-              Text('Your Cart', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
-            ],
+  Widget _pageDots() {
+    return const SizedBox(
+      width: 28,
+      height: 38,
+      child: Center(
+        child: Text(
+          '...',
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+            color: _C.textMuted,
           ),
-          const SizedBox(height: 16),
-          if (cartItems.isEmpty)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  children: const [
-                    Icon(Icons.shopping_cart_outlined, size: 80, color: Color(0xFF94A3B8)),
-                    SizedBox(height: 16),
-                    Text(
-                      'Your cart is empty',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'Add properties to your cart to get started',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF94A3B8),
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-          Column(children: cartItems.map((item) => _buildCartItem(item)).toList()),
-          if (cartItems.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          _buildCartSummary(),
-          ],
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildCartItem(Map<String, dynamic> item) {
+  Widget _pageBtn(IconData icon, VoidCallback? onTap) => Container(
+    width: 38, height: 38,
+    decoration: BoxDecoration(color: onTap != null ? Colors.white : _C.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: _C.border)),
+    child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(10),
+      child: Icon(icon, size: 22, color: onTap != null ? _C.primaryLight : _C.border)),
+  );
+
+  // ── Empty States ──
+  Widget _emptyCart() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 56, horizontal: 24),
+      decoration: _card(),
+      child: Column(children: [
+        Container(padding: const EdgeInsets.all(18), decoration: BoxDecoration(color: _C.surface, shape: BoxShape.circle),
+          child: const Icon(Icons.shopping_cart_outlined, size: 36, color: _C.textMuted)),
+        const SizedBox(height: 16),
+        const Text('Your cart is empty', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: _C.textPrimary)),
+        const SizedBox(height: 6),
+        const Text('Start exploring stays to add bookings here', style: TextStyle(color: _C.textMuted, fontSize: 13)),
+        const SizedBox(height: 22),
+        ElevatedButton.icon(
+          icon: const Icon(Icons.search_rounded, size: 17),
+          label: const Text('Browse Properties', style: TextStyle(fontWeight: FontWeight.w800)),
+          style: ElevatedButton.styleFrom(backgroundColor: _C.primary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+          onPressed: () => Navigator.pushNamed(context, '/product'),
+        ),
+      ]),
+    );
+  }
+
+  Widget _emptyHistory() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 44, horizontal: 24),
+      decoration: _card(),
+      child: Column(children: [
+        Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: _C.surface, shape: BoxShape.circle),
+          child: const Icon(Icons.history_rounded, size: 30, color: _C.textMuted)),
+        const SizedBox(height: 14),
+        const Text('No reservations found', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _C.textPrimary)),
+        const SizedBox(height: 6),
+        Text(filterStatus != 'All status' ? 'No history with status "$filterStatus"' : 'You don\'t have any past reservations yet',
+          textAlign: TextAlign.center, style: const TextStyle(color: _C.textMuted, fontSize: 13)),
+      ]),
+    );
+  }
+
+  // ── Skeleton ──
+  Widget _skeletonCard() {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 2))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            child: _buildPropertyImage(
-              imageUrl: item['imageUrl'],
-              imageBytes: item['imageBytes'],
-              height: 200,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      decoration: _card(),
+      clipBehavior: Clip.antiAlias,
+      child: Row(children: [
+        Container(width: 160, height: 160, color: _C.surface),
+        Expanded(child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(height: 16, width: double.infinity, decoration: BoxDecoration(color: _C.surface, borderRadius: BorderRadius.circular(8))),
+            const SizedBox(height: 10),
+            Container(height: 12, width: 140, decoration: BoxDecoration(color: _C.surface, borderRadius: BorderRadius.circular(8))),
+            const SizedBox(height: 8),
+            Container(height: 12, width: 120, decoration: BoxDecoration(color: _C.surface, borderRadius: BorderRadius.circular(8))),
+            const SizedBox(height: 20),
+            Container(height: 36, width: double.infinity, decoration: BoxDecoration(color: _C.surface, borderRadius: BorderRadius.circular(12))),
+          ]),
+        )),
+      ]),
+    );
+  }
+
+  // ── Login Required ──
+  Widget _loginRequired() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(40),
+      decoration: _card(),
+      child: Column(children: [
+        Container(padding: const EdgeInsets.all(18), decoration: BoxDecoration(color: _C.surface, shape: BoxShape.circle),
+          child: const Icon(Icons.lock_rounded, size: 34, color: _C.accent)),
+        const SizedBox(height: 18),
+        const Text('Login Required', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: _C.textPrimary)),
+        const SizedBox(height: 8),
+        const Text('Your cart and reservation history are only available after login.', textAlign: TextAlign.center, style: TextStyle(color: _C.textMuted)),
+        const SizedBox(height: 24),
+        SizedBox(width: double.infinity, child: ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: _C.primary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+          onPressed: () => Navigator.pushNamed(context, '/login', arguments: {'from': '/cart'}),
+          child: const Text('Login to Continue', style: TextStyle(fontWeight: FontWeight.w800)),
+        )),
+      ]),
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // CONFIRM DIALOG
+  // ──────────────────────────────────────────────────────────────────
+  void showConfirmDialog() {
+    String title = 'Confirm Action';
+    Widget content = const Text('Are you sure you want to proceed?', style: TextStyle(color: _C.textSecond));
+    String buttonText = 'Confirm';
+    Color buttonColor = _C.primary;
+    Widget? warningBox;
+
+    if (actionToConfirm == 'pay') { title = 'Confirm Payment'; content = const Text('Proceed to payment for this reservation?', style: TextStyle(color: _C.textSecond)); }
+    else if (actionToConfirm == 'cancel') { title = 'Cancel Reservation'; content = const Text('Are you sure you want to cancel this reservation?', style: TextStyle(color: _C.textSecond)); buttonText = 'Cancel Booking'; buttonColor = _C.danger; }
+    else if (actionToConfirm == 'cancel_forfeit') {
+      title = 'Cancel Reservation';
+      buttonText = 'Cancel'; buttonColor = _C.danger;
+      warningBox = Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: _C.warningBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: _C.warningBorder)),
+        child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(Icons.warning_rounded, color: _C.warning, size: 18),
+          SizedBox(width: 8),
+          Expanded(child: Text('Your paid deposit is strictly non-refundable. This action cannot be undone.', style: TextStyle(color: _C.warning, fontWeight: FontWeight.w700, fontSize: 13))),
+        ]),
+      );
+    } else if (actionToConfirm == 'remove') { title = 'Remove Reservation'; content = const Text('Remove this reservation from your list?', style: TextStyle(color: _C.textSecond)); buttonText = 'Remove'; buttonColor = _C.danger; }
+
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: _C.textPrimary)),
+            const SizedBox(height: 10),
+            content,
+            if (warningBox != null) ...[const SizedBox(height: 12), warningBox!],
+            const SizedBox(height: 20),
+            Row(
               children: [
-                Text(item['propertyName'],
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
-                const SizedBox(height: 12),
-                _buildInfoRow(Icons.calendar_today, 'Arrival: ${item['checkIn']}'),
-                const SizedBox(height: 8),
-                _buildInfoRow(Icons.calendar_today, 'Departure: ${item['checkOut']}'),
-                const SizedBox(height: 8),
-                _buildInfoRow(Icons.calendar_today, 'Expired Date: ${item['expiredDate']}'),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    const Text('Status:  ', style: TextStyle(fontSize: 14, color: Color(0xFF64748B))),
-                    _buildStatusBadge(item['status']),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    const Text('Total', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF475569))),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(14)),
-                      child: Text(
-                        '${item['nights'] ?? 1} night${((item['nights'] ?? 1) as int) > 1 ? 's' : ''}',
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _C.textSecond,
+                      side: const BorderSide(color: _C.border),
+                      backgroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-                    const Spacer(),
-                    Text(
-                      '\$${(item['price'] as num).toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.2, color: Color(0xFF0F172A)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: (item['status']?.toString().toLowerCase() == 'enquiry')
-                        ? null
-                        : () => _showPaymentDialog(item),
-                    icon: const Icon(Icons.credit_card, size: 18),
-                    label: Text(
-                      (item['status']?.toString().toLowerCase() == 'enquiry')
-                          ? 'Waiting for Approval'
-                          : 'Proceed to Payment',
-                      style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      elevation: 0,
-                      backgroundColor: (item['status']?.toString().toLowerCase() == 'enquiry')
-                          ? const Color(0xFF94A3B8)
-                          : const Color(0xFF0077B6),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      shadowColor: const Color(0x33211C0B),
+                    child: const Text(
+                      'Back',
+                      style: TextStyle(fontWeight: FontWeight.w800),
                     ),
                   ),
                 ),
-                const SizedBox(height: 6),
-                Center(
-                  child: TextButton.icon(
-                    onPressed: () => _showCancelDialog(item['id']),
-                    icon: const Icon(Icons.cancel_outlined, size: 18),
-                    label: const Text('Cancel booking'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFFEF4444),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: buttonColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 0,
+                    ),
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      await executeAction();
+                    },
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        buttonText,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
                     ),
                   ),
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-// helper method for displaying property image correctly
-  Widget _buildPropertyImage({String? imageUrl, Uint8List? imageBytes, double? height}) {
-    if (imageBytes != null && imageUrl == 'base64') {
-      // Use Image.memory for base64 images
-      return Image.memory(
-        imageBytes,
-        height: height,
-        width: height != null ? double.infinity : null,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          height: height ?? 200,
-          color: const Color(0xFFE2E8F0),
-          child: const Icon(Icons.image, size: 60, color: Color(0xFF94A3B8)),
+            )
+          ]),
         ),
-      );
-    } else if (imageUrl != null && imageUrl.startsWith('http')) {
-      // Use Image.network for URL images
-      return Image.network(
-        imageUrl,
-        height: height,
-        width: height != null ? double.infinity : null,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          height: height ?? 200,
-          color: const Color(0xFFE2E8F0),
-          child: const Icon(Icons.image, size: 60, color: Color(0xFF94A3B8)),
-        ),
-      );
-    } else {
-      // Placeholder for no image
-      return Container(
-        height: height ?? 200,
-        width: double.infinity,
-        color: const Color(0xFFE2E8F0),
-        child: const Icon(Icons.image, size: 60, color: Color(0xFF94A3B8)),
-      );
-    }
-  }
-
-  Widget _buildInfoRow(IconData icon, String text) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: const Color(0xFF0077B6)),
-        const SizedBox(width: 8),
-        Text(text, style: const TextStyle(fontSize: 14, color: Color(0xFF64748B))),
-      ],
-    );
-  }
-
-  Widget _buildCartSummary() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 2))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Cart Summary', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF0077B6))),
-          const SizedBox(height: 20),
-          _buildSummaryRow('Total Properties:', '${cartItems.length}'),
-          const SizedBox(height: 12),
-          _buildSummaryRow('Total Nights:', '$totalNights'),
-          const SizedBox(height: 12),
-          _buildSummaryRow('Subtotal:', '\$${subTotal.toStringAsFixed(2)}'),
-          const Divider(height: 32),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Total:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
-              Text('\$${subTotal.toStringAsFixed(2)}',
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
-            ],
-          ),
-        ],
       ),
     );
   }
 
-  Widget _buildSummaryRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 14, color: Color(0xFF64748B))),
-        Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
-      ],
-    );
-  }
+  // ──────────────────────────────────────────────────────────────────
+  // PAYMENT MODAL
+  // ──────────────────────────────────────────────────────────────────
+  Widget _paymentModal() {
+    final reservation = selectedReservation!;
+    final isPayingBalance = normalizeStatus(reservation['reservationstatus']) == 'partially paid';
+    final totalAmount = double.tryParse('${reservation['totalprice'] ?? 0}') ?? 0;
+    var depositAmount = double.tryParse('${reservation['downpaymentamount'] ?? reservation['downPaymentAmount'] ?? 0}') ?? 0;
+    if (depositAmount <= 0) depositAmount = totalAmount * 0.10;
+    final double balanceAmount =
+    (totalAmount - depositAmount).clamp(0.0, double.infinity).toDouble();
 
-  Widget _buildHistorySection() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: const [
-              SizedBox(width: 8),
-              Text('Booking History', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildFilters(),
-          const SizedBox(height: 16),
-          ...filteredBookings.map((item) => _buildHistoryItem(item)),
-        ],
+    return _modalBackdrop(child: Container(
+      width: 520,
+      constraints: const BoxConstraints(maxHeight: 700),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22)),
+      clipBehavior: Clip.antiAlias,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: paymentStatus == 'success'
+            ? Column(mainAxisSize: MainAxisSize.min, children: [
+                Container(width: 64, height: 64, decoration: BoxDecoration(color: _C.successBg, shape: BoxShape.circle),
+                  child: const Icon(Icons.check_rounded, size: 34, color: _C.success)),
+                const SizedBox(height: 16),
+                const Text('Payment Successful!', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: _C.success)),
+                const SizedBox(height: 8),
+                Text(isPayingBalance ? 'Balance payment completed. Booking fully paid!' : 'Deposit paid successfully!', textAlign: TextAlign.center, style: const TextStyle(color: _C.textSecond)),
+                const SizedBox(height: 10),
+                Text('Refreshing in $countdownTimer seconds...', style: const TextStyle(fontWeight: FontWeight.w800, color: _C.textMuted)),
+                const SizedBox(height: 12),
+                ClipRRect(borderRadius: BorderRadius.circular(6), child: LinearProgressIndicator(value: countdownTimer / 5, backgroundColor: _C.border, color: _C.success)),
+              ])
+            : Column(mainAxisSize: MainAxisSize.min, children: [
+                Row(children: [
+                  Container(width: 44, height: 44, decoration: BoxDecoration(gradient: const LinearGradient(colors: [_C.accent, _C.primary]), borderRadius: BorderRadius.circular(14)),
+                    child: const Icon(Icons.payment_rounded, color: Colors.white, size: 22)),
+                  const SizedBox(width: 12),
+                  const Expanded(child: Text('Complete Payment', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: _C.textPrimary))),
+                  InkWell(
+                    onTap: () { paymentTimer?.cancel(); setState(() { showPaymentModal = false; selectedReservation = null; paymentError = ''; paymentStatus = 'idle'; }); },
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: _C.surface, borderRadius: BorderRadius.circular(10)),
+                      child: const Icon(Icons.close_rounded, size: 18, color: _C.textSecond)),
+                  ),
+                ]),
+                const SizedBox(height: 18),
+                _paymentCountdownBox(),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: _C.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: _C.border)),
+                  child: Column(children: [
+                    Text('${reservation['propertyaddress'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w900, color: _C.textPrimary, fontSize: 14)),
+                    const SizedBox(height: 12),
+                    _summaryRow('Check-in', formatSafeDate(reservation['checkindatetime'])),
+                    _summaryRow('Check-out', formatSafeDate(reservation['checkoutdatetime'])),
+                    Divider(color: _C.border, height: 16),
+                    if (!isPayingBalance) ...[
+                      _summaryRow('Total Amount', 'RM ${totalAmount.toStringAsFixed(2)}'),
+                      _summaryRow('Deposit Due Now', 'RM ${depositAmount.toStringAsFixed(2)}'),
+                      _summaryRow('Balance Due Later', 'RM ${balanceAmount.toStringAsFixed(2)}'),
+                    ] else ...[
+                      _summaryRow('Total Amount', 'RM ${totalAmount.toStringAsFixed(2)}'),
+                      _summaryRow('Deposit Already Paid', '–RM ${depositAmount.toStringAsFixed(2)}'),
+                      _summaryRow('Balance Due Now', 'RM ${balanceAmount.toStringAsFixed(2)}'),
+                    ],
+                  ]),
+                ),
+                const SizedBox(height: 16),
+                if (paymentStatus == 'loading')
+                  const Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: _C.accent))
+                else if (paymentStatus == 'error')
+                  Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: _C.dangerBg, borderRadius: BorderRadius.circular(12)), child: Text(paymentError.isEmpty ? 'An error occurred.' : paymentError, style: const TextStyle(color: _C.danger, fontWeight: FontWeight.w700)))
+                else
+                  SizedBox(width: double.infinity, child: ElevatedButton.icon(
+                    icon: const Icon(Icons.payment_rounded, size: 18),
+                    label: Text(isPayingBalance ? 'Pay Balance with PayPal' : 'Pay Deposit with PayPal', style: const TextStyle(fontWeight: FontWeight.w800)),
+                    style: ElevatedButton.styleFrom(backgroundColor: _C.primary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 0),
+                    onPressed: paymentStatus == 'processing' ? null : startPayPalCartPayment,
+                  )),
+                if (paymentError.isNotEmpty && paymentStatus != 'error') ...[
+                  const SizedBox(height: 8),
+                  Text(paymentError, style: const TextStyle(color: _C.danger, fontSize: 12)),
+                ],
+                const SizedBox(height: 10),
+                SizedBox(width: double.infinity, child: OutlinedButton(
+                  onPressed: () => fetchPropertyOwnerPayPalId(reservation['propertyid']),
+                  style: OutlinedButton.styleFrom(foregroundColor: _C.primaryLight, side: const BorderSide(color: _C.border), padding: const EdgeInsets.symmetric(vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  child: const Text('Retry', style: TextStyle(fontWeight: FontWeight.w700)),
+                )),
+              ]),
       ),
-    );
+    ));
   }
 
-  Widget _buildFilters() {
+  Widget _paymentCountdownBox() {
+    final urgent = paymentCountdown <= 60;
+    final warning = !urgent && paymentCountdown <= 120;
+    final bg = urgent ? _C.dangerBg : warning ? _C.warningBg : _C.successBg;
+    final border = urgent ? _C.dangerBorder : warning ? _C.warningBorder : _C.successBorder;
+    final color = urgent ? _C.danger : warning ? _C.warning : _C.success;
+    final label = urgent ? '⚠️ Time running out!' : warning ? '⏳ Almost out of time' : '⏱️ Time to complete payment';
+    final mins = paymentCountdown ~/ 60;
+    final secs = paymentCountdown % 60;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(color: bg, border: Border.all(color: border), borderRadius: BorderRadius.circular(12)),
@@ -2035,8 +2045,8 @@ class _CustomerCartState extends State<CustomerCart> {
   // ──────────────────────────────────────────────────────────────────
   // REVIEW MODAL
   // ──────────────────────────────────────────────────────────────────
-  Widget _reviewModal() {
-    return _modalBackdrop(child: Container(
+  Widget _reviewModalContent() {
+    return Container(
       width: 480,
       constraints: const BoxConstraints(maxHeight: 680),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22)),
@@ -2054,14 +2064,22 @@ class _CustomerCartState extends State<CustomerCart> {
               const Text('You have already submitted or deleted a review for this property. Guests are limited to one review per stay.', textAlign: TextAlign.center, style: TextStyle(color: _C.textMuted)),
               const SizedBox(height: 20),
               SizedBox(width: double.infinity, child: ElevatedButton(
-                onPressed: () => setState(() => showReviewModal = false),
-                style: ElevatedButton.styleFrom(backgroundColor: _C.primary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 13), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                onPressed: () {
+                  FocusScope.of(context).unfocus();
+                  Navigator.pop(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _C.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
                 child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w800)),
               )),
             ]);
           }
 
-          final submitDisabled = isSubmittingReview || !subRatings.values.every((v) => v > 0) || reviewText.trim().isEmpty;
+          final submitDisabled = isSubmittingReview;
           return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -2071,7 +2089,12 @@ class _CustomerCartState extends State<CustomerCart> {
                 Text('${reviewProperty?['propertyaddress'] ?? ''}', style: const TextStyle(color: _C.textMuted, fontSize: 12)),
               ])),
               InkWell(
-                onTap: isSubmittingReview ? null : () => setState(() => showReviewModal = false),
+                onTap: isSubmittingReview
+                    ? null
+                    : () {
+                        FocusScope.of(context).unfocus();
+                        Navigator.pop(context);
+                      },
                 borderRadius: BorderRadius.circular(10),
                 child: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: _C.surface, borderRadius: BorderRadius.circular(10)),
                   child: const Icon(Icons.close_rounded, size: 18, color: _C.textSecond)),
@@ -2095,19 +2118,55 @@ class _CustomerCartState extends State<CustomerCart> {
             const SizedBox(height: 10),
             TextField(
               maxLines: 4,
-              enabled: reviewState == 'create',
-              controller: TextEditingController(text: reviewText)..selection = TextSelection.collapsed(offset: reviewText.length),
-              onChanged: (v) { reviewText = v; modalSet(() {}); },
+              readOnly: reviewState != 'create',
+              enabled: true,
+              controller: reviewController,
+              focusNode: reviewFocusNode,
+              keyboardType: TextInputType.multiline,
+              textInputAction: TextInputAction.newline,
+              onChanged: (v) {
+                reviewText = v;
+              },
               style: const TextStyle(color: _C.textPrimary, fontSize: 14),
               decoration: InputDecoration(
                 hintText: 'Share details of your experience...',
                 hintStyle: const TextStyle(color: _C.textMuted),
-                filled: true, fillColor: _C.surface,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _C.border)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _C.border)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _C.accent, width: 2)),
+                filled: true,
+                fillColor: _C.surface,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _C.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _C.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _C.accent, width: 2),
+                ),
               ),
             ),
+            if (reviewError.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: _C.dangerBg,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _C.dangerBorder),
+                ),
+                child: Text(
+                  reviewError,
+                  style: const TextStyle(
+                    color: _C.danger,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             Row(children: [
               if (reviewState == 'view') TextButton.icon(
@@ -2117,198 +2176,202 @@ class _CustomerCartState extends State<CustomerCart> {
               ),
               const Spacer(),
               TextButton(
-                onPressed: isSubmittingReview ? null : () => setState(() => showReviewModal = false),
+                onPressed: isSubmittingReview
+                    ? null
+                    : () {
+                        FocusScope.of(context).unfocus();
+                        Navigator.pop(context);
+                      },
                 style: TextButton.styleFrom(foregroundColor: _C.textMuted),
                 child: Text(reviewState == 'view' ? 'Close' : 'Cancel'),
               ),
               if (reviewState == 'create') ...[
                 const SizedBox(width: 8),
                 ElevatedButton(
-                  onPressed: submitDisabled ? null : handleReviewSubmit,
+                  onPressed: submitDisabled ? null : () => handleReviewSubmit(modalSet),
                   style: ElevatedButton.styleFrom(backgroundColor: _C.primary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
                   child: Text(isSubmittingReview ? 'Saving...' : 'Submit', style: const TextStyle(fontWeight: FontWeight.w800)),
                 ),
               ],
-            ),
-          ),
-        ],
+            ]),
+          ]);
+        }),
       ),
     );
   }
 
-  Widget _buildStatusBadge(String status) {
-    Color color;
-    Color bgColor;
-    switch (status) {
-      case 'Accepted':
-        color = const Color(0xFF10B981);
-        bgColor = const Color(0xFFD1FAE5);
-        break;
-      case 'Pending':
-        color = const Color(0xFFF59E0B);
-        bgColor = const Color(0xFFFEF3C7);
-        break;
-      case 'Enquiry':
-        color = const Color(0xFF0077B6);
-        bgColor = const Color(0xFFE7F0FF);
-        break;
-      case 'Canceled':
-      case 'Rejected':
-        color = const Color(0xFFEF4444);
-        bgColor = const Color(0xFFFEE2E2);
-        break;
-      case 'Paid':
-        color = const Color(0xFF8B5CF6);
-        bgColor = const Color(0xFFEDE9FE);
-        break;
-      default:
-        color = const Color(0xFF64748B);
-        bgColor = const Color(0xFFF1F5F9);
+  // ──────────────────────────────────────────────────────────────────
+  // SUPPORT MODAL
+  // ──────────────────────────────────────────────────────────────────
+  Widget _supportModal() {
+    return _modalBackdrop(child: Container(
+      width: 420,
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22)),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 56, height: 56, decoration: BoxDecoration(color: _C.surface, shape: BoxShape.circle),
+            child: const Icon(Icons.headset_mic_rounded, color: _C.accent, size: 26)),
+          const SizedBox(height: 14),
+          const Text('Contact Property Owner', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: _C.textPrimary)),
+          const SizedBox(height: 8),
+          const Text('This reservation has been paid in full. Contact the property owner directly to discuss emergencies or modifications.',
+            textAlign: TextAlign.center, style: TextStyle(color: _C.textMuted, fontSize: 13, height: 1.5)),
+          const SizedBox(height: 18),
+          Container(
+            width: double.infinity, padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: _C.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: _C.border)),
+            child: isFetchingSupport
+                ? const Row(children: [
+                    SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: _C.accent)),
+                    SizedBox(width: 10),
+                    Text('Loading contact details...', style: TextStyle(color: _C.textMuted, fontSize: 13)),
+                  ])
+                : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text('Operator Contact', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: _C.textPrimary)),
+                    Divider(color: _C.border, height: 14),
+                    _contactLine(Icons.person_rounded, supportOperatorData?['name'] ?? 'Property Owner'),
+                    _contactLine(Icons.email_rounded, supportOperatorData?['email'] ?? 'Not provided'),
+                    _contactLine(Icons.phone_rounded, supportOperatorData?['phone'] ?? 'Not provided'),
+                  ]),
+          ),
+          const SizedBox(height: 18),
+          SizedBox(width: double.infinity, child: ElevatedButton(
+            onPressed: () => setState(() => showSupportModal = false),
+            style: ElevatedButton.styleFrom(backgroundColor: _C.primary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 0),
+            child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w800)),
+          )),
+        ]),
+      ),
+    ));
+  }
+
+  Widget _contactLine(IconData icon, String value) => Padding(
+    padding: const EdgeInsets.only(top: 8),
+    child: Row(children: [
+      Icon(icon, color: _C.accent, size: 16), const SizedBox(width: 10),
+      Expanded(child: Text(value, style: const TextStyle(color: _C.textSecond, fontSize: 13, fontWeight: FontWeight.w600))),
+    ]),
+  );
+
+  // ──────────────────────────────────────────────────────────────────
+  // OVERLAYS
+  // ──────────────────────────────────────────────────────────────────
+  Widget _refreshNotice() {
+    return Positioned(
+      top: 90, right: 16,
+      child: Container(
+        width: 320, padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: _C.blueBorder), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 16)]),
+        child: Row(children: [
+          const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: _C.accent)),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Please wait', style: TextStyle(fontWeight: FontWeight.w800, color: _C.textPrimary)),
+            Text(cartRefreshMessage.isEmpty ? 'Updating your booking...' : cartRefreshMessage, style: const TextStyle(fontSize: 12, color: _C.textMuted)),
+          ])),
+        ]),
+      ),
+    );
+  }
+
+  Widget _cancelProcessingOverlay() {
+    return _modalBackdrop(child: Container(
+      width: 380, padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22)),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 52, height: 52, decoration: BoxDecoration(color: _C.warningBg, shape: BoxShape.circle),
+          child: const Icon(Icons.hourglass_top_rounded, size: 26, color: _C.warning)),
+        const SizedBox(height: 14),
+        const Text('Processing Cancellation', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: _C.textPrimary)),
+        const SizedBox(height: 8),
+        const Text('Please wait while we update your reservation status.', textAlign: TextAlign.center, style: TextStyle(color: _C.textMuted)),
+        const SizedBox(height: 16),
+        const LinearProgressIndicator(color: _C.accent),
+      ]),
+    ));
+  }
+
+  Widget _modalBackdrop({required Widget child}) => Positioned.fill(
+    child: Container(
+      color: Colors.black.withOpacity(0.5),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(16),
+      child: Material(color: Colors.transparent, child: child),
+    ),
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Status Badge
+// ──────────────────────────────────────────────────────────────────
+class _StatusBadge extends StatelessWidget {
+  final String status;
+  const _StatusBadge({this.status = 'Unknown'});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = status.toLowerCase().trim();
+    IconData icon = Icons.info_outline_rounded;
+    Color bg = const Color(0xFFF5EDE0);
+    Color fg = const Color(0xFF6B4C30);
+    Color border = const Color(0xFFE8D9C5);
+
+    if (s == 'enquiry') {
+      icon = Icons.chat_bubble_outline_rounded; bg = const Color(0xFFECECF5); fg = const Color(0xFF4A4A80); border = const Color(0xFFCCCCEE);
+    } else if (s == 'partially paid') {
+      icon = Icons.credit_card_rounded; bg = const Color(0xFFFFF8EC); fg = const Color(0xFF9A6200); border = const Color(0xFFE8C56A);
+    } else if (s == 'paid' || s == 'accepted') {
+      icon = Icons.check_circle_rounded; bg = const Color(0xFFEBF7F2); fg = const Color(0xFF3D7A5C); border = const Color(0xFFB2DDD0);
+    } else if (s == 'pending' || s == 'booking') {
+      icon = Icons.access_time_rounded; bg = const Color(0xFFEFF6FF); fg = const Color(0xFF2563EB); border = const Color(0xFFBFDBFE);
+    } else if (s == 'payment pending') {
+      icon = Icons.payment_rounded; bg = const Color(0xFFFFF8EC); fg = const Color(0xFF9A6200); border = const Color(0xFFE8C56A);
+    } else if (s == 'canceled' || s == 'cancelled' || s == 'expired' || s == 'rejected') {
+      icon = s == 'expired' ? Icons.schedule_rounded : Icons.cancel_rounded;
+      bg = const Color(0xFFFBECEC); fg = const Color(0xFFB83232); border = const Color(0xFFEFB8B8);
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(12)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.circle, size: 8, color: color),
-          const SizedBox(width: 6),
-          Text(status, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBottomNavigationBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, -2))],
-      ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildBottomNavItem(Icons.home, 'Rooms', 0),
-              _buildBottomNavItem(Icons.shopping_cart, 'Cart', 1),
-              _buildBottomNavItem(Icons.calendar_today, 'Bookings', 2),
-              _buildBottomNavItem(Icons.person, 'Profile', 3),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomNavItem(IconData icon, String label, int index) {
-    final isSelected = _selectedIndex == index;
-    return Expanded(
-      child: InkWell(
-        onTap: () => _navigateToPage(index),
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: isSelected ? const Color(0xFF92BBFF) : const Color(0xFF94A3B8), size: 24),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? const Color(0xFF92BBFF) : const Color(0xFF94A3B8),
-                  fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 13, color: fg),
+        const SizedBox(width: 5),
+        Text(status, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: fg)),
+      ]),
     );
   }
 }
 
-class _PaymentMethodCard extends StatelessWidget {
-  final bool selected;
-  final VoidCallback onTap;
-  final String title;
-  final String subtitle;
-  final IconData icon;
+class _CartBatikPatternPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
 
-  const _PaymentMethodCard({
-    required this.selected,
-    required this.onTap,
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-  });
+    const spacing = 40.0;
+
+    for (double x = 0; x < size.width + spacing; x += spacing) {
+      for (double y = 0; y < size.height + spacing; y += spacing) {
+        canvas.drawCircle(Offset(x, y), 8, paint);
+        canvas.drawCircle(Offset(x, y), 14, paint);
+
+        final path = Path()
+          ..moveTo(x - 10, y)
+          ..lineTo(x, y - 10)
+          ..lineTo(x + 10, y)
+          ..lineTo(x, y + 10)
+          ..close();
+
+        canvas.drawPath(path, paint);
+      }
+    }
+  }
 
   @override
-  Widget build(BuildContext context) {
-    final borderColor = selected ? const Color(0xFF0077B6) : const Color(0xFFE2E8F0);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: borderColor, width: 1.2),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: selected ? const Color(0xFF0077B6) : const Color(0xFFCBD5E1),
-                  width: 2,
-                ),
-              ),
-              child: selected
-                  ? Center(
-                      child: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF0077B6),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    )
-                  : null,
-            ),
-            const SizedBox(width: 12),
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: const Color(0xFFEAF2FF),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: const Color(0xFF0077B6)),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 2),
-                  Text(subtitle, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

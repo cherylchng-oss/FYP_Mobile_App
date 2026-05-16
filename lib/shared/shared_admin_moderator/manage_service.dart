@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../services/session.dart';
-import '../api.dart' as api;
-import '../shared/bottom_navigation_bar.dart';
-import '../shared/navigation_menu.dart' as nav;
-import '../shared/colors.dart';
-import '../app.dart';
-import '../admin/admin_notification.dart';
-import '../moderator/moderator_notification.dart';
+import '../../services/session.dart';
+import '../../api.dart' as api;
+import '../bottom_navigation_bar.dart';
+import '../navigation_menu.dart' as nav;
+import '../colors.dart';
+import '../../app.dart';
+import '../../admin/admin_notification.dart';
+import '../../moderator/moderator_notification.dart';
 
 TextStyle _ts(double size, FontWeight weight, Color color, {double? height}) =>
     GoogleFonts.outfit(fontSize: size, fontWeight: weight, color: color, height: height);
