@@ -230,124 +230,185 @@ class MoreMenuDrawer extends StatelessWidget {
   bool get _isAdminOrMod =>
       role == UserRole.admin || role == UserRole.moderator;
 
+  String get _defaultEmail {
+    switch (role) {
+      case UserRole.admin:
+        return 'admin@hellosarawak.com';
+      case UserRole.moderator:
+        return 'moderator@hellosarawak.com';
+      default:
+        return '';
+    }
+  }
+
+  static const Color _activeFill1 = Color(0xFFB8752A);
+  static const Color _activeFill2 = Color(0xFF6B3210);
+  static const Color _inactiveFill = Color(0xFF3A1E0A);
+  static const Color _headerCardBg = Color(0xFF3D200E);
+
   @override
   Widget build(BuildContext context) {
     final items = drawerMenuItemsForRole(role);
     final topPad = MediaQuery.of(context).padding.top;
     final displayName = userName ?? _headerTitle;
-    final displayEmail = userEmail ?? '';
+    final displayEmail = (userEmail != null && userEmail!.isNotEmpty)
+        ? userEmail!
+        : _defaultEmail;
+    final bg = _isAdminOrMod ? AdminColors.drawerBg : const Color(0xFF1E293B);
 
     return Drawer(
+      backgroundColor: bg,
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
-          // Background image (admin/mod only)
-          if (_isAdminOrMod)
-            Positioned.fill(
-              child: Image.asset(
-                'assets/navigation_menu.png',
-                fit: BoxFit.cover,
-              ),
-            ),
-          // Dark overlay
-          Positioned.fill(
+          // Soft white light exposure at the top
+          Positioned(
+            left: -80,
+            right: -80,
+            top: -80,
             child: Container(
+              height: 340,
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: _isAdminOrMod
-                      ? [
-                          const Color(0xFF2A1004).withOpacity(0.50),
-                          const Color(0xFF2A1004).withOpacity(0.20),
-                        ]
-                      : [
-                          const Color(0xFF1E293B),
-                          const Color(0xFF0F172A),
-                        ],
+                gradient: RadialGradient(
+                  center: Alignment.center,
+                  radius: 0.7,
+                  colors: [
+                    Colors.white.withOpacity(0.09),
+                    Colors.transparent,
+                  ],
                 ),
               ),
             ),
           ),
-          // Content
-          Column(
-            children: [
-              // Header
-              Padding(
-                padding: EdgeInsets.fromLTRB(20, topPad + 24, 20, 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(11),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                                color: Colors.white.withOpacity(0.25)),
-                          ),
-                          child:
-                              Icon(_headerIcon, color: Colors.white, size: 26),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                displayName,
-                                style: GoogleFonts.outfit(
-                                  color: Colors.white,
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              if (displayEmail.isNotEmpty) ...[
-                                const SizedBox(height: 2),
-                                Text(
-                                  displayEmail,
-                                  style: GoogleFonts.outfit(
-                                    color: Colors.white.withOpacity(0.60),
-                                    fontSize: 12,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                              const SizedBox(height: 6),
-                              Row(children: [
-                                Container(
-                                  width: 7,
-                                  height: 7,
-                                  decoration: const BoxDecoration(
-                                    color: AdminColors.success,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 5),
-                                Text(
-                                  'Online',
-                                  style: GoogleFonts.outfit(
-                                    color: AdminColors.success,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ]),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+          // Subtle warm radial glow in the middle
+          Positioned(
+            left: -60,
+            right: -60,
+            top: 220,
+            child: Container(
+              height: 320,
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment.center,
+                  radius: 0.85,
+                  colors: [
+                    _activeFill1.withOpacity(0.18),
+                    Colors.transparent,
                   ],
                 ),
               ),
-              Container(
-                height: 1,
-                margin: const EdgeInsets.symmetric(horizontal: 20),
-                color: Colors.white.withOpacity(0.10),
+            ),
+          ),
+          // Decorative circle outline — top-left
+          Positioned(
+            left: -40,
+            top: -90,
+            child: Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.10),
+                  width: 2,
+                ),
               ),
-              const SizedBox(height: 8),
+            ),
+          ),
+          // Decorative gradient filled circle — top-right
+          Positioned(
+            right: -22,
+            top: topPad - 20,
+            child: Container(
+              width: 95,
+              height: 95,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  center: Alignment.topLeft,
+                  radius: 1.0,
+                  colors: [
+                    _activeFill1.withOpacity(0.90),
+                    _activeFill2.withOpacity(0.55),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Main content column
+          Column(
+            children: [
+              // Header card
+              Padding(
+                padding: EdgeInsets.fromLTRB(16, topPad + 80, 16, 16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                        color: Colors.white.withOpacity(0.18)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(11),
+                        decoration: BoxDecoration(
+                          color: AdminColors.primary.withOpacity(0.55),
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: Icon(_headerIcon,
+                            color: Colors.white, size: 26),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              displayName,
+                              style: AppTextStyles.h4.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              displayEmail,
+                              style: AppTextStyles.caption.copyWith(
+                                  color: Colors.white.withOpacity(0.55)),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 7),
+                            Row(children: [
+                              Container(
+                                width: 7,
+                                height: 7,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF4CAF50),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF4CAF50)
+                                          .withOpacity(0.5),
+                                      blurRadius: 4,
+                                    )
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 5),
+                              Text('Online',
+                                  style: AppTextStyles.caption.copyWith(
+                                      color: const Color(0xFF4CAF50),
+                                      fontWeight: FontWeight.w500)),
+                            ]),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               // Menu items
               Expanded(
                 child: ListView(
@@ -362,41 +423,104 @@ class MoreMenuDrawer extends StatelessWidget {
                   ],
                 ),
               ),
+              // Accent separator
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+                child: SizedBox(
+                  height: 10,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Full-width line, bright in the middle
+                      Container(
+                        height: 1,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.transparent,
+                              _activeFill1.withOpacity(0.60),
+                              Colors.transparent,
+                            ],
+                            stops: const [0.0, 0.5, 1.0],
+                          ),
+                        ),
+                      ),
+                      // Subtle dot centered on the line
+                      Container(
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFFD4952A).withOpacity(0.7),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFD4952A).withOpacity(0.2),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               // Logout
               if (onLogout != null)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      Navigator.of(context).pop();
-                      await onLogout?.call();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _isAdminOrMod
-                          ? AdminColors.primary.withOpacity(0.85)
+                  padding:
+                      const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: _isAdminOrMod
+                          ? const LinearGradient(
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                              colors: [Color(0xFF6B3210), Color(0xFFD4952A)],
+                            )
+                          : null,
+                      color: _isAdminOrMod
+                          ? null
                           : const Color(0xFF0077B6),
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(double.infinity, 48),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
-                      elevation: 0,
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                    icon: const Icon(Icons.logout, size: 18),
-                    label: Text(
-                      'Logout',
-                      style: GoogleFonts.outfit(
-                          fontWeight: FontWeight.w600, fontSize: 15),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () async {
+                          Navigator.of(context).pop();
+                          await onLogout?.call();
+                        },
+                        borderRadius: BorderRadius.circular(14),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 14, horizontal: 20),
+                          child: Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.logout,
+                                  color: Colors.white, size: 18),
+                              const SizedBox(width: 10),
+                              Text('Logout',
+                                  style: AppTextStyles.label
+                                      .copyWith(
+                                          color: Colors.white,
+                                          fontWeight:
+                                              FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
               Padding(
-                padding: const EdgeInsets.only(bottom: 20, top: 10),
+                padding:
+                    const EdgeInsets.only(bottom: 20, top: 12),
                 child: Text(
                   '© 2025 Hello Sarawak',
-                  style: GoogleFonts.outfit(
-                    color: Colors.white.withOpacity(0.30),
-                    fontSize: 11,
-                  ),
+                  style: AppTextStyles.caption.copyWith(
+                      color: Colors.white.withOpacity(0.28)),
                 ),
               ),
             ],
@@ -406,7 +530,8 @@ class MoreMenuDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildDrawerItem(DrawerMenuItem item, {required bool isSelected}) {
+  Widget _buildDrawerItem(DrawerMenuItem item,
+      {required bool isSelected}) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 3),
       decoration: BoxDecoration(
@@ -414,46 +539,60 @@ class MoreMenuDrawer extends StatelessWidget {
             ? const LinearGradient(
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
-                colors: [
-                  Color(0xFFC4893A),
-                  Color(0xFF7A3D15),
-                ],
+                colors: [Color(0xFF6B3210), Color(0xFFD4952A)],
               )
             : null,
-        color: isSelected ? null : Colors.white.withOpacity(0.07),
+        color: isSelected ? null : Colors.white.withOpacity(0.08),
+        border: isSelected
+            ? null
+            : Border.all(color: Colors.white.withOpacity(0.10)),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Row(
-        children: [
-          // Left accent bar for active item
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 4,
-            height: isSelected ? 36 : 0,
-            margin: const EdgeInsets.only(left: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.7),
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ),
-          Expanded(
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 2),
-              leading: Icon(item.icon, color: Colors.white, size: 20),
-              title: Text(
-                item.label,
-                style: GoogleFonts.outfit(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight:
-                      isSelected ? FontWeight.w600 : FontWeight.w400,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => onItemSelected(item.label),
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 12, vertical: 10),
+            child: Row(children: [
+              // Left accent bar
+              Container(
+                width: 3,
+                height: isSelected ? 36 : 0,
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.8),
+                  borderRadius: BorderRadius.circular(4),
                 ),
               ),
-              onTap: () => onItemSelected(item.label),
-            ),
+              // Icon box
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? Colors.white.withOpacity(0.18)
+                      : Colors.white.withOpacity(0.07),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child:
+                    Icon(item.icon, color: Colors.white, size: 18),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                item.label,
+                style: AppTextStyles.label.copyWith(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: isSelected
+                      ? FontWeight.w600
+                      : FontWeight.w400,
+                ),
+              ),
+            ]),
           ),
-        ],
+        ),
       ),
     );
   }

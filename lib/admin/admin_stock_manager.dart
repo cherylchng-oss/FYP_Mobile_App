@@ -1150,7 +1150,18 @@ class _AdminStockManagerPageState extends State<AdminStockManagerPage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: _isLoadingOccupancy ? null : _loadOccupancyData,
+                onPressed: _isLoadingOccupancy ? null : () {
+                  if (_dateRange == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: const Text('Please select a date range first.'),
+                      backgroundColor: _C.primary,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ));
+                    return;
+                  }
+                  _loadOccupancyData();
+                },
                 icon: _isLoadingOccupancy
                     ? const SizedBox(width: 16, height: 16,
                         child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
@@ -1203,13 +1214,13 @@ class _AdminStockManagerPageState extends State<AdminStockManagerPage> {
   }
 
   Widget _buildReservationCard(Map<String, dynamic> r) {
-    final resId    = _safeText(r['reservationid'], fallback: '');
-    final property = _safeText(r['propertyaddress']);
-    final room     = _safeText(r['roomname'], fallback: '');
-    final checkIn  = _formatDate(r['checkindate']);
-    final checkOut = _formatDate(r['checkoutdate']);
-    final guest    = _safeText(r['customername']);
-    final status   = _safeText(r['reservationstatus']);
+    final resId    = _safeText(r['reservationid'] ?? r['reservation_id'], fallback: '');
+    final property = _safeText(r['propertyaddress'] ?? r['propertyAddress'] ?? r['property_address'] ?? r['property_name'] ?? r['propertyname']);
+    final room     = _safeText(r['roomname'] ?? r['room_name'] ?? r['roomName'], fallback: '');
+    final checkIn  = _formatDate(r['checkindatetime'] ?? r['checkindate'] ?? r['checkin_date'] ?? r['checkin']);
+    final checkOut = _formatDate(r['checkoutdatetime'] ?? r['checkoutdate'] ?? r['checkout_date'] ?? r['checkout']);
+    final guest    = _safeText(r['customername'] ?? r['customer_name'] ?? r['customerName'] ?? r['username'] ?? r['guestname']);
+    final status   = _safeText(r['reservationstatus'] ?? r['reservation_status'] ?? r['status']);
 
     Color statusColor;
     final sl = status.toLowerCase();
@@ -1377,8 +1388,27 @@ class _AdminStockManagerPageState extends State<AdminStockManagerPage> {
   }
 
   Widget _buildBlackoutCard(Map<String, dynamic> b) {
-    final property  = _safeText(
-        b['property_name'] ?? b['propertyname'] ?? b['propertyaddress'] ?? b['property']);
+    // Try all known field names; fall back to cross-referencing loaded properties by id
+    String _resolvePropertyName() {
+      final direct = b['property_name'] ?? b['propertyname'] ?? b['propertyaddress']
+          ?? b['property'] ?? b['property_address'] ?? b['propertyAddress'];
+      if (direct != null && direct.toString().trim().isNotEmpty) {
+        return direct.toString().trim();
+      }
+      final pid = (b['propertyid'] ?? b['property_id'] ?? b['pid'])?.toString();
+      if (pid != null) {
+        for (final p in _properties) {
+          if (p['propertyid']?.toString() == pid || p['id']?.toString() == pid) {
+            final name = p['propertyaddress'] ?? p['propertyAddress'];
+            if (name != null && name.toString().trim().isNotEmpty) {
+              return name.toString().trim();
+            }
+          }
+        }
+      }
+      return '-';
+    }
+    final property = _resolvePropertyName();
     final room      = _safeText(
         b['room_name'] ?? b['roomname'] ?? b['room'], fallback: '');
     final startDate = _formatDate(b['start_date']);
