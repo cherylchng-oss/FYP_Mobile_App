@@ -49,6 +49,10 @@ List<DrawerMenuItem> drawerMenuItemsForRole(UserRole role) {
         DrawerMenuItem(Icons.account_balance_wallet, 'Ledger'),
         DrawerMenuItem(Icons.inventory_2, 'Stock Manager'),
         DrawerMenuItem(Icons.star_rate, 'Customer Review'),
+        DrawerMenuItem(Icons.list_alt, 'Activity Logs'),
+        DrawerMenuItem(Icons.account_balance_wallet, 'Ledger'),
+        DrawerMenuItem(Icons.inventory_2, 'Stock Manager'),
+        DrawerMenuItem(Icons.star_rate, 'Customer Review'),
         DrawerMenuItem(Icons.person, 'Profile'),
       ];
     case UserRole.moderator:

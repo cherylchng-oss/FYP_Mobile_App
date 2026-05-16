@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'colors.dart';
 import 'navigation_menu.dart';
 
@@ -15,6 +16,8 @@ class BottomNavItem {
 // ---------------------------------------------------------------------------
 // SharedBottomNavigationBar — role-aware bottom nav
 // ---------------------------------------------------------------------------
+import 'colors.dart';
+
 class SharedBottomNavigationBar extends StatelessWidget {
   final int selectedIndex;
   final Function(int) onTap;
@@ -33,7 +36,9 @@ class SharedBottomNavigationBar extends StatelessWidget {
     switch (role) {
       case UserRole.admin:
         return AdminColors.primary;
+        return AdminColors.primary;
       case UserRole.moderator:
+        return AdminColors.primary;
         return AdminColors.primary;
       case UserRole.owner:
         return AdminColors.success;
@@ -52,7 +57,21 @@ class SharedBottomNavigationBar extends StatelessWidget {
           BottomNavItem(Icons.person, 'Profile'),
           BottomNavItem(Icons.more_horiz, 'More'),
         ];
+        return const [
+          BottomNavItem(Icons.admin_panel_settings, 'Dashboard'),
+          BottomNavItem(Icons.apartment, 'Properties'),
+          BottomNavItem(Icons.inventory_2, 'Stock'),
+          BottomNavItem(Icons.person, 'Profile'),
+          BottomNavItem(Icons.more_horiz, 'More'),
+        ];
       case UserRole.moderator:
+        return const [
+          BottomNavItem(Icons.manage_accounts, 'Dashboard'),
+          BottomNavItem(Icons.apartment, 'Properties'),
+          BottomNavItem(Icons.inventory_2, 'Stock'),
+          BottomNavItem(Icons.person, 'Profile'),
+          BottomNavItem(Icons.more_horiz, 'More'),
+        ];
         return const [
           BottomNavItem(Icons.manage_accounts, 'Dashboard'),
           BottomNavItem(Icons.apartment, 'Properties'),
@@ -71,8 +90,10 @@ class SharedBottomNavigationBar extends StatelessWidget {
       case UserRole.customer:
         return const [
           BottomNavItem(Icons.home, 'Rooms'),
+          BottomNavItem(Icons.home, 'Rooms'),
           BottomNavItem(Icons.shopping_cart, 'Cart'),
           BottomNavItem(Icons.calendar_today, 'Bookings'),
+          BottomNavItem(Icons.person, 'Profile'),
           BottomNavItem(Icons.person, 'Profile'),
         ];
     }
@@ -120,6 +141,7 @@ class SharedBottomNavigationBar extends StatelessWidget {
         index == 4 &&
         (role == UserRole.admin || role == UserRole.moderator);
 
+    final isMoreButton = index == 4 && role != UserRole.customer;
     return Expanded(
       child: InkWell(
         onTap: () {
