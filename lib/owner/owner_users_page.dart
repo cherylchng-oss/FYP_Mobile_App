@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -136,18 +135,14 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
               title: 'Users',
               subtitle: 'Manage all platform users',
               notifCount: 3,
-              bottomPadding: 80,
+              bottomPadding: 40,
             ),
           ),
           SafeArea(
             bottom: false,
             child: Column(
               children: [
-                Builder(
-                  builder: (ctx) => SizedBox(
-                    height: MediaQuery.of(ctx).size.height * 0.115,
-                  ),
-                ),
+                SizedBox(height: OwnerHeader.spacerHeight()),
                 _buildSegmentedToggle(),
                 Padding(
                   padding:
@@ -184,28 +179,21 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
   }
 
   // ---------------------------------------------------------------------------
-  // Segmented toggle — glass pill over photo header
+  // Segmented toggle — solid pill on cream background
   // ---------------------------------------------------------------------------
   Widget _buildSegmentedToggle() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
-      padding: const EdgeInsets.all(5),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.20)),
+        color: AdminColors.border.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(22),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Row(
-            children: [
-              Expanded(child: _buildTogglePill('Customers', 0)),
-              Expanded(child: _buildTogglePill('Admin / Mod', 1)),
-            ],
-          ),
-        ),
+      child: Row(
+        children: [
+          Expanded(child: _buildTogglePill('Customers', 0)),
+          Expanded(child: _buildTogglePill('Admin / Mod', 1)),
+        ],
       ),
     );
   }
@@ -223,7 +211,7 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
           boxShadow: isActive
               ? [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
+                    color: AdminColors.drawerBg.withOpacity(0.08),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   )
@@ -234,8 +222,7 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
         child: Text(
           label,
           style: GoogleFonts.plusJakartaSans(
-            color:
-                isActive ? AdminColors.textPrimary : Colors.white,
+            color: isActive ? AdminColors.textPrimary : AdminColors.textMuted,
             fontSize: 14,
             fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
           ),
