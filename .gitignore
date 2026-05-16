@@ -44,3 +44,7 @@ doc/api/
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Kotlin compiler errors
+android/.kotlin/
+*.log
