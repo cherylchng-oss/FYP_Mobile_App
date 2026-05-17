@@ -3,7 +3,7 @@ import '../api.dart' as api;
 import '../services/session.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Design Tokens (mirrors AppColors from customer_rooms.dart)
+// Design Tokens
 // ─────────────────────────────────────────────────────────────────────────────
 class _C {
   static const primary      = Color(0xFF6B3F1A);
@@ -24,7 +24,7 @@ class _C {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Notification type → icon + color
+// Notification type
 // ─────────────────────────────────────────────────────────────────────────────
 IconData _typeIcon(String type) {
   switch (type.toLowerCase()) {
@@ -74,6 +74,8 @@ class _NotificationPageState extends State<NotificationPage> {
   int currentPage = 1;
   final int itemsPerPage = 5;
 
+  final ScrollController _scrollController = ScrollController();
+
   int? userId;
 
   final List<String> filters = [
@@ -93,11 +95,17 @@ class _NotificationPageState extends State<NotificationPage> {
     'Upcoming Booking': Icons.calendar_today_rounded,
   };
 
-  // ── Lifecycle (unchanged) ─────────────────────────────────────────────────
+  // ── Lifecycle ─────────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
     loadUserAndNotifications();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> loadUserAndNotifications() async {
@@ -157,7 +165,17 @@ class _NotificationPageState extends State<NotificationPage> {
 
   void changeFilter(String selectedFilter) => setState(() { filter = selectedFilter; currentPage = 1; });
 
-  void goToPage(int page) { if (page >= 1 && page <= totalPages) setState(() => currentPage = page); }
+  void goToPage(int page) {
+    if (page >= 1 && page <= totalPages) {
+      setState(() => currentPage = page);
+
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOut,
+      );
+    }
+  }
 
   Future<void> handleNotificationClick(dynamic item) async {
     try {
@@ -226,25 +244,38 @@ class _NotificationPageState extends State<NotificationPage> {
       backgroundColor: _C.cream,
       body: Column(children: [
         _buildHeader(),
-        Expanded(child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-          child: Center(child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 900),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const SizedBox(height: 20),
-              _buildFilters(),
-              const SizedBox(height: 20),
-              _buildSummaryBar(),
-              const SizedBox(height: 16),
-              _buildNotificationList(),
-            ]),
-          )),
-        )),
+        Expanded(
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            padding: EdgeInsets.fromLTRB(
+              16,
+              0,
+              16,
+              MediaQuery.of(context).padding.bottom + 50,
+            ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 900),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 20),
+                    _buildFilters(),
+                    const SizedBox(height: 20),
+                    _buildSummaryBar(),
+                    const SizedBox(height: 16),
+                    _buildNotificationList(),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ]),
     );
   }
 
-  // ── Header (gradient + back arrow) ───────────────────────────────────────
+  // ── Header
   Widget _buildHeader() {
     return Container(
       decoration: const BoxDecoration(
@@ -508,69 +539,93 @@ class _NotificationPageState extends State<NotificationPage> {
 
   // ── Pagination ────────────────────────────────────────────────────────────
   Widget _buildPagination() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: _C.border)),
-      child: Column(children: [
-        // Page info
-        Text('Page $currentPage of $totalPages  ·  ${filteredNotifications.length} total',
-          style: const TextStyle(color: _C.textMuted, fontSize: 12, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 12),
-        Wrap(
-          alignment: WrapAlignment.center,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 6, runSpacing: 6,
-          children: [
-            _paginationBtn(label: '← Prev', disabled: currentPage == 1, onTap: () => goToPage(currentPage - 1)),
-            ...getPageNumbers().map((page) {
-              if (page == '...') {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4),
-                  child: Text('…', style: TextStyle(color: _C.textMuted, fontWeight: FontWeight.w800, fontSize: 16)),
-                );
-              }
-              return _pageNumber(page as int);
-            }),
-            _paginationBtn(label: 'Next →', disabled: currentPage == totalPages, onTap: () => goToPage(currentPage + 1)),
-          ],
-        ),
-      ]),
+    if (totalPages <= 1) return const SizedBox.shrink();
+
+    final pageWidgets = <Widget>[
+      _pageBtn(
+        Icons.chevron_left_rounded,
+        currentPage == 1 ? null : () => goToPage(currentPage - 1),
+      ),
+      ...getPageNumbers().map((page) {
+        if (page == '...') return _pageDots();
+        return _pageNumberBtn(page as int);
+      }),
+      _pageBtn(
+        Icons.chevron_right_rounded,
+        currentPage == totalPages ? null : () => goToPage(currentPage + 1),
+      ),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 6,
+        runSpacing: 8,
+        children: pageWidgets,
+      ),
     );
   }
 
-  Widget _paginationBtn({required String label, required bool disabled, required VoidCallback onTap}) =>
-    InkWell(
-      onTap: disabled ? null : onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(
-          color: disabled ? _C.surface : _C.primary,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: disabled ? _C.border : _C.primary),
-        ),
-        child: Text(label, style: TextStyle(color: disabled ? _C.textMuted : Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
-      ),
-    );
+  Widget _pageNumberBtn(int page) {
+    final sel = page == currentPage;
 
-  Widget _pageNumber(int page) {
-    final isActive = currentPage == page;
     return InkWell(
-      onTap: () => goToPage(page),
+      onTap: sel ? null : () => goToPage(page),
       borderRadius: BorderRadius.circular(10),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        width: 40, height: 38,
+        width: 38,
+        height: 38,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isActive ? _C.accent : _C.surface,
+          color: sel ? _C.primary : Colors.white,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: isActive ? _C.accent : _C.border),
-          boxShadow: isActive ? [BoxShadow(color: _C.accent.withOpacity(0.3), blurRadius: 6, offset: const Offset(0, 2))] : [],
+          border: Border.all(color: sel ? _C.primary : _C.border),
         ),
-        child: Text('$page', style: TextStyle(color: isActive ? Colors.white : _C.textSecond, fontWeight: FontWeight.w800, fontSize: 13)),
+        child: Text(
+          '$page',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: sel ? Colors.white : _C.textSecond,
+          ),
+        ),
       ),
     );
   }
+
+  Widget _pageDots() {
+    return const SizedBox(
+      width: 28,
+      height: 38,
+      child: Center(
+        child: Text(
+          '...',
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+            color: _C.textMuted,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _pageBtn(IconData icon, VoidCallback? onTap) => Container(
+    width: 38,
+    height: 38,
+    decoration: BoxDecoration(
+      color: onTap != null ? Colors.white : _C.surface,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: _C.border),
+    ),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Icon(
+        icon,
+        size: 22,
+        color: onTap != null ? _C.primaryLight : _C.border,
+      ),
+    ),
+  );
 }

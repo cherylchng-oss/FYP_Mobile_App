@@ -56,6 +56,13 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/Sarawak_icon.png"
+  remove_alpha_ios: true
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -89,6 +96,17 @@ flutter:
     - assets/ob3.png
     - assets/bg_wave.png
     - assets/google_logo.png
+    - assets/stock_manager.png
+    - assets/property_listing.png
+    - assets/activity_logs.png
+    - assets/book_and_pay.png
+    - assets/audit_trails.png
+    - assets/ledger.png
+    - assets/customer_review.png
+    - assets/user_management.png
+    - assets/notification.png
+    - assets/dashboard.png
+    - assets/profile.png
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 

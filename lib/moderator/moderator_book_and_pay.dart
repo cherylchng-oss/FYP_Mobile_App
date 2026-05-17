@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'moderator_notification.dart';
-import 'moderator_dashboard.dart';
 import '../shared/navigation_menu.dart' as nav;
 import '../shared/bottom_navigation_bar.dart';
+import '../shared/colors.dart';
 import '../services/session.dart';
 import '../api.dart' as api;
 import '../app.dart';
+import 'moderator_notification.dart';
 
 class ModeratorBooknPayLog extends StatefulWidget {
   const ModeratorBooknPayLog({super.key});
@@ -17,32 +17,26 @@ class ModeratorBooknPayLog extends StatefulWidget {
 class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  int _selectedIndex = -1;
-  String? _currentUserRole;
-
   final TextEditingController _searchController = TextEditingController();
   String _selectedActionType = 'All Actions';
   bool _isLoading = true;
+  int _unreadCount = 0;
 
   List<Map<String, dynamic>> allLogs = [];
 
   List<Map<String, dynamic>> get filteredLogs {
     final query = _searchController.text.trim().toLowerCase();
-
     return allLogs.where((log) {
       final byType = _selectedActionType == 'All Actions' ||
           log['actionType'] == _selectedActionType;
       if (!byType) return false;
-
       if (query.isEmpty) return true;
-
       final text = [
         log['timestamp'],
         log['action'],
         log['actionedBy'],
         log['userId'].toString(),
       ].join(' ').toLowerCase();
-
       return text.contains(query);
     }).toList();
   }
@@ -50,87 +44,9 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
   @override
   void initState() {
     super.initState();
-    _loadUserRole();
     _loadData();
-    _searchController.addListener(() {
-      setState(() {});
-    });
-  }
-
-  Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final userid = await Session.getUserId();
-      if (userid == null) {
-        setState(() {
-          _isLoading = false;
-        });
-        return;
-      }
-
-      final logsData = await api.fetchBookAndPayLogs(userid);
-      
-      if (mounted) {
-        setState(() {
-          allLogs.clear();
-          
-          if (logsData is List) {
-            for (var log in logsData) {
-              // Map API response to expected format
-              allLogs.add({
-                'userId': log['userid'] ?? log['userId'] ?? 0,
-                'timestamp': log['timestamp'] ?? log['createdat'] ?? log['createdAt'] ?? '',
-                'action': log['action'] ?? log['message'] ?? log['description'] ?? '',
-                'actionedBy': log['username'] ?? log['actionedBy'] ?? log['actionedby'] ?? 'Unknown',
-                'actionType': _mapActionType(log['actiontype'] ?? log['actionType'] ?? log['action'] ?? ''),
-              });
-            }
-            // Reverse so newest is first
-            allLogs = allLogs.reversed.toList();
-          }
-          _isLoading = false;
-        });
-      }
-    } catch (error) {
-      print('Error fetching book and pay logs: $error');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          // Show error message to user
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Failed to load book and pay logs. Please check if the backend endpoint is implemented.',
-                style: const TextStyle(color: Colors.white),
-              ),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        });
-      }
-    }
-  }
-
-  String _mapActionType(dynamic actionType) {
-    if (actionType == null) return 'Update';
-    final type = actionType.toString().toLowerCase();
-    if (type.contains('create') || type.contains('created')) return 'Create';
-    if (type.contains('payment') || type.contains('paid') || type.contains('pay')) return 'Payment';
-    if (type.contains('request') || type.contains('booking')) return 'Request';
-    if (type.contains('delete') || type.contains('remove')) return 'Delete';
-    if (type.contains('update') || type.contains('modified')) return 'Update';
-    return 'Update';
-  }
-
-  Future<void> _loadUserRole() async {
-    final userRole = await Session.getUserGroup();
-    setState(() {
-      _currentUserRole = userRole;
-    });
+    _loadUnreadCount();
+    _searchController.addListener(() => setState(() {}));
   }
 
   @override
@@ -139,265 +55,401 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
     super.dispose();
   }
 
+  Future<void> _loadUnreadCount() async {
+    try {
+      final userid = await Session.getUserId();
+
+      if (userid == null) return;
+
+      final notifications = await api.fetchNotifications(userid);
+
+      if (!mounted) return;
+
+      setState(() {
+        _unreadCount = notifications.where((n) {
+          final isRead = n['isread'] ?? n['isRead'] ?? false;
+          return isRead == false;
+        }).length;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    try {
+      final userid = await Session.getUserId();
+      final usergroup = await Session.getUserGroup() ?? '';
+      if (userid == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+      final logsData = await api.fetchBookAndPayLogs(userid, usergroup);
+      if (mounted) {
+        setState(() {
+          allLogs.clear();
+          for (var log in logsData) {
+            final actionType = _mapActionType(log['action'] ?? '');
+            if (actionType == 'Other') continue;
+            allLogs.add({
+              'userId': log['userid'] ?? 0,
+              'timestamp': log['timestamp'] ?? '',
+              'action': log['action'] ?? '',
+              'actionedBy': log['username'] ?? 'Unknown',
+              'actionType': actionType,
+            });
+          }
+          allLogs = allLogs.reversed.toList();
+          _isLoading = false;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to load book and pay logs.', style: TextStyle(color: Colors.white)),
+            backgroundColor: AdminColors.danger,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  String _mapActionType(dynamic actionType) {
+    if (actionType == null) return 'Other';
+    final text = actionType.toString().toLowerCase();
+    if (text.contains('expired') || text.contains('booking expired') ||
+        text.contains('payment expired') || text.contains('reservation expired') ||
+        text.contains('time expired') || text.contains('status changed to expired')) {
+      return 'Expired';
+    }
+    if (text.contains('paid deposit') || text.contains('deposit paid') ||
+        text.contains('deposit payment') || text.contains('pay deposit') ||
+        text.contains('downpayment') || text.contains('down payment') ||
+        text.contains('partially paid') || text.contains('partial payment') ||
+        text.contains('deposit')) {
+      return 'Deposit';
+    }
+    if (text.contains('balance payment') || text.contains('balance paid') ||
+        text.contains('pay balance') || text.contains('paid balance') ||
+        text.contains('remaining balance') || text.contains('balance due') ||
+        text.contains('settle balance') || text.contains('balance removed') ||
+        text.contains('completed balance') || text.contains('balance')) {
+      return 'Balance';
+    }
+    if (text.contains('instant full payment') || text.contains('full payment') ||
+        text.contains('fully paid') || text.contains('paid in full') ||
+        text.contains('payment received') || text.contains('status changed to paid') ||
+        text.contains('booking status changed to paid') ||
+        text.contains('reservation status changed to paid')) {
+      return 'Full Payment';
+    }
+    if (text.contains('cancel') || text.contains('cancelled') ||
+        text.contains('canceled') || text.contains('rejected') ||
+        text.contains('restock') || text.contains('restocked') ||
+        text.contains('removed reservation') || text.contains('remove reservation')) {
+      return 'Cancel';
+    }
+    return 'Other';
+  }
+
+  Color _actionTypeColor(String type) {
+    switch (type) {
+      case 'Full Payment': return AdminColors.success;
+      case 'Deposit': return AdminColors.accent;
+      case 'Balance': return AdminColors.primaryLight;
+      case 'Cancel': return AdminColors.danger;
+      case 'Expired': return AdminColors.textMuted;
+      default: return AdminColors.textMuted;
+    }
+  }
+
+  Future<void> _handleLogout() async {
+    await Session.clear();
+    if (!mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+  }
+
+  void _handleBottomNavTap(int index) {
+    if (index == 4) return;
+    if (index == 0) Navigator.of(context).pushNamedAndRemoveUntil('/moderator', (route) => false);
+    else if (index == 1) Navigator.of(context).pushNamed('/manage-services');
+    else if (index == 2) Navigator.of(context).pushNamed('/moderator-stock-manager');
+    else if (index == 3) Navigator.of(context).pushNamed('/profile');
+  }
+
+  void _handleMenuSelection(String label) {
+    Navigator.pop(context);
+    switch (label) {
+      case 'BooknPayLog': break;
+      case 'Dashboard': Navigator.of(context).pushNamedAndRemoveUntil('/moderator', (route) => false); break;
+      case 'User Management': Navigator.of(context).pushNamed('/user-management', arguments: AppRole.moderator); break;
+      case 'Properties':
+      case 'PropertyListing': Navigator.of(context).pushNamed('/manage-services'); break;
+      case 'Stock Manager':
+      case 'Reservation':
+      case 'Bookings': Navigator.of(context).pushNamed('/moderator-stock-manager'); break;
+      case 'Activity Logs': Navigator.of(context).pushNamed('/moderator-activity-logs'); break;
+      case 'Ledger': Navigator.of(context).pushNamed('/moderator-ledger'); break;
+      case 'Customer Reviews': Navigator.of(context).pushNamed('/moderator-customer-reviews'); break;
+      case 'Profile': Navigator.of(context).pushNamed('/profile'); break;
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // Build
+  // ─────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isWide = screenWidth > 600;
+    final topPad = MediaQuery.of(context).padding.top;
+    final logs = filteredLogs;
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: const Color(0xFFE7F0FF),
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF0077B6), Color(0xFF78AAFF)],
-                ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.receipt_long,
-                  color: Colors.white, size: 24),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'Book & Pay Log',
-                  style: TextStyle(
-                    color: Color(0xFF1E293B),
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  'Monitor BnP activities',
-                  style: TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 12,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          
-          IconButton(
-            icon: const Icon(Icons.logout, color: Color(0xFF64748B)),
-            onPressed: _handleLogout,
-          ),
-        ],
-      ),
-
+      backgroundColor: AdminColors.cream,
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.moderator,
         onItemSelected: _handleMenuSelection,
         onLogout: _handleLogout,
         currentPageLabel: 'BooknPayLog',
       ),
-
-      body: RefreshIndicator(
-        onRefresh: _loadData,
-        child: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(
-                  color: Color(0xFF78AAFF),
-                ),
-              )
-            : SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-              isWide
-                  ? Row(
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            'Book & Pay Log',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF1E293B),
-                            ),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 300,
-                          child: _buildSearchField(),
-                        ),
-                      ],
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Book & Pay Log',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E293B),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildSearchField(),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    _buildFilterCard(),
-                    const SizedBox(height: 16),
-                    _buildLogList(filteredLogs),
-                  ],
-                ),
-              ),
-      ),
-
       bottomNavigationBar: SharedBottomNavigationBar(
-        selectedIndex: _selectedIndex,
+        selectedIndex: 4,
         onTap: _handleBottomNavTap,
         scaffoldKey: _scaffoldKey,
         role: nav.UserRole.moderator,
       ),
-    );
-  }
-
-  Widget _buildSearchField() {
-    return TextField(
-      controller: _searchController,
-      decoration: InputDecoration(
-        hintText: 'Search logs...',
-        prefixIcon: const Icon(Icons.search, color: Color(0xFF64748B)),
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      body: Column(
+        children: [
+          _buildHeader(topPad),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadData,
+              color: AdminColors.primary,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSearchField(),
+                    const SizedBox(height: 12),
+                    _buildFilterCard(),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Records', style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
+                        Text('${logs.length} found',
+                            style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (_isLoading)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 48),
+                          child: CircularProgressIndicator(color: AdminColors.primary),
+                        ),
+                      )
+                    else
+                      _buildLogList(logs),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
+  // ── Header ──────────────────────────────────────────────────────────────────
+  Widget _buildHeader(double topPad) {
+    return SizedBox(
+      width: double.infinity,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.asset('assets/book_and_pay.png', fit: BoxFit.cover),
+          ),
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF3D1E0C).withOpacity(0.62),
+                    const Color(0xFF8B4A2F).withOpacity(0.55),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(20, topPad + 24, 20, 36),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white.withOpacity(0.25)),
+                  ),
+                  child: const Icon(Icons.receipt_long_outlined, color: Colors.white, size: 26),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Book & Pay Log',
+                          style: AppTextStyles.h2.copyWith(
+                              color: Colors.white, fontSize: 24, height: 1.2)),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Monitor booking and payment\nactivities across the system.',
+                        style: AppTextStyles.bodySmall.copyWith(
+                            color: Colors.white.withOpacity(0.72), height: 1.4),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => ModeratorNotifications()),
+                  ).then((_) => _loadUnreadCount()),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(9),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white.withOpacity(0.25)),
+                        ),
+                        child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 15),
+                      ),
+                      if (_unreadCount > 0)
+                        Positioned(
+                          top: -4, right: -4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                                color: Color(0xFFE0A43A), shape: BoxShape.circle),
+                            child: Text('$_unreadCount',
+                                style: AppTextStyles.caption.copyWith(
+                                    color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Search ───────────────────────────────────────────────────────────────────
+  Widget _buildSearchField() {
+    return TextField(
+      controller: _searchController,
+      cursorColor: AdminColors.primary,
+      style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
+      decoration: InputDecoration(
+        hintText: 'Search logs...',
+        hintStyle: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted),
+        prefixIcon: const Icon(Icons.search, color: AdminColors.textMuted),
+        filled: true,
+        fillColor: AdminColors.cardBg,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AdminColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AdminColors.primary, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+    );
+  }
+
+  // ── Filter ───────────────────────────────────────────────────────────────────
   Widget _buildFilterCard() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AdminColors.cardBg,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        border: Border.all(color: AdminColors.border),
+        boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.05),
+            blurRadius: 8, offset: const Offset(0, 3))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Action Type',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
-            ),
-          ),
-          const SizedBox(height: 8),
+          Text('Filter by Action Type',
+              style: AppTextStyles.caption.copyWith(color: AdminColors.textSecond, fontWeight: FontWeight.w600, fontSize: 12)),
+          const SizedBox(height: 6),
           Container(
             decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-              borderRadius: BorderRadius.circular(8),
+              color: AdminColors.surface,
+              border: Border.all(color: AdminColors.border),
+              borderRadius: BorderRadius.circular(10),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: DropdownButton<String>(
               value: _selectedActionType,
               isExpanded: true,
               underline: const SizedBox.shrink(),
-              dropdownColor: Colors.white,
-              items: const [
-                'All Actions',
-                'Create',
-                'Request',
-                'Payment',
-                'Update',
-                'Delete',
-              ].map((type) {
-                return DropdownMenuItem(
-                  value: type,
-                  child: Text(
-                    type,
-                    style: TextStyle(
-                      color: Color(0xFF0F172A),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                );
-              }).toList(),
+              dropdownColor: AdminColors.cardBg,
+              icon: const Icon(Icons.keyboard_arrow_down, color: AdminColors.textMuted),
+              style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
+              items: const ['All Actions', 'Deposit', 'Balance', 'Full Payment', 'Cancel', 'Expired']
+                  .map((type) => DropdownMenuItem(value: type, child: Text(type)))
+                  .toList(),
               onChanged: (value) {
                 if (value == null) return;
-                setState(() {
-                  _selectedActionType = value;
-                });
+                setState(() => _selectedActionType = value);
               },
             ),
           ),
-          const SizedBox(height: 12),
         ],
       ),
     );
   }
 
+  // ── Log List ─────────────────────────────────────────────────────────────────
   Widget _buildLogList(List<Map<String, dynamic>> logs) {
     if (logs.isEmpty) {
       return Container(
-        margin: const EdgeInsets.only(top: 8),
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(36),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          color: AdminColors.cardBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AdminColors.border),
+          boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.05),
+              blurRadius: 10, offset: const Offset(0, 4))],
         ),
-        child: Column(
-          children: const [
-            Icon(Icons.search_off, size: 64, color: Color(0xFFCBD5E1)),
-            SizedBox(height: 16),
-            Text(
-              'No data found',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF64748B),
-              ),
-            ),
-            SizedBox(height: 4),
-            Text(
-              'Try changing the filters or search keyword.',
-              style: TextStyle(
-                fontSize: 14,
-                color: Color(0xFF94A3B8),
-              ),
-            ),
-          ],
-        ),
+        child: Column(children: [
+          const Icon(Icons.search_off, size: 56, color: AdminColors.border),
+          const SizedBox(height: 14),
+          Text('No records found',
+              style: AppTextStyles.h4.copyWith(color: AdminColors.textSecond)),
+          const SizedBox(height: 6),
+          Text('Try changing the filter or search keyword.',
+              style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted),
+              textAlign: TextAlign.center),
+        ]),
       );
     }
 
@@ -406,76 +458,50 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
       physics: const NeverScrollableScrollPhysics(),
       itemCount: logs.length,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        final log = logs[index];
-        return _buildLogCard(log);
-      },
+      itemBuilder: (context, index) => _buildLogCard(logs[index]),
     );
   }
 
+  // ── Log Card ─────────────────────────────────────────────────────────────────
   Widget _buildLogCard(Map<String, dynamic> log) {
+    final typeColor = _actionTypeColor(log['actionType'] ?? '');
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AdminColors.cardBg,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        border: Border.all(color: AdminColors.border),
+        boxShadow: [BoxShadow(color: AdminColors.primary.withOpacity(0.06),
+            blurRadius: 10, offset: const Offset(0, 3))],
       ),
       padding: const EdgeInsets.all(16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 40,
-            height: 40,
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFFE7F0FF),
+              color: typeColor.withOpacity(0.12),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.receipt_long,
-                size: 22, color: Color(0xFF78AAFF)),
+            child: Icon(Icons.receipt_long_outlined, size: 20, color: typeColor),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  log['actionedBy'] ?? '',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1E293B),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  log['action'] ?? '',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
+                Text(log['actionedBy'] ?? '',
+                    style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
+                const SizedBox(height: 3),
+                Text(log['action'] ?? '',
+                    style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textSecond)),
                 const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(Icons.access_time,
-                        size: 14, color: Color(0xFF94A3B8)),
-                    const SizedBox(width: 4),
-                    Text(
-                      log['timestamp'] ?? '',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF94A3B8),
-                      ),
-                    ),
-                  ],
-                ),
+                Row(children: [
+                  const Icon(Icons.access_time, size: 12, color: AdminColors.textMuted),
+                  const SizedBox(width: 4),
+                  Text(log['timestamp'] ?? '',
+                      style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted)),
+                ]),
               ],
             ),
           ),
@@ -484,54 +510,32 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE7F0FF),
-                  borderRadius: BorderRadius.circular(12),
+                  color: typeColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(999),
                 ),
-                child: Text(
-                  log['actionType'] ?? '',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF78AAFF),
-                  ),
-                ),
+                child: Text(log['actionType'] ?? '',
+                    style: AppTextStyles.caption.copyWith(
+                        color: typeColor, fontWeight: FontWeight.w700)),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               PopupMenuButton<String>(
-                color: Colors.white,
-                icon: const Icon(Icons.more_horiz, color: Color(0xFF64748B)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                color: AdminColors.cardBg,
+                icon: const Icon(Icons.more_horiz, color: AdminColors.textMuted),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 onSelected: (value) {
-                  if (value == 'view') {
-                    _showLogDetailsDialog(log);
-                  }
+                  if (value == 'view') _showLogDetailsDialog(log);
                 },
                 itemBuilder: (context) => [
                   PopupMenuItem(
                     value: 'view',
-                    child: Row(
-                      children: const [
-                        Icon(
-                          Icons.visibility,
-                          size: 18,
-                          color: Color(0xFF64748B),
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'View Details',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF1E293B),
-                          ),
-                        ),
-                      ],
-                    ),
+                    child: Row(children: [
+                      const Icon(Icons.visibility, size: 18, color: AdminColors.textMuted),
+                      const SizedBox(width: 8),
+                      Text('View Details',
+                          style: AppTextStyles.label.copyWith(color: AdminColors.textPrimary)),
+                    ]),
                   ),
                 ],
               ),
@@ -542,14 +546,13 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
     );
   }
 
+  // ── Details Dialog ───────────────────────────────────────────────────────────
   void _showLogDetailsDialog(Map<String, dynamic> log) {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        backgroundColor: const Color(0xFFE7F0FF),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        backgroundColor: AdminColors.cardBg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -559,42 +562,33 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Log Details',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E293B),
-                    ),
-                  ),
+                  Text('Log Details',
+                      style: AppTextStyles.h3.copyWith(color: AdminColors.textPrimary)),
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon: const Icon(Icons.close, color: AdminColors.textMuted),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              _buildDetailField('UserId', log['userId'].toString()),
+              Divider(color: AdminColors.border),
+              const SizedBox(height: 8),
+              _buildDetailField('User ID', log['userId'].toString()),
               _buildDetailField('Timestamp', log['timestamp']),
               _buildDetailField('Action', log['action']),
               _buildDetailField('Actioned By', log['actionedBy']),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () => Navigator.pop(context),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0077B6),
+                    backgroundColor: AdminColors.primary,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    textStyle: AppTextStyles.label.copyWith(color: Colors.white),
                   ),
-                  child: const Text(
-                    'Close',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
+                  child: const Text('Close'),
                 ),
               ),
             ],
@@ -610,118 +604,14 @@ class _ModeratorBooknPayLogState extends State<ModeratorBooknPayLog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 14,
-              color: Color(0xFF0F172A),
-            ),
-          ),
+          Text(label,
+              style: AppTextStyles.caption.copyWith(
+                  color: AdminColors.textMuted, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 3),
+          Text(value,
+              style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary)),
         ],
       ),
     );
-  }
-
-  void _handleBottomNavTap(int index) {
-    if (index == 4) {
-      // More button - handled by SharedBottomNavigationBar to open drawer
-      return;
-    }
-    if (index == 0) {
-      // Dashboard
-      Navigator.of(context).pushNamed('/moderator');
-      return;
-    }
-    if (index == 3) {
-      // Profile
-      Navigator.of(context).pushNamed('/profile');
-      return;
-    }
-    if (index == 1) {
-      // Properties
-      Navigator.of(context).pushNamed('/manage-services');
-      return;
-    }
-    if (index == 2) {
-      // Bookings
-      Navigator.of(context).pushNamed('/manage-booking');
-      return;
-    }
-    setState(() => _selectedIndex = index);
-  }
-
-  void _handleMenuSelection(String label) {
-    if (label == 'BooknPayLog') {
-      // Already on book and pay log
-      return;
-    }
-    if (label == 'Dashboard') {
-      Navigator.of(context).pushNamed('/moderator');
-      return;
-    }
-    if (label == 'Profile') {
-      Navigator.of(context).pushNamed('/profile');
-      return;
-    }
-    if (label == 'User Management') {
-      Navigator.of(context).pushNamed('/user-management', arguments: AppRole.moderator);
-      return;
-    }
-    if (label == 'PropertyListing' || label == 'Properties') {
-      Navigator.of(context).pushNamed('/manage-services');
-      return;
-    }
-    if (label == 'Reservation' || label == 'Bookings') {
-      Navigator.of(context).pushNamed('/manage-booking');
-      return;
-    }
-    if (label == 'AuditTrails') {
-      Navigator.of(context).pushNamed('/moderator-audit-trails');
-      return;
-    }
-  }
-
-  Future<void> _handleLogout() async {
-    // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFFE7F0FF),
-        title: const Text('Logout', style: TextStyle(color: Colors.black)),
-        content: const Text('Are you sure you want to logout?', style: TextStyle(color: Colors.black)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.black)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0077B6),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      // Clear the session data
-      await Session.clear();
-      if (mounted) {
-        // Navigate back to the before-login screen
-        Navigator.pushNamedAndRemoveUntil(context, '/before-login', (route) => false);
-      }
-    }
   }
 }

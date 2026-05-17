@@ -4,14 +4,13 @@ import 'services/session.dart';
 import 'services/rbac_service.dart' as rbac;
 import 'api.dart' as api;
 import 'app.dart';
-import 'shared/customer_layout.dart';
 import 'shared/navigation_menu.dart' as nav;
 import 'shared/bottom_navigation_bar.dart';
+import 'shared/colors.dart';
 import 'customer/customer_cart.dart';
 import 'customer/customer_bookings.dart';
 import 'customer/customer_notification.dart';
-import 'owner/owner_reservation.dart';
-import 'owner/owner_property_listing.dart';
+import 'owner/owner_property_detail.dart';
 import 'shared_admin_moderator/user_management.dart';
 
 enum _PasswordStrength { none, weak, medium, strong }
@@ -56,7 +55,11 @@ class _ProfilePageState extends State<ProfilePage>
   // Edit-profile dialog controllers
   final TextEditingController _editUsernameController =
       TextEditingController();
+  final TextEditingController _editEmailController = TextEditingController();
   final TextEditingController _editPhoneController = TextEditingController();
+  final TextEditingController _editDobController = TextEditingController();
+  final TextEditingController _editCountryController = TextEditingController();
+  String? _editGender;
 
   // Shake animation for invalid input (dialog)
   late AnimationController _shakeController;
@@ -72,10 +75,12 @@ class _ProfilePageState extends State<ProfilePage>
   // Saving state inside dialog (for loading spinner)
   bool _isSavingDialog = false;
 
-  final Color _primaryBlue = const Color(0xFF0077B6);
-  final Color _pageBg = const Color(0xFFE7F0FF);
-  final Color _textDark = const Color(0xFF1E293B);
-  final Color _textMuted = const Color(0xFF64748B);
+  Color get _primaryBlue => AdminColors.primary;
+  Color get _pageBg => AdminColors.cream;
+  Color get _cardBg => AdminColors.cardBg;
+
+  static const Color _textDark = Color(0xFF1E293B);
+  static const Color _textMuted = Color(0xFF64748B);
   final BorderRadius _cardRadius = BorderRadius.circular(16);
 
   @override
@@ -121,7 +126,10 @@ class _ProfilePageState extends State<ProfilePage>
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
     _editUsernameController.dispose();
+    _editEmailController.dispose();
     _editPhoneController.dispose();
+    _editDobController.dispose();
+    _editCountryController.dispose();
     _shakeController.dispose();
     super.dispose();
   }
@@ -210,7 +218,7 @@ class _ProfilePageState extends State<ProfilePage>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: _pageBg,
+        backgroundColor: AdminColors.surface,
         title: const Text('Logout', style: TextStyle(color: Colors.black)),
         content: const Text(
           'Are you sure you want to logout?',
@@ -362,22 +370,6 @@ class _ProfilePageState extends State<ProfilePage>
     }
   }
 
-  Color _getHeaderColor(String role) {
-    switch (role.toLowerCase()) {
-      case 'admin':
-      case 'administrator':
-        return const Color(0xFF649EFF);
-      case 'moderator':
-        return const Color(0xFF78AAFF);
-      case 'owner':
-        return const Color(0xFF4188FF);
-      case 'customer':
-        return const Color(0xFF92BBFF);
-      default:
-        return const Color(0xFF92BBFF);
-    }
-  }
-
   String? get _effectiveRoleString {
     return (_userRole ?? _routeUserRole)?.toLowerCase();
   }
@@ -462,74 +454,19 @@ class _ProfilePageState extends State<ProfilePage>
 
   @override
   Widget build(BuildContext context) {
-    final args =
-        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-
-    // Fallback order: fetched data -> route args -> widget defaults
+    final topPad = MediaQuery.of(context).padding.top;
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final userName = _userName ?? args?['userName'] ?? widget.userName;
     final userEmail = _userEmail ?? args?['userEmail'] ?? widget.userEmail;
     final userRole = args?['userRole'] ?? _userRole ?? 'customer';
-    final headerColor = _getHeaderColor(userRole);
-
     final roleLower = userRole.toString().toLowerCase();
-    final bool canEditPaypal =
-        roleLower == 'admin' ||
-        roleLower == 'administrator' ||
-        roleLower == 'moderator';
+    final bool canEditPaypal = roleLower == 'owner';
     final navRole = _userRoleEnum;
-
-    if (roleLower == 'customer') {
-      return CustomerLayout(
-        selectedIndex: 3,
-        backgroundColor: _pageBg,
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          leading: const SizedBox(width: 0, height: 0),
-          leadingWidth: 0,
-          toolbarHeight: kToolbarHeight,
-          title: const Text(
-            "My Profile",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          centerTitle: true,
-          elevation: 0,
-          backgroundColor: headerColor,
-        ),
-        body: _profileBody(
-          userName: userName,
-          userEmail: userEmail,
-          userRole: userRole,
-          headerColor: headerColor,
-          canEditPaypal: canEditPaypal,
-        ),
-      );
-    }
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: _pageBg,
+      backgroundColor: AdminColors.cream,
       drawerEnableOpenDragGesture: false,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        leading: const SizedBox(width: 0, height: 0),
-        leadingWidth: 0,
-        toolbarHeight: kToolbarHeight,
-        title: const Text(
-          "My Profile",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        centerTitle: true,
-        elevation: 0,
-        backgroundColor: headerColor,
-      ),
       endDrawer: (navRole != null && navRole != nav.UserRole.customer)
           ? MoreMenuDrawer(
               role: navRole,
@@ -538,365 +475,442 @@ class _ProfilePageState extends State<ProfilePage>
               currentPageLabel: 'Profile',
             )
           : null,
-      body: _profileBody(
-        userName: userName,
-        userEmail: userEmail,
-        userRole: userRole,
-        headerColor: headerColor,
-        canEditPaypal: canEditPaypal,
-      ),
-      bottomNavigationBar: navRole != null ? SharedBottomNavigationBar(
-        selectedIndex: _selectedIndex,
-        onTap: _handleBottomNavTap,
-        scaffoldKey: _scaffoldKey,
-        role: navRole,
-      ) : null,
-    );
-  }
-
-  Widget _profileBody({
-    required String userName,
-    required String userEmail,
-    required dynamic userRole,
-    required Color headerColor,
-    required bool canEditPaypal,
-  }) {
-    return SafeArea(
-      top: false,
-      child: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFF0077B6),
-              ),
-            )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  if (_errorMessage != null)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.orange.shade300),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(Icons.warning_amber_rounded,
-                              color: Colors.orange.shade700),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              _errorMessage!,
-                              style: TextStyle(
-                                color: Colors.orange.shade900,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.refresh),
-                            onPressed: _loadUserData,
-                            color: Colors.orange.shade700,
-                            tooltip: 'Retry',
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 24,
-                      horizontal: 18,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: _cardRadius,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
+      body: Column(
+        children: [
+          _buildProfileHeader(topPad, userName, userEmail, roleLower),
+          Expanded(
+            child: _isLoading
+                ? Center(child: CircularProgressIndicator(color: _primaryBlue))
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Center(
-                          child: Column(
+                        if (_errorMessage != null) _buildErrorBanner(),
+                        _buildMenuSection(),
+                        if (canEditPaypal) ...[
+                          const SizedBox(height: 16),
+                          _buildPaypalSection(),
+                        ],
+                        const SizedBox(height: 24),
+                        _buildLogoutBtn(),
+                      ],
+                    ),
+                  ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: navRole != null
+          ? SharedBottomNavigationBar(
+              selectedIndex: _selectedIndex,
+              onTap: _handleBottomNavTap,
+              scaffoldKey: _scaffoldKey,
+              role: navRole,
+            )
+          : null,
+    );
+  }
+
+  Widget _buildProfileHeader(double topPad, String userName, String userEmail, String roleLower) {
+    final roleDisplay = _userRole != null
+        ? rbac.RBACService.getRoleDisplayName(_userRole!)
+        : roleLower;
+    final rawDate = _fullUserData?['created_at']?.toString() ??
+        _fullUserData?['createdat']?.toString() ?? '';
+    final joinedOn = rawDate.isNotEmpty ? rawDate.split('T').first : '—';
+
+    return Container(
+      width: double.infinity,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.asset('assets/profile.png', fit: BoxFit.cover),
+          ),
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF3D1E0C).withOpacity(0.65),
+                    const Color(0xFF8B4A2F).withOpacity(0.58),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(20, topPad + 16, 20, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Text('My Profile',
+                      style: AppTextStyles.h3.copyWith(
+                          color: Colors.white, fontWeight: FontWeight.w600)),
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.13),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withOpacity(0.22)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Stack(
                             children: [
                               CircleAvatar(
-                                radius: 46,
-                                backgroundColor: headerColor,
-                                child: const Icon(
-                                  Icons.person,
-                                  color: Colors.white,
-                                  size: 52,
-                                ),
+                                radius: 36,
+                                backgroundColor: Colors.white.withOpacity(0.25),
+                                child: const Icon(Icons.person,
+                                    color: Colors.white, size: 40),
                               ),
-                              const SizedBox(height: 14),
-                              Text(
-                                userName,
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w700,
-                                  color: _textDark,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                userEmail,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: _textMuted,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: headerColor.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  rbac.RBACService.getRoleDisplayName(
-                                      _userRole ?? userRole),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: headerColor,
+                              Positioned(
+                                bottom: 0, right: 0,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: AdminColors.primary,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 1.5),
                                   ),
-                                ),
-                              ),
-                              const SizedBox(height: 18),
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: headerColor,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 10,
-                                    horizontal: 22,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(30),
-                                  ),
-                                ),
-                                onPressed: () {
-                                  _showEditProfileDialog();
-                                },
-                                icon: const Icon(Icons.settings,
-                                    color: Colors.white, size: 18),
-                                label: const Text(
-                                  "Edit Profile",
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.white,
-                                  ),
+                                  child: const Icon(Icons.camera_alt,
+                                      color: Colors.white, size: 10),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-
-                        const SizedBox(height: 24),
-                        Text(
-                          "Account Information",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: _textDark,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Divider(
-                          height: 20,
-                          thickness: 1,
-                          color: Colors.grey.shade200,
-                        ),
-                        const SizedBox(height: 4),
-
-                        _infoRow(
-                          icon: Icons.badge,
-                          label: "Username",
-                          value: userName,
-                          color: headerColor,
-                        ),
-                        _infoRow(
-                          icon: Icons.email_outlined,
-                          label: "Email",
-                          value: userEmail,
-                          color: headerColor,
-                        ),
-                        _infoRow(
-                          icon: Icons.verified_user,
-                          label: "Account Status",
-                          value: "Active",
-                          color: headerColor,
-                        ),
-                        _infoRow(
-                          icon: Icons.group,
-                          label: "User Role",
-                          value: _userRole != null
-                              ? rbac.RBACService.getRoleDisplayName(_userRole!)
-                              : userRole.toString().toUpperCase(),
-                          color: headerColor,
-                        ),
-                        if (_userPhone != null && _userPhone!.isNotEmpty)
-                          _infoRow(
-                            icon: Icons.phone,
-                            label: "Phone",
-                            value: _userPhone!,
-                            color: headerColor,
-                          ),
-                        if (_userAddress != null && _userAddress!.isNotEmpty)
-                          _infoRow(
-                            icon: Icons.location_on,
-                            label: "Address",
-                            value: _userAddress!,
-                            color: headerColor,
-                          ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 18),
-
-                  if (canEditPaypal)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 20,
-                        horizontal: 18,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: _cardRadius,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 10,
-                            offset: const Offset(0, 3),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(userName,
+                                    style: AppTextStyles.h3.copyWith(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700)),
+                                const SizedBox(height: 3),
+                                Text(userEmail,
+                                    style: AppTextStyles.bodySmall.copyWith(
+                                        color: Colors.white.withOpacity(0.75))),
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                        color: Colors.white.withOpacity(0.3)),
+                                  ),
+                                  child: Text(roleDisplay.toLowerCase(),
+                                      style: AppTextStyles.caption.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w500)),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: 14),
+                      Container(height: 1, color: Colors.white.withOpacity(0.15)),
+                      const SizedBox(height: 14),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          Text(
-                            "PayPal Email",
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: _textDark,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _paypalController,
-                            keyboardType: TextInputType.emailAddress,
-                            decoration: InputDecoration(
-                              hintText: "Enter your PayPal email",
-                              hintStyle: TextStyle(color: _textMuted),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(
-                                  color: _primaryBlue,
-                                  width: 1.6,
-                                ),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            "Payment Information",
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: _textDark,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            "As an Admin or Moderator, you are required to provide your PayPal account for receiving payments.",
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: _textMuted,
-                              height: 1.4,
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: _updatePaypal,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _primaryBlue,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: const Text(
-                                "Update PayPal Information",
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
+                          _buildInfoCell(Icons.verified_user_outlined,
+                              'Account Status', 'Active', Colors.white),
+                          Container(
+                              width: 1, height: 36,
+                              color: Colors.white.withOpacity(0.2)),
+                          _buildInfoCell(Icons.shield_outlined,
+                              'MFA Protected', 'Enabled', Colors.white),
                         ],
                       ),
-                    ),
-
-                  const SizedBox(height: 42),
-
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _primaryBlue,
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 14,
-                          horizontal: 28,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                      ),
-                      icon: const Icon(Icons.logout, color: Colors.white),
-                      label: const Text(
-                        "Logout",
-                        style: TextStyle(fontSize: 16, color: Colors.white),
-                      ),
-                      onPressed: _handleLogout,
-                    ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
+        ],
+      ),
     );
   }
 
-  // Glassmorphism Edit Profile dialog with username, phone, and password
-  Future<void> _showEditProfileDialog() async {
-    _editUsernameController.text = _userName ?? widget.userName;
-    _editPhoneController.text = _userPhone ?? '';
+  Widget _buildInfoCell(IconData icon, String label, String value, Color valueColor) {
+    return Column(
+      children: [
+        Icon(icon, size: 16, color: Colors.white.withOpacity(0.7)),
+        const SizedBox(height: 4),
+        Text(label,
+            style: AppTextStyles.caption.copyWith(
+                color: Colors.white.withOpacity(0.6), fontSize: 10)),
+        const SizedBox(height: 2),
+        Text(value,
+            style: AppTextStyles.caption.copyWith(
+                color: valueColor, fontWeight: FontWeight.w600, fontSize: 11)),
+      ],
+    );
+  }
+
+  Widget _buildProfileStats() {
+    final stats = [
+      (Icons.apartment, 'Properties\nManaged', AdminColors.primary),
+      (Icons.rate_review_outlined, 'Reviews\nReplied', AdminColors.success),
+      (Icons.inventory_2_outlined, 'Stock Items\nManaged', AdminColors.accent),
+      (Icons.security, 'Security\nScore', AdminColors.warning),
+    ];
+
+    return Row(
+      children: [
+        for (int i = 0; i < stats.length; i++) ...[
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+              decoration: BoxDecoration(
+                color: AdminColors.cardBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AdminColors.border),
+                boxShadow: [BoxShadow(
+                    color: AdminColors.primary.withOpacity(0.06),
+                    blurRadius: 8, offset: const Offset(0, 3))],
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                      color: stats[i].$3.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(stats[i].$1, size: 16, color: stats[i].$3),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('—',
+                      style: AppTextStyles.bodyDefault.copyWith(
+                          color: AdminColors.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  Text(stats[i].$2,
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.caption.copyWith(
+                          color: AdminColors.textMuted, fontSize: 10)),
+                ],
+              ),
+            ),
+          ),
+          if (i < stats.length - 1) const SizedBox(width: 8),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildMenuSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AdminColors.cardBg,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AdminColors.border),
+        boxShadow: [BoxShadow(
+            color: AdminColors.primary.withOpacity(0.05),
+            blurRadius: 8, offset: const Offset(0, 3))],
+      ),
+      child: Column(
+        children: [
+          _buildMenuItem(Icons.person_outline, 'Profile Information',
+              'View and update your personal details',
+              () => _showEditProfileDialog()),
+          Divider(height: 1, thickness: 1,
+              color: AdminColors.border, indent: 16, endIndent: 16),
+          _buildMenuItem(Icons.lock_outline, 'Security & Access',
+              'Password, MFA and trusted devices',
+              () => _showSecurityDialog()),
+          Divider(height: 1, thickness: 1,
+              color: AdminColors.border, indent: 16, endIndent: 16),
+          _buildMenuItem(Icons.settings_outlined, 'Preferences',
+              'Notifications, language and theme',
+              () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: const Text('Coming soon'),
+                  backgroundColor: AdminColors.primary,
+                  duration: const Duration(seconds: 1)))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMenuItem(IconData icon, String title, String subtitle,
+      VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AdminColors.surface,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 18, color: AdminColors.primary),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: AppTextStyles.label.copyWith(
+                          color: AdminColors.textPrimary,
+                          fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: AppTextStyles.caption.copyWith(
+                          color: AdminColors.textMuted)),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios,
+                size: 13, color: AdminColors.textMuted),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaypalSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 18),
+      decoration: BoxDecoration(
+        color: AdminColors.cardBg,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AdminColors.border),
+        boxShadow: [BoxShadow(
+            color: _primaryBlue.withOpacity(0.06),
+            blurRadius: 10, offset: const Offset(0, 3))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('PayPal Email',
+              style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _paypalController,
+            keyboardType: TextInputType.emailAddress,
+            style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
+            decoration: InputDecoration(
+              hintText: 'Enter your PayPal email',
+              hintStyle: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted),
+              filled: true,
+              fillColor: AdminColors.surface,
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: AdminColors.border)),
+              enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: AdminColors.border)),
+              focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: AdminColors.primary)),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text('Payment Information',
+              style: AppTextStyles.label.copyWith(
+                  color: AdminColors.textPrimary, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text(
+            'As an owner, you are required to provide your PayPal account for receiving payments.',
+            style: AppTextStyles.bodySmall.copyWith(
+                color: AdminColors.textMuted, height: 1.4),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _updatePaypal,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AdminColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+              child: Text('Update PayPal Information',
+                  style: AppTextStyles.label.copyWith(
+                      color: Colors.white, fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLogoutBtn() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AdminColors.primary,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(30)),
+          elevation: 0,
+        ),
+        icon: const Icon(Icons.logout, color: Colors.white, size: 18),
+        label: Text('Logout',
+            style: AppTextStyles.bodyDefault.copyWith(
+                color: Colors.white, fontWeight: FontWeight.w600)),
+        onPressed: _handleLogout,
+      ),
+    );
+  }
+
+  Widget _buildErrorBanner() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade100,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade300),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(_errorMessage!,
+                style: TextStyle(color: Colors.orange.shade900, fontSize: 13)),
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadUserData,
+            color: Colors.orange.shade700,
+            tooltip: 'Retry',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showSecurityDialog() async {
     _newPasswordController.clear();
     _confirmPasswordController.clear();
     _passwordStrength = _PasswordStrength.none;
@@ -904,8 +918,414 @@ class _ProfilePageState extends State<ProfilePage>
     _showConfirmPassword = false;
     _isSavingDialog = false;
 
-    final role = _userRole ?? _routeUserRole ?? 'customer';
-    final Color accentColor = _getHeaderColor(role);
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogCtx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: SlideTransition(
+          position: _shakeAnimation,
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: StatefulBuilder(
+              builder: (context, setStateSec) {
+                return ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(dialogCtx).size.height * 0.85,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(24),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Colors.white.withOpacity(0.95),
+                            Colors.white.withOpacity(0.85),
+                          ],
+                        ),
+                        border: Border.all(
+                            color: Colors.white.withOpacity(0.7), width: 1.2),
+                        boxShadow: [BoxShadow(
+                            color: Colors.black.withOpacity(0.18),
+                            blurRadius: 22, offset: const Offset(0, 10))],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Center(
+                              child: Container(
+                                width: 40, height: 4,
+                                margin: const EdgeInsets.only(bottom: 14),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                              ),
+                            ),
+                            Center(
+                              child: Column(children: [
+                                Text('Security & Access',
+                                    style: TextStyle(fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                        color: _textDark)),
+                                const SizedBox(height: 4),
+                                Text('Manage your password and MFA settings.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                        fontSize: 13, color: _textMuted)),
+                              ]),
+                            ),
+                            const SizedBox(height: 20),
+
+                            // New Password
+                            Text('New Password',
+                                style: TextStyle(fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: _textDark)),
+                            const SizedBox(height: 6),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                                boxShadow: [BoxShadow(
+                                    color: Colors.black.withOpacity(0.03),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 3))],
+                              ),
+                              child: TextField(
+                                controller: _newPasswordController,
+                                obscureText: !_showNewPassword,
+                                onChanged: (v) => setStateSec(() {
+                                  _passwordStrength =
+                                      _calculatePasswordStrength(v);
+                                }),
+                                decoration: InputDecoration(
+                                  hintText: 'Enter new password',
+                                  hintStyle: TextStyle(
+                                      color: _textMuted, fontSize: 13),
+                                  prefixIcon: Icon(Icons.lock_outline,
+                                      color: AdminColors.primary),
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      _showNewPassword
+                                          ? Icons.visibility
+                                          : Icons.visibility_off,
+                                      color: Colors.grey,
+                                    ),
+                                    onPressed: () => setStateSec(() =>
+                                        _showNewPassword = !_showNewPassword),
+                                  ),
+                                  border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                      borderSide: BorderSide.none),
+                                  filled: true,
+                                  fillColor: Colors.transparent,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 14),
+                                ),
+                              ),
+                            ),
+                            _buildPasswordStrengthBar(),
+
+                            const SizedBox(height: 16),
+
+                            // Confirm New Password
+                            Text('Confirm New Password',
+                                style: TextStyle(fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: _textDark)),
+                            const SizedBox(height: 6),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                                boxShadow: [BoxShadow(
+                                    color: Colors.black.withOpacity(0.03),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 3))],
+                              ),
+                              child: TextField(
+                                controller: _confirmPasswordController,
+                                obscureText: !_showConfirmPassword,
+                                decoration: InputDecoration(
+                                  hintText: 'Re-enter new password',
+                                  hintStyle: TextStyle(
+                                      color: _textMuted, fontSize: 13),
+                                  prefixIcon: Icon(Icons.lock_reset_outlined,
+                                      color: AdminColors.primary),
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      _showConfirmPassword
+                                          ? Icons.visibility
+                                          : Icons.visibility_off,
+                                      color: Colors.grey,
+                                    ),
+                                    onPressed: () => setStateSec(() =>
+                                        _showConfirmPassword =
+                                            !_showConfirmPassword),
+                                  ),
+                                  border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                      borderSide: BorderSide.none),
+                                  filled: true,
+                                  fillColor: Colors.transparent,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 14),
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 20),
+
+                            // MFA container
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: AdminColors.surface,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: AdminColors.border),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(7),
+                                      decoration: BoxDecoration(
+                                        color: AdminColors.primary
+                                            .withOpacity(0.12),
+                                        borderRadius:
+                                            BorderRadius.circular(10),
+                                      ),
+                                      child: Icon(Icons.shield_outlined,
+                                          size: 16,
+                                          color: AdminColors.primary),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text('Multi-Factor Authentication',
+                                              style: TextStyle(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: _textDark)),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                              'Add an extra layer of security to your account.',
+                                              style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: _textMuted)),
+                                        ],
+                                      ),
+                                    ),
+                                  ]),
+                                  const SizedBox(height: 14),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: OutlinedButton.icon(
+                                      onPressed: null,
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: AdminColors.primary,
+                                        side: const BorderSide(
+                                            color: AdminColors.primary),
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 11),
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(10)),
+                                      ),
+                                      icon: const Icon(
+                                          Icons.verified_user_outlined,
+                                          size: 16),
+                                      label: const Text('Enable MFA',
+                                          style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(height: 20),
+
+                            Row(children: [
+                              Expanded(
+                                child: TextButton(
+                                  onPressed: () =>
+                                      Navigator.of(dialogCtx).pop(),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: _textMuted,
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 10),
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(999)),
+                                  ),
+                                  child: const Text('Cancel'),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: _isSavingDialog
+                                      ? null
+                                      : () async {
+                                          final np =
+                                              _newPasswordController.text
+                                                  .trim();
+                                          final cp =
+                                              _confirmPasswordController.text
+                                                  .trim();
+                                          if (np.isEmpty && cp.isEmpty) {
+                                            Navigator.of(dialogCtx).pop();
+                                            return;
+                                          }
+                                          if (np.length < 6 ||
+                                              !RegExp(r'\d').hasMatch(np)) {
+                                            _shakeController.forward(from: 0);
+                                            ScaffoldMessenger.of(dialogCtx)
+                                                .showSnackBar(const SnackBar(
+                                              content: Text(
+                                                  'Password must be at least 6 characters and include a number.'),
+                                              backgroundColor: Colors.redAccent,
+                                            ));
+                                            return;
+                                          }
+                                          if (np != cp) {
+                                            _shakeController.forward(from: 0);
+                                            ScaffoldMessenger.of(dialogCtx)
+                                                .showSnackBar(const SnackBar(
+                                              content: Text(
+                                                  'Passwords do not match.'),
+                                              backgroundColor: Colors.redAccent,
+                                            ));
+                                            return;
+                                          }
+                                          final userid =
+                                              await Session.getUserId();
+                                          if (userid == null) return;
+                                          if (_fullUserData == null) {
+                                            await _loadUserData();
+                                          }
+                                          setStateSec(
+                                              () => _isSavingDialog = true);
+                                          try {
+                                            final payload =
+                                                _buildBaseUpdatePayload(userid);
+                                            payload['password'] = np;
+                                            await api.updateProfile(payload);
+                                            if (!mounted) return;
+                                            setState(() =>
+                                                _storedPassword = np);
+                                            Navigator.of(dialogCtx).pop();
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(const SnackBar(
+                                              content: Text(
+                                                  'Password updated successfully.'),
+                                              backgroundColor:
+                                                  Color(0xFF4CAF50),
+                                            ));
+                                          } catch (e) {
+                                            if (!mounted) return;
+                                            setStateSec(() =>
+                                                _isSavingDialog = false);
+                                            _shakeController.forward(from: 0);
+                                            ScaffoldMessenger.of(dialogCtx)
+                                                .showSnackBar(SnackBar(
+                                              content: Text(
+                                                  'Failed to update password: $e'),
+                                              backgroundColor: Colors.redAccent,
+                                            ));
+                                          }
+                                        },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AdminColors.primary,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 10),
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(999)),
+                                  ),
+                                  child: _isSavingDialog
+                                      ? const SizedBox(
+                                          height: 18, width: 18,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2.3,
+                                              color: Colors.white))
+                                      : const Text('Save',
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.w600)),
+                                ),
+                              ),
+                            ]),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _dialogField(String label, TextEditingController ctrl,
+      IconData icon, TextInputType type, {String? hint}) {
+    return [
+      Text(label,
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600,
+              color: _textDark)),
+      const SizedBox(height: 6),
+      Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03),
+              blurRadius: 8, offset: const Offset(0, 3))],
+        ),
+        child: TextField(
+          controller: ctrl,
+          keyboardType: type,
+          decoration: InputDecoration(
+            hintText: hint ?? 'Enter ${label.toLowerCase()}',
+            hintStyle: TextStyle(color: _textMuted, fontSize: 13),
+            prefixIcon: Icon(icon, color: AdminColors.primary),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none),
+            filled: true,
+            fillColor: Colors.transparent,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          ),
+        ),
+      ),
+    ];
+  }
+
+  // Glassmorphism Edit Profile dialog with username, phone, and password
+  Future<void> _showEditProfileDialog() async {
+    _editUsernameController.text = _userName ?? widget.userName;
+    _editEmailController.text = _userEmail ?? widget.userEmail;
+    _editPhoneController.text = _userPhone ?? '';
+    _editDobController.text = (_fullUserData?['udob'] ?? _fullUserData?['dob'] ?? '').toString();
+    _editCountryController.text = _userAddress ?? '';
+    _editGender = (_fullUserData?['ugender'] ?? _fullUserData?['gender'])?.toString();
+    _isSavingDialog = false;
 
     await showDialog(
       context: context,
@@ -980,7 +1400,7 @@ class _ProfilePageState extends State<ProfilePage>
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      'Update your username, phone, and password.',
+                                      'Update your personal information.',
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
                                         fontSize: 13,
@@ -992,246 +1412,61 @@ class _ProfilePageState extends State<ProfilePage>
                               ),
                               const SizedBox(height: 18),
 
-                              // Username
-                              const Text(
-                                "Username",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF4B5563),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(14),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.03),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ],
-                                ),
-                                child: TextField(
-                                  controller: _editUsernameController,
-                                  decoration: InputDecoration(
-                                    hintText: 'Enter username',
-                                    hintStyle: TextStyle(color: _textMuted),
-                                    prefixIcon: Icon(
-                                      Icons.person_outline,
-                                      color: accentColor,
-                                    ),
-                                    border: OutlineInputBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(14),
-                                      borderSide: BorderSide.none,
-                                    ),
-                                    filled: true,
-                                    fillColor: Colors.transparent,
-                                    contentPadding:
-                                        const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 14,
-                                    ),
-                                  ),
-                                ),
-                              ),
-
+                              ..._dialogField('Username', _editUsernameController,
+                                  Icons.person_outline, TextInputType.text),
                               const SizedBox(height: 16),
-
-                              // Phone Number
-                              const Text(
-                                "Phone Number",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF4B5563),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(14),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.03),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ],
-                                ),
-                                child: TextField(
-                                  controller: _editPhoneController,
-                                  keyboardType: TextInputType.phone,
-                                  decoration: InputDecoration(
-                                    hintText: 'Enter phone number',
-                                    hintStyle: TextStyle(color: _textMuted),
-                                    prefixIcon: Icon(
-                                      Icons.phone_outlined,
-                                      color: accentColor,
-                                    ),
-                                    border: OutlineInputBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(14),
-                                      borderSide: BorderSide.none,
-                                    ),
-                                    filled: true,
-                                    fillColor: Colors.transparent,
-                                    contentPadding:
-                                        const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 14,
-                                    ),
-                                  ),
-                                ),
-                              ),
-
+                              ..._dialogField('Email', _editEmailController,
+                                  Icons.email_outlined, TextInputType.emailAddress),
                               const SizedBox(height: 16),
-
-                              // New Password
-                              const Text(
-                                "New Password (optional)",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF4B5563),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(14),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.03),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ],
-                                ),
-                                child: TextField(
-                                  controller: _newPasswordController,
-                                  obscureText: !_showNewPassword,
-                                  onChanged: (value) {
-                                    setStateDialog(() {
-                                      _passwordStrength =
-                                          _calculatePasswordStrength(value);
-                                    });
-                                  },
-                                  decoration: InputDecoration(
-                                    hintText:
-                                        'More than 6 characters, with numbers',
-                                    hintStyle: TextStyle(
-                                      fontSize: 12,
-                                      color: _textMuted,
-                                    ),
-                                    prefixIcon: Icon(
-                                      Icons.lock_outline,
-                                      color: accentColor,
-                                    ),
-                                    suffixIcon: IconButton(
-                                      icon: Icon(
-                                        _showNewPassword
-                                            ? Icons.visibility
-                                            : Icons.visibility_off,
-                                        color: Colors.grey,
-                                      ),
-                                      onPressed: () {
-                                        setStateDialog(() {
-                                          _showNewPassword =
-                                              !_showNewPassword;
-                                        });
-                                      },
-                                    ),
-                                    border: OutlineInputBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(14),
-                                      borderSide: BorderSide.none,
-                                    ),
-                                    filled: true,
-                                    fillColor: Colors.transparent,
-                                    contentPadding:
-                                        const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 14,
-                                    ),
-                                  ),
-                                ),
-                              ),
-
-                              // Strength meter
-                              _buildPasswordStrengthBar(),
-
+                              ..._dialogField('Phone Number', _editPhoneController,
+                                  Icons.phone_outlined, TextInputType.phone),
                               const SizedBox(height: 16),
-
-                              // Confirm Password
-                              const Text(
-                                "Confirm Password",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF4B5563),
-                                ),
-                              ),
+                              ..._dialogField('Date of Birth', _editDobController,
+                                  Icons.cake_outlined, TextInputType.datetime,
+                                  hint: 'YYYY-MM-DD'),
+                              const SizedBox(height: 16),
+                              // Gender
+                              Text('Gender',
+                                  style: TextStyle(fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: _textDark)),
                               const SizedBox(height: 6),
                               Container(
                                 decoration: BoxDecoration(
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(14),
-                                  boxShadow: [
-                                    BoxShadow(
+                                  boxShadow: [BoxShadow(
                                       color: Colors.black.withOpacity(0.03),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ],
+                                      blurRadius: 8, offset: const Offset(0, 3))],
                                 ),
-                                child: TextField(
-                                  controller: _confirmPasswordController,
-                                  obscureText: !_showConfirmPassword,
+                                child: DropdownButtonFormField<String>(
+                                  value: _editGender,
+                                  isExpanded: true,
                                   decoration: InputDecoration(
-                                    hintText: 'Re-enter new password',
-                                    hintStyle: TextStyle(
-                                      fontSize: 12,
-                                      color: _textMuted,
-                                    ),
-                                    prefixIcon: Icon(
-                                      Icons.lock_reset_outlined,
-                                      color: accentColor,
-                                    ),
-                                    suffixIcon: IconButton(
-                                      icon: Icon(
-                                        _showConfirmPassword
-                                            ? Icons.visibility
-                                            : Icons.visibility_off,
-                                        color: Colors.grey,
-                                      ),
-                                      onPressed: () {
-                                        setStateDialog(() {
-                                          _showConfirmPassword =
-                                              !_showConfirmPassword;
-                                        });
-                                      },
-                                    ),
+                                    prefixIcon: Icon(Icons.wc_outlined,
+                                        color: AdminColors.primary),
                                     border: OutlineInputBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(14),
-                                      borderSide: BorderSide.none,
-                                    ),
+                                        borderRadius: BorderRadius.circular(14),
+                                        borderSide: BorderSide.none),
                                     filled: true,
                                     fillColor: Colors.transparent,
-                                    contentPadding:
-                                        const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 14,
-                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 14),
                                   ),
+                                  hint: Text('Select gender',
+                                      style: TextStyle(color: _textMuted)),
+                                  items: ['Male', 'Female', 'Other',
+                                    'Prefer not to say']
+                                      .map((g) => DropdownMenuItem(
+                                          value: g, child: Text(g)))
+                                      .toList(),
+                                  onChanged: (val) =>
+                                      setStateDialog(() => _editGender = val),
                                 ),
                               ),
+                              const SizedBox(height: 16),
+                              ..._dialogField('Country', _editCountryController,
+                                  Icons.public_outlined, TextInputType.text),
 
                               const SizedBox(height: 20),
 
@@ -1266,7 +1501,7 @@ class _ProfilePageState extends State<ProfilePage>
                                               );
                                             },
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: accentColor,
+                                        backgroundColor: AdminColors.primary,
                                         foregroundColor: Colors.white,
                                         padding:
                                             const EdgeInsets.symmetric(
@@ -1317,9 +1552,10 @@ class _ProfilePageState extends State<ProfilePage>
     void Function(void Function()) setStateDialog,
   ) async {
     final username = _editUsernameController.text.trim();
+    final email = _editEmailController.text.trim();
     final phone = _editPhoneController.text.trim();
-    final newPassword = _newPasswordController.text.trim();
-    final confirmPassword = _confirmPasswordController.text.trim();
+    final dob = _editDobController.text.trim();
+    final country = _editCountryController.text.trim();
 
     // Username validation: at least 6 characters
     if (username.length < 6) {
@@ -1344,33 +1580,6 @@ class _ProfilePageState extends State<ProfilePage>
         ),
       );
       return;
-    }
-
-    // Password validation (optional)
-    if (newPassword.isNotEmpty || confirmPassword.isNotEmpty) {
-      if (newPassword.length < 6 || !RegExp(r'\d').hasMatch(newPassword)) {
-        _shakeController.forward(from: 0);
-        ScaffoldMessenger.of(dialogCtx).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Password must be at least 6 characters and include a number.',
-            ),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-        return;
-      }
-
-      if (newPassword != confirmPassword) {
-        _shakeController.forward(from: 0);
-        ScaffoldMessenger.of(dialogCtx).showSnackBar(
-          const SnackBar(
-            content: Text('Passwords do not match.'),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-        return;
-      }
     }
 
     // Get user id
@@ -1404,10 +1613,11 @@ class _ProfilePageState extends State<ProfilePage>
     // Build payload
     final updateData = _buildBaseUpdatePayload(userid);
     updateData['username'] = username;
-    updateData['uphoneno'] = phone;
-    if (newPassword.isNotEmpty) {
-      updateData['password'] = newPassword;
-    }
+    if (email.isNotEmpty) updateData['uemail'] = email;
+    if (phone.isNotEmpty) updateData['uphoneno'] = phone;
+    if (dob.isNotEmpty) updateData['udob'] = dob;
+    if (_editGender != null) updateData['ugender'] = _editGender;
+    if (country.isNotEmpty) updateData['ucountry'] = country;
 
     setStateDialog(() {
       _isSavingDialog = true;
@@ -1421,10 +1631,9 @@ class _ProfilePageState extends State<ProfilePage>
       // Update local state to reflect immediately in UI
       setState(() {
         _userName = username;
-        _userPhone = phone;
-        if (newPassword.isNotEmpty) {
-          _storedPassword = newPassword;
-        }
+        if (email.isNotEmpty) _userEmail = email;
+        if (phone.isNotEmpty) _userPhone = phone;
+        if (country.isNotEmpty) _userAddress = country;
       });
 
       Navigator.of(dialogCtx).pop(); // close dialog
@@ -1499,13 +1708,14 @@ class _ProfilePageState extends State<ProfilePage>
     }
 
     if (index == 2) {
-      // Bookings
       if (role == nav.UserRole.customer) {
         Navigator.of(context).pushReplacementNamed('/customer-bookings');
       } else if (role == nav.UserRole.owner) {
         Navigator.of(context).pushReplacementNamed('/owner-reservation');
+      } else if (role == nav.UserRole.admin) {
+        Navigator.of(context).pushReplacementNamed('/admin-stock-manager');
       } else {
-        Navigator.of(context).pushReplacementNamed('/manage-booking');
+        Navigator.of(context).pushReplacementNamed('/moderator-stock-manager');
       }
       return;
     }
@@ -1563,8 +1773,10 @@ class _ProfilePageState extends State<ProfilePage>
       case 'Bookings':
         if (role == nav.UserRole.owner) {
           Navigator.of(context).pushReplacementNamed('/owner-reservation');
+        } else if (role == nav.UserRole.admin) {
+          Navigator.of(context).pushReplacementNamed('/admin-stock-manager');
         } else {
-          Navigator.of(context).pushReplacementNamed('/manage-booking');
+          Navigator.of(context).pushReplacementNamed('/moderator-stock-manager');
         }
         break;
       case 'Rooms':
@@ -1594,20 +1806,12 @@ class _ProfilePageState extends State<ProfilePage>
         }
         break;
       case 'BooknPayLog':
-        if (role == nav.UserRole.admin) {
-          Navigator.of(context).pushReplacementNamed('/admin-book-and-pay');
-        } else if (role == nav.UserRole.moderator) {
-          Navigator.of(context).pushReplacementNamed('/moderator-book-and-pay');
-        } else if (role == nav.UserRole.owner) {
+        if (role == nav.UserRole.owner) {
           Navigator.of(context).pushReplacementNamed('/owner-book-and-pay');
         }
         break;
       case 'AuditTrails':
-        if (role == nav.UserRole.admin) {
-          Navigator.of(context).pushReplacementNamed('/admin-audit-trails');
-        } else if (role == nav.UserRole.moderator) {
-          Navigator.of(context).pushReplacementNamed('/moderator-audit-trails');
-        } else if (role == nav.UserRole.owner) {
+        if (role == nav.UserRole.owner) {
           Navigator.of(context).pushReplacementNamed('/owner-audit-trails');
         }
         break;
@@ -1617,11 +1821,38 @@ class _ProfilePageState extends State<ProfilePage>
           Navigator.of(context).pushReplacementNamed('/owner-cluster');
         }
         break;
+      case 'Activity Logs':
+        if (role == nav.UserRole.admin) {
+          Navigator.of(context).pushReplacementNamed('/admin-activity-logs');
+        } else if (role == nav.UserRole.moderator) {
+          Navigator.of(context).pushReplacementNamed('/moderator-activity-logs');
+        }
+        break;
+      case 'Ledger':
+        if (role == nav.UserRole.admin) {
+          Navigator.of(context).pushReplacementNamed('/admin-ledger');
+        } else if (role == nav.UserRole.moderator) {
+          Navigator.of(context).pushReplacementNamed('/moderator-ledger');
+        }
+        break;
+      case 'Stock Manager':
+        if (role == nav.UserRole.admin) {
+          Navigator.of(context).pushReplacementNamed('/admin-stock-manager');
+        } else if (role == nav.UserRole.moderator) {
+          Navigator.of(context).pushReplacementNamed('/moderator-stock-manager');
+        }
+        break;
+      case 'Customer Review':
+        Navigator.of(context).pushReplacementNamed('/admin-customer-reviews');
+        break;
+      case 'Customer Reviews':
+        Navigator.of(context).pushReplacementNamed('/moderator-customer-reviews');
+        break;
       default:
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Navigating to $label', style: const TextStyle(color: Colors.black)),
-            backgroundColor: const Color(0xFF468FAF),
+            content: Text('Navigating to $label', style: const TextStyle(color: Colors.white)),
+            backgroundColor: _primaryBlue,
             duration: const Duration(seconds: 1),
           ),
         );

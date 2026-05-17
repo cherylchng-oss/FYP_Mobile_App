@@ -1,11 +1,15 @@
 import 'dart:math' show min;
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../services/session.dart';
 import '../api.dart' as api;
 import '../app.dart';
 import 'manage_service.dart';
 import '../shared/navigation_menu.dart';
 import '../shared/bottom_navigation_bar.dart';
+import '../shared/colors.dart';
+import '../admin/admin_notification.dart';
+import '../moderator/moderator_notification.dart';
 
 // Who is using the page right now?
 enum AppRole { admin, moderator }
@@ -41,25 +45,47 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
   bool _isLoading = false;
   String? _errorMessage;
 
-  // ===== Role-aware theme =====
-  static const Color kBg = Color(0xFFE7F0FF); // both roles
+  // Notification badge
+  int _unreadCount = 0;
 
-  Color get kPrimary =>
-      widget.viewerRole == AppRole.admin ? const Color(0xFF649EFF) : const Color(0xFF78AAFF);
+  // ===== Theme =====
+  Color get kBg => AdminColors.cream;
+  Color get kPrimary => AdminColors.primary;
+  Color get kPrimaryDeep => AdminColors.primaryLight;
+  Color get kCardBg => AdminColors.cardBg;
+  Color get kBorder => AdminColors.border;
 
-  Color get kPrimaryDeep => _darken(kPrimary, .12);
-  static const Color kMuted = Color(0xFF6B7280); // gray-500
+  static const Color kMuted = Color(0xFF6B7280);
 
   UserRole get _drawerRole =>
       widget.viewerRole == AppRole.admin ? UserRole.admin : UserRole.moderator;
 
   List<DrawerMenuItem> get _drawerItems => drawerMenuItemsForRole(_drawerRole);
 
+  Future<void> _loadUnreadCount() async {
+    try {
+      final userid = await Session.getUserId();
+
+      if (userid == null) return;
+
+      final notifications = await api.fetchNotifications(userid);
+
+      if (!mounted) return;
+
+      setState(() {
+        _unreadCount = notifications.where((n) {
+          final isRead = n['isread'] ?? n['isRead'] ?? false;
+          return isRead == false;
+        }).length;
+      });
+    } catch (_) {}
+  }
+
   Future<void> _handleLogout() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFFE7F0FF),
+        backgroundColor: AdminColors.surface,
         title: const Text('Logout', style: TextStyle(color: Colors.black)),
         content: const Text('Are you sure you want to logout?', style: TextStyle(color: Colors.black)),
         actions: [
@@ -70,7 +96,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0077B6),
+              backgroundColor: kPrimary,
               foregroundColor: Colors.white,
             ),
             child: const Text('Logout'),
@@ -111,6 +137,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
   void initState() {
     super.initState();
     _loadUsers();
+    _loadUnreadCount();
   }
 
   Future<void> _loadUsers() async {
@@ -222,8 +249,8 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
     // Check multiple field name variations for phone (backend uses 'uphoneno')
     final phone = (raw['uphoneno'] ?? raw['phone'] ?? raw['phoneNo'] ?? raw['phoneno'] ?? raw['uphone'] ?? '').toString();
     // If phone is empty or "N/A", set to empty string
-    final phoneValue = phone.isEmpty || phone.toLowerCase() == 'n/a' 
-        ? '' 
+    final phoneValue = phone.isEmpty || phone.toLowerCase() == 'n/a'
+        ? ''
         : phone;
     final country = (raw['country'] ?? raw['countryname'] ?? raw['ucountry'] ?? '').toString();
     final cluster = (raw['cluster'] ?? raw['clustername'] ?? raw['clusterName'])?.toString();
@@ -301,19 +328,153 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
     return list;
   }
 
+  // ===== Header (Stock Manager style) =====
+  Widget _buildHeader(double topPad) {
+    return SizedBox(
+      height: topPad + 110,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.asset(
+              'assets/user_management.png',
+              fit: BoxFit.cover,
+            ),
+          ),
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF3D1E0C).withOpacity(0.62),
+                    const Color(0xFF8B4A2F).withOpacity(0.55),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.only(top: topPad + 24, left: 18, right: 18, bottom: 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(Icons.manage_accounts, color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'User Management',
+                        style: GoogleFonts.outfit(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        widget.viewerRole == AppRole.admin
+                            ? 'Customers, Moderators & Admins'
+                            : 'Customer Accounts',
+                        style: GoogleFonts.outfit(
+                          fontSize: 13,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Notification bell
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => widget.viewerRole == AppRole.admin
+                            ? AdminNotifications()
+                            : ModeratorNotifications(),
+                      ),
+                    ).then((_) => _loadUnreadCount());
+                  },
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 22),
+                      ),
+                      if (_unreadCount > 0)
+                        Positioned(
+                          top: -4,
+                          right: -4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFE53E3E),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              '$_unreadCount',
+                              style: GoogleFonts.outfit(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top;
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: kBg,
-      appBar: _buildAppBar(),
+      backgroundColor: AdminColors.cream,
       endDrawer: _buildDrawer(),
       body: Column(
         children: [
-          _buildTopBar(),
+          _buildHeader(topPad),
           _buildTypeChips(),
-          const SizedBox(height: 10),
-          Expanded(child: _buildUserListGlass()),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadUsers,
+              color: kPrimary,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                slivers: [
+                  SliverToBoxAdapter(child: _buildTopBar()),
+                  const SliverToBoxAdapter(child: SizedBox(height: 4)),
+                  _buildUserSliver(),
+                  const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: SharedBottomNavigationBar(
@@ -325,80 +486,69 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
     );
   }
 
-  // ===== App Bar =====
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      automaticallyImplyLeading: false,
-      backgroundColor: kPrimary,
-      elevation: 0,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
-      ),
-      title: const Text(
-        'User Management',
-        style: TextStyle(fontWeight: FontWeight.w600, letterSpacing: .3, color: Colors.white),
-      ),
-      centerTitle: false,
-      actions: [
-        IconButton(
-          tooltip: 'Refresh',
-          icon: const Icon(Icons.refresh),
-          onPressed: _isLoading ? null : _loadUsers,
-        ),
-      ],
-    );
-  }
-
   // ===== Search + Filters =====
   Widget _buildTopBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Column(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+      child: Row(
         children: [
-          // Search (glass)
-          _glass(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            child: Row(
-              children: [
-                Icon(Icons.search, color: kPrimaryDeep),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _searchCtrl,
-                    onChanged: _performSmartSearch,
-                    cursorColor: kPrimary, // blinking cursor follows role
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      hintText: 'Search users…',
+          // Search field — takes remaining width
+          Expanded(
+            flex: 3,
+            child: _glass(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+              child: Row(
+                children: [
+                  Icon(Icons.search, color: kPrimaryDeep, size: 18),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchCtrl,
+                      onChanged: _performSmartSearch,
+                      cursorColor: kPrimary,
+                      style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
+                      decoration: InputDecoration(
+                        border: InputBorder.none,
+                        hintText: 'Search users…',
+                        hintStyle: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
                     ),
                   ),
-                ),
-                if (_searchQuery.isNotEmpty)
-                  IconButton(
-                    tooltip: 'Clear',
-                    onPressed: () {
-                      _searchCtrl.clear();
-                      _performSmartSearch('');
-                    },
-                    icon: const Icon(Icons.close, size: 18, color: kMuted),
-                  ),
-              ],
+                  if (_searchQuery.isNotEmpty)
+                    GestureDetector(
+                      onTap: () {
+                        _searchCtrl.clear();
+                        _performSmartSearch('');
+                      },
+                      child: const Icon(Icons.close, size: 16, color: kMuted),
+                    ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 12),
-          // Status filter
-          _glass(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: DropdownButtonFormField<String>(
-              value: _selectedStatus,
-              isExpanded: true,
-              decoration: const InputDecoration(border: InputBorder.none),
-              items: const [
-                DropdownMenuItem(value: 'All Statuses', child: Text('All Statuses')),
-                DropdownMenuItem(value: 'Active', child: Text('Active')),
-                DropdownMenuItem(value: 'Inactive', child: Text('Inactive')),
-              ],
-              onChanged: (v) => setState(() => _selectedStatus = v ?? 'All Statuses'),
+          const SizedBox(width: 8),
+          // Status filter — fixed compact width
+          Expanded(
+            flex: 2,
+            child: _glass(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedStatus,
+                  isExpanded: true,
+                  icon: const Icon(Icons.keyboard_arrow_down, size: 18, color: kMuted),
+                  style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
+                  dropdownColor: Colors.white,
+                  items: const [
+                    DropdownMenuItem(value: 'All Statuses', child: Text('All')),
+                    DropdownMenuItem(value: 'Active', child: Text('Active')),
+                    DropdownMenuItem(value: 'Inactive', child: Text('Inactive')),
+                  ],
+                  onChanged: (v) => setState(() => _selectedStatus = v ?? 'All Statuses'),
+                ),
+              ),
             ),
           ),
         ],
@@ -413,50 +563,34 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
       return GestureDetector(
         onTap: () => setState(() => _selectedUserType = label),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          margin: const EdgeInsets.symmetric(horizontal: 6),
+          duration: const Duration(milliseconds: 200),
+          margin: EdgeInsets.zero,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
-            gradient: selected
-                ? LinearGradient(colors: [kPrimary, kPrimaryDeep])
-                : LinearGradient(colors: [Colors.white, Colors.white.withOpacity(.9)]),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: selected ? Colors.transparent : kPrimary.withOpacity(.2),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: selected ? kPrimary.withOpacity(.28) : Colors.black.withOpacity(.04),
-                blurRadius: selected ? 18 : 10,
-                offset: const Offset(0, 6),
-              ),
-            ],
+            color: selected ? AdminColors.primary : AdminColors.surface,
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: selected ? AdminColors.primary : AdminColors.border),
           ),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 label == 'Admin'
-                    ? Icons.shield // stable icon
+                    ? Icons.shield
                     : label == 'Moderator'
                         ? Icons.verified_user
                         : Icons.person,
-                size: 18,
-                color: selected ? Colors.white : kPrimaryDeep,
+                size: 14,
+                color: selected ? Colors.white : AdminColors.textMuted,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Text(
                 label,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: selected ? Colors.white : kPrimaryDeep,
+                style: AppTextStyles.caption.copyWith(
+                  fontSize: 12,
+                  color: selected ? Colors.white : AdminColors.textMuted,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                 ),
-              ),
-              const SizedBox(width: 8),
-              _countPill(
-                _users.where((u) => u['type'] == label).length,
-                selected ? Colors.white.withOpacity(.2) : kPrimary.withOpacity(.08),
-                selected ? Colors.white : kPrimaryDeep,
               ),
             ],
           ),
@@ -464,52 +598,67 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
       );
     }
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: _availableTypes.map((t) => chip(t)).toList(),
+    return Container(
+      color: AdminColors.cream,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            for (int i = 0; i < _availableTypes.length; i++) ...[
+              chip(_availableTypes[i]),
+              if (i < _availableTypes.length - 1) const SizedBox(width: 10),
+            ],
+          ],
+        ),
       ),
     );
   }
 
-  // ===== List (glass cards) =====
-  Widget _buildUserListGlass() {
+  // ===== List (sliver) =====
+  Widget _buildUserSliver() {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(child: CircularProgressIndicator(color: kPrimary)),
       );
     }
 
     if (_errorMessage != null) {
-      return Center(
-        child: _glass(
-          radius: 20,
-          padding: const EdgeInsets.all(22),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, size: 42, color: Colors.redAccent),
-              const SizedBox(height: 10),
-              const Text('Failed to load users', style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 4),
-              Text(
-                _errorMessage!,
-                style: const TextStyle(color: kMuted, fontSize: 12),
-                textAlign: TextAlign.center,
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: _glass(
+              radius: 20,
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.error_outline, size: 42, color: Colors.redAccent),
+                  const SizedBox(height: 10),
+                  Text('Failed to load users', style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
+                  const SizedBox(height: 4),
+                  Text(
+                    _errorMessage!,
+                    style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: _loadUsers,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: kPrimary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text('Retry', style: AppTextStyles.label.copyWith(color: Colors.white)),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: _loadUsers,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: kPrimary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: const Text('Retry'),
-              ),
-            ],
+            ),
           ),
         ),
       );
@@ -517,86 +666,87 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
 
     final data = _visibleUsers;
     if (data.isEmpty) {
-      return Center(
-        child: _glass(
-          radius: 20,
-          padding: const EdgeInsets.all(22),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(Icons.search_off, size: 42, color: kMuted),
-              SizedBox(height: 10),
-              Text('No users found', style: TextStyle(fontWeight: FontWeight.w600)),
-              SizedBox(height: 4),
-              Text('Try adjusting your filters', style: TextStyle(color: kMuted)),
-            ],
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: _glass(
+              radius: 20,
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.search_off, size: 42, color: kMuted),
+                  const SizedBox(height: 10),
+                  Text('No users found', style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
+                  const SizedBox(height: 4),
+                  Text('Try adjusting your filters', style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted)),
+                ],
+              ),
+            ),
           ),
         ),
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadUsers,
-      color: kPrimary,
-      backgroundColor: Colors.white,
-      strokeWidth: 3.0,
-      child: ListView.builder(
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        itemCount: data.length,
-        itemBuilder: (_, i) {
-          final user = data[i];
-          return _glass(
-            radius: 18,
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                _avatarForType(user['type']),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Wrap(
-                        spacing: 8,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          Text(
-                            user['username'],
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                          ),
-                          _statusPill(user['status']),
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (_, i) {
+            final user = data[i];
+            return _glass(
+              radius: 18,
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  _avatarForType(user['type']),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Wrap(
+                          spacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              user['username'],
+                              style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary),
+                            ),
+                            _statusPill(user['status']),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          user['name'],
+                          style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          user['email'],
+                          style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (user['type'] == 'Moderator' && user['cluster'] != null) ...[
+                          const SizedBox(height: 6),
+                          _tag('Cluster: ${user['cluster']}'),
                         ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        user['name'],
-                        style: const TextStyle(color: kMuted),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        user['email'],
-                        style: const TextStyle(color: kMuted),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (user['type'] == 'Moderator' && user['cluster'] != null) ...[
-                        const SizedBox(height: 6),
-                        _tag('Cluster: ${user['cluster']}'),
                       ],
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                _refinedMenu(user),
-              ],
-            ),
-          );
-        },
+                  const SizedBox(width: 8),
+                  _refinedMenu(user),
+                ],
+              ),
+            );
+          },
+          childCount: data.length,
+        ),
       ),
     );
   }
@@ -613,17 +763,13 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
       padding: padding,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(radius),
-        gradient: LinearGradient(
-          colors: [Colors.white.withOpacity(.90), Colors.white.withOpacity(.78)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        border: Border.all(color: kPrimary.withOpacity(.18), width: 1.25),
+        color: kCardBg,
+        border: Border.all(color: kBorder, width: 1.0),
         boxShadow: [
           BoxShadow(
-            color: kPrimary.withOpacity(.08),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
+            color: kPrimary.withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -638,14 +784,14 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         color: bg,
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text('$count', style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 12)),
+      child: Text('$count', style: AppTextStyles.caption.copyWith(color: fg, fontWeight: FontWeight.w700)),
     );
   }
 
   Widget _statusPill(String status) {
     final bool active = status == 'Active';
-    final Color bg = active ? const Color(0xFFE8F1FF) : const Color(0xFFEDF2FD);
-    final Color fg = active ? const Color(0xFF1D4ED8) : const Color(0xFF6477B9);
+    final Color bg = (active ? AdminColors.success : AdminColors.textMuted).withOpacity(0.12);
+    final Color fg = active ? AdminColors.success : AdminColors.textMuted;
     final IconData icon = active ? Icons.check_circle : Icons.pause_circle_filled;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -659,7 +805,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         children: [
           Icon(icon, size: 14, color: fg),
           const SizedBox(width: 6),
-          Text(status, style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 12)),
+          Text(status, style: AppTextStyles.caption.copyWith(color: fg, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -672,7 +818,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         color: kPrimary.withOpacity(.08),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Text(text, style: TextStyle(color: kPrimaryDeep, fontSize: 12, fontWeight: FontWeight.w600)),
+      child: Text(text, style: AppTextStyles.caption.copyWith(color: kPrimaryDeep, fontWeight: FontWeight.w600)),
     );
   }
 
@@ -682,9 +828,13 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         : type == 'Moderator'
             ? _darken(kPrimary, .05)
             : kPrimary.withOpacity(.9);
-    return CircleAvatar(
-      radius: 26,
-      backgroundColor: c.withOpacity(.2),
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        color: c.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Icon(
         type == 'Admin'
             ? Icons.shield
@@ -692,6 +842,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                 ? Icons.verified_user
                 : Icons.person,
         color: c,
+        size: 26,
       ),
     );
   }
@@ -775,7 +926,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         children: [
           Icon(icon, color: kPrimaryDeep),
           const SizedBox(width: 10),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(label, style: AppTextStyles.label.copyWith(color: AdminColors.textPrimary)),
         ],
       ),
     );
@@ -870,18 +1021,14 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                                       children: [
                                         Text(
                                           (user['username'] as String?) ?? '—',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.w800,
-                                          ),
+                                          style: AppTextStyles.h3.copyWith(color: Colors.white),
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                         _bigStatusPill(isActive ? 'Active' : 'Inactive', isActive),
                                       ],
                                     ),
                                     const SizedBox(height: 6),
-                                    // Role + email (Wrap). Email is a width-aware badge to avoid overflow.
+                                    // Role + email (Wrap)
                                     Wrap(
                                       spacing: 8,
                                       runSpacing: 4,
@@ -914,11 +1061,11 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                                 _infoTile(Icons.tag, 'UID', (user['uid'] as String?) ?? '—'),
                                 _infoTile(Icons.person_outline, 'Username', (user['username'] as String?) ?? '—'),
                                 _infoTile(Icons.email_outlined, 'Email', (user['email'] as String?) ?? '—'),
-                                _infoTile(Icons.phone_outlined, 'Phone', 
+                                _infoTile(Icons.phone_outlined, 'Phone',
                                   (user['phone'] != null && (user['phone'] as String).isNotEmpty)
                                     ? (user['phone'] as String)
                                     : '—'),
-                                _infoTile(Icons.public, 'Country', 
+                                _infoTile(Icons.public, 'Country',
                                   (user['country'] != null && (user['country'] as String).isNotEmpty)
                                     ? (user['country'] as String)
                                     : '—'),
@@ -985,7 +1132,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                               ),
                               onPressed: () => Navigator.pop(context),
                               icon: const Icon(Icons.check_circle_outline),
-                              label: const Text('Close', style: TextStyle(fontWeight: FontWeight.w700)),
+                              label: Text('Close', style: AppTextStyles.label.copyWith(color: kPrimaryDeep, fontWeight: FontWeight.w700)),
                             ),
                           ),
                         ),
@@ -1005,11 +1152,10 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
   Widget _emailBadge(String email) {
     return LayoutBuilder(
       builder: (context, cons) {
-        // Force the internal Row to exactly the available width
         return ConstrainedBox(
           constraints: BoxConstraints(maxWidth: cons.maxWidth),
           child: SizedBox(
-            width: cons.maxWidth, // <= this guarantees no overflow
+            width: cons.maxWidth,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
@@ -1024,7 +1170,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                   Expanded(
                     child: Text(
                       email,
-                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                      style: AppTextStyles.caption.copyWith(color: Colors.white70),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1,
                       softWrap: false,
@@ -1056,7 +1202,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         children: [
           Icon(icon, size: 16, color: fg),
           const SizedBox(width: 6),
-          Text(label, style: TextStyle(color: fg, fontWeight: FontWeight.w800)),
+          Text(label, style: AppTextStyles.label.copyWith(color: fg, fontWeight: FontWeight.w800)),
         ],
       ),
     );
@@ -1077,7 +1223,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         children: [
           Icon(icon, size: 16, color: Colors.white),
           const SizedBox(width: 6),
-          Text(type, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          Text(type, style: AppTextStyles.label.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -1112,10 +1258,8 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: kMuted,
-                      fontWeight: FontWeight.w600,
+                    style: AppTextStyles.caption.copyWith(
+                      color: AdminColors.textMuted,
                       letterSpacing: .2,
                     )),
                 const SizedBox(height: 6),
@@ -1129,7 +1273,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                     ),
                     child: Text(
                       value,
-                      style: TextStyle(
+                      style: AppTextStyles.label.copyWith(
                         color: chipTextColor ?? kPrimaryDeep,
                         fontWeight: FontWeight.w700,
                       ),
@@ -1138,9 +1282,9 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                 else
                   Text(
                     value,
-                    style: const TextStyle(
-                      fontSize: 15,
+                    style: AppTextStyles.bodyDefault.copyWith(
                       fontWeight: FontWeight.w700,
+                      color: AdminColors.textPrimary,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1166,7 +1310,6 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
     );
     final usernameController = TextEditingController(text: user['username']);
     final emailController = TextEditingController(text: user['email']);
-    // Show encrypted password as read-only if present in data
     final passwordController = TextEditingController(text: (user['password'] ?? '') as String? ?? '');
     final phoneController = TextEditingController(text: user['phone'] ?? '');
     final countryController = TextEditingController(text: user['country'] ?? '');
@@ -1188,7 +1331,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                   // Header
                   Row(
                     children: [
-                      const Text('Edit User', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                      Text('Edit User', style: AppTextStyles.h2.copyWith(color: AdminColors.textPrimary)),
                       const Spacer(),
                       IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
                     ],
@@ -1213,7 +1356,6 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  // Password (encrypted, read-only)
                   const SizedBox(height: 12),
                   _input('Password ', Icons.lock_outline, passwordController,
                       obscure: false, readOnly: true),
@@ -1260,7 +1402,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                           SnackBar(content: Text('User ${user['username']} has been updated.')),
                         );
                       },
-                      child: const Text('Submit', style: TextStyle(fontWeight: FontWeight.w700)),
+                      child: Text('Submit', style: AppTextStyles.label.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
                     ),
                   ),
                 ],
@@ -1276,7 +1418,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+        Text(label, style: AppTextStyles.label.copyWith(color: AdminColors.textPrimary)),
         const SizedBox(height: 6),
         _glass(
           radius: 12,
@@ -1286,6 +1428,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
             readOnly: readOnly,
             obscureText: obscure,
             cursorColor: kPrimary,
+            style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary),
             decoration: InputDecoration(
               icon: Icon(icon, color: kPrimaryDeep),
               border: InputBorder.none,
@@ -1298,7 +1441,6 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
 
   // ===== Actions =====
   void _suspendUser(Map<String, dynamic> user) {
-    // Only Admin viewer can get here (menu guarded)
     showDialog(
       context: context,
       builder: (_) => _confirm(
@@ -1307,7 +1449,6 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         confirmLabel: 'Suspend',
         confirmColor: kPrimaryDeep,
         onConfirm: () async {
-          // Call backend to suspend by userid, then reload list
           final uidStr = (user['uid'] ?? '').toString();
           final userid = int.tryParse(uidStr);
           if (userid == null) {
@@ -1374,7 +1515,6 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
   }
 
   void _removeUser(Map<String, dynamic> user) {
-    // Only Admin viewer & only inactive moderators (menu guards this)
     showDialog(
       context: context,
       builder: (_) => _confirm(
@@ -1409,9 +1549,9 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            Text(title, style: AppTextStyles.h3.copyWith(color: AdminColors.textPrimary)),
             const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: kMuted)),
+            Text(message, textAlign: TextAlign.center, style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted)),
             const SizedBox(height: 18),
             Row(
               children: [
@@ -1424,7 +1564,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                    child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w700)),
+                    child: Text('Cancel', style: AppTextStyles.label.copyWith(color: kPrimaryDeep, fontWeight: FontWeight.w700)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1438,7 +1578,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       elevation: 0,
                     ),
-                    child: Text(confirmLabel, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    child: Text(confirmLabel, style: AppTextStyles.label.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
                   ),
                 ),
               ],
@@ -1487,7 +1627,8 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
       return;
     }
     if (label == 'Reservation' || label == 'Bookings') {
-      Navigator.of(context).pushNamed('/manage-booking');
+      final route = widget.viewerRole == AppRole.admin ? '/admin-stock-manager' : '/moderator-stock-manager';
+      Navigator.of(context).pushNamed(route);
       return;
     }
     if (label == 'AuditTrails') {
@@ -1500,10 +1641,33 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
       Navigator.of(context).pushNamed(route);
       return;
     }
+    if (label == 'Activity Logs') {
+      final route = widget.viewerRole == AppRole.admin ? '/admin-activity-logs' : '/moderator-activity-logs';
+      Navigator.of(context).pushNamed(route);
+      return;
+    }
+    if (label == 'Ledger') {
+      final route = widget.viewerRole == AppRole.admin ? '/admin-ledger' : '/moderator-ledger';
+      Navigator.of(context).pushNamed(route);
+      return;
+    }
+    if (label == 'Stock Manager') {
+      final route = widget.viewerRole == AppRole.admin ? '/admin-stock-manager' : '/moderator-stock-manager';
+      Navigator.of(context).pushNamed(route);
+      return;
+    }
+    if (label == 'Customer Review' || label == 'Customer Reviews') {
+      final route = widget.viewerRole == AppRole.admin ? '/admin-customer-reviews' : '/moderator-customer-reviews';
+      Navigator.of(context).pushNamed(route);
+      return;
+    }
+    if (label == 'User Management') {
+      return; // already on this page
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Navigating to $label', style: const TextStyle(color: Colors.black)),
-        backgroundColor: const Color(0xFF468FAF),
+        content: Text('Navigating to $label', style: AppTextStyles.bodySmall.copyWith(color: Colors.white)),
+        backgroundColor: kPrimary,
         duration: const Duration(seconds: 1),
       ),
     );
@@ -1539,8 +1703,8 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
       return;
     }
     if (index == 2) {
-      // Bookings
-      Navigator.of(context).pushNamed('/manage-booking');
+      final route = widget.viewerRole == AppRole.admin ? '/admin-stock-manager' : '/moderator-stock-manager';
+      Navigator.of(context).pushNamed(route);
       return;
     }
     if (index == 3) {

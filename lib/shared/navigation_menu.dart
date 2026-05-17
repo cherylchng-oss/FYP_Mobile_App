@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 
-// ---------------------------------------------------------------------------
-// DrawerMenuItem — icon + label pair for side drawer
-// ---------------------------------------------------------------------------
 class DrawerMenuItem {
   final IconData icon;
   final String label;
@@ -10,14 +7,8 @@ class DrawerMenuItem {
   const DrawerMenuItem(this.icon, this.label);
 }
 
-// ---------------------------------------------------------------------------
-// UserRole — all platform roles
-// ---------------------------------------------------------------------------
 enum UserRole { admin, moderator, customer, owner }
 
-// ---------------------------------------------------------------------------
-// userRoleFromString — parse API role string to enum
-// ---------------------------------------------------------------------------
 UserRole? userRoleFromString(String? role) {
   final normalized = role?.toLowerCase().trim() ?? '';
   if (normalized == 'admin' || normalized == 'administrator') {
@@ -35,9 +26,6 @@ UserRole? userRoleFromString(String? role) {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// drawerMenuItemsForRole — items shown in the side drawer per role
-// ---------------------------------------------------------------------------
 List<DrawerMenuItem> drawerMenuItemsForRole(UserRole role) {
   switch (role) {
     case UserRole.admin:
@@ -71,14 +59,17 @@ List<DrawerMenuItem> drawerMenuItemsForRole(UserRole role) {
         DrawerMenuItem(Icons.person, 'Profile'),
       ];
     case UserRole.owner:
-      // Owner uses bottom nav only — no drawer. These items are kept for
-      // consistency but the owner scaffold does not render a side drawer.
       return const [
-        DrawerMenuItem(Icons.dashboard_rounded, 'Dashboard'),
-        DrawerMenuItem(Icons.people_rounded, 'Users'),
-        DrawerMenuItem(Icons.location_city_rounded, 'Clusters'),
-        DrawerMenuItem(Icons.receipt_long_rounded, 'Logs'),
-        DrawerMenuItem(Icons.person_rounded, 'Profile'),
+        DrawerMenuItem(Icons.dashboard, 'Dashboard'),
+        DrawerMenuItem(Icons.people, 'Customer'),
+        DrawerMenuItem(Icons.people, 'Moderator/Admin'),
+        DrawerMenuItem(Icons.apartment, 'Properties'),
+        DrawerMenuItem(Icons.calendar_today, 'Bookings'),
+        DrawerMenuItem(Icons.receipt_long, 'BooknPayLog'),
+        DrawerMenuItem(Icons.history, 'AuditTrails'),
+        DrawerMenuItem(Icons.layers, 'Cluster'),
+        DrawerMenuItem(Icons.person, 'Profile'),
       ];
   }
 }
+

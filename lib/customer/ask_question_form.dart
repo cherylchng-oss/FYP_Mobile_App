@@ -49,11 +49,17 @@ class _AskQuestionFormState extends State<AskQuestionForm> {
   final questionController = TextEditingController();
 
   static const primary = Color(0xFF6B3F1A);
+  static const primaryLight = Color(0xFF8B5E3C);
   static const accent = Color(0xFFBF8040);
+  static const accentLight = Color(0xFFE8B97A);
+  static const cream = Color(0xFFFAF6F0);
   static const surface = Color(0xFFF5EDE0);
   static const border = Color(0xFFE8D9C5);
   static const textPrimary = Color(0xFF2C1A0E);
+  static const textSecond = Color(0xFF6B4C30);
   static const textMuted = Color(0xFFA07850);
+  static const success = Color(0xFF3D7A5C);
+  static const danger = Color(0xFFB83232);
 
   @override
   void initState() {
@@ -141,15 +147,15 @@ class _AskQuestionFormState extends State<AskQuestionForm> {
     }
 
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
         border: Border.all(color: border),
         boxShadow: [
           BoxShadow(
-            color: primary.withOpacity(0.08),
-            blurRadius: 16,
+            color: primary.withOpacity(0.07),
+            blurRadius: 18,
             offset: const Offset(0, 6),
           ),
         ],
@@ -181,20 +187,28 @@ class _AskQuestionFormState extends State<AskQuestionForm> {
 
             const SizedBox(height: 20),
 
-            Align(
-              alignment: Alignment.centerRight,
-              child: ElevatedButton(
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
                 onPressed: isSubmitting ? null : handleSubmit,
+                icon: Icon(
+                  isSubmitting ? Icons.hourglass_top_rounded : Icons.send_rounded,
+                  size: 18,
+                ),
+                label: Text(
+                  isSubmitting ? 'Sending...' : 'Submit Question',
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: primary,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: border,
+                  disabledForegroundColor: textMuted,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                child: Text(
-                  isSubmitting ? 'Sending...' : 'Submit Question',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
               ),
             )
@@ -205,34 +219,92 @@ class _AskQuestionFormState extends State<AskQuestionForm> {
   }
 
   Widget _header() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: const [
-        Text(
-          "Ask a Question",
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [primary, primaryLight],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.16),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white.withOpacity(0.22)),
+            ),
+            child: const Icon(
+              Icons.mail_outline_rounded,
+              color: accentLight,
+              size: 22,
+            ),
           ),
-        ),
-        SizedBox(height: 6),
-        Text(
-          "Our team will respond within 24 hours.",
-          style: TextStyle(color: Colors.grey),
-        ),
-      ],
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Ask a Question',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Our team will respond within 24 hours.',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.76),
+                    fontSize: 12,
+                    height: 1.4,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _errorBox() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(10),
+        color: const Color(0xFFFBECEC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFEFB8B8)),
       ),
-      child: Text(errorMessage, style: const TextStyle(color: Colors.red)),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline_rounded, color: danger, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              errorMessage,
+              style: const TextStyle(
+                color: danger,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -241,15 +313,49 @@ class _AskQuestionFormState extends State<AskQuestionForm> {
     TextEditingController controller, {
     TextInputType? keyboardType,
   }) {
+    final icon = label == 'Name'
+        ? Icons.person_outline_rounded
+        : Icons.email_outlined;
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 14),
       child: TextFormField(
         controller: controller,
         keyboardType: keyboardType,
+        cursorColor: accent,
+        style: const TextStyle(
+          color: textPrimary,
+          fontWeight: FontWeight.w700,
+        ),
         decoration: InputDecoration(
           labelText: label,
+          labelStyle: const TextStyle(
+            color: textMuted,
+            fontWeight: FontWeight.w700,
+          ),
+          prefixIcon: Icon(icon, color: accent, size: 20),
+          filled: true,
+          fillColor: cream,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: border),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: border),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: accent, width: 1.8),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: danger),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: danger, width: 1.8),
           ),
         ),
         validator: (value) {
@@ -276,9 +382,34 @@ class _AskQuestionFormState extends State<AskQuestionForm> {
   Widget _dropdown() {
     return DropdownButtonFormField(
       value: selectedCategory,
+      dropdownColor: Colors.white,
+      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: textMuted),
+      style: const TextStyle(
+        color: textPrimary,
+        fontWeight: FontWeight.w700,
+        fontSize: 14,
+      ),
       decoration: InputDecoration(
+        labelText: 'Category',
+        labelStyle: const TextStyle(
+          color: textMuted,
+          fontWeight: FontWeight.w700,
+        ),
+        prefixIcon: const Icon(Icons.category_outlined, color: accent, size: 20),
+        filled: true,
+        fillColor: cream,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: accent, width: 1.8),
         ),
       ),
       items: [
@@ -296,10 +427,46 @@ class _AskQuestionFormState extends State<AskQuestionForm> {
       controller: questionController,
       maxLines: 4,
       maxLength: 500,
+      cursorColor: accent,
+      style: const TextStyle(
+        color: textPrimary,
+        fontWeight: FontWeight.w600,
+        height: 1.4,
+      ),
       decoration: InputDecoration(
         labelText: 'Your Question',
+        alignLabelWithHint: true,
+        labelStyle: const TextStyle(
+          color: textMuted,
+          fontWeight: FontWeight.w700,
+        ),
+        prefixIcon: const Padding(
+          padding: EdgeInsets.only(bottom: 70),
+          child: Icon(Icons.help_outline_rounded, color: accent, size: 20),
+        ),
+        filled: true,
+        fillColor: cream,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        counterStyle: const TextStyle(color: textMuted, fontSize: 11),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: accent, width: 1.8),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: danger),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: danger, width: 1.8),
         ),
       ),
       validator: (value) {
@@ -317,24 +484,129 @@ class _AskQuestionFormState extends State<AskQuestionForm> {
   }
 
   Widget _fileUpload() {
-    return Row(
-      children: [
-        OutlinedButton(
-          onPressed: handleFileChange,
-          child: const Text('Upload File'),
-        ),
-        const SizedBox(width: 12),
-        if (fileName != null) Expanded(child: Text(fileName!)),
-      ],
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.attach_file_rounded, color: accent, size: 18),
+              SizedBox(width: 8),
+              Text(
+                'Attachment',
+                style: TextStyle(
+                  color: textPrimary,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Optional. Upload JPG, PNG, or PDF file up to 5MB.',
+            style: TextStyle(
+              color: textMuted,
+              fontSize: 12,
+              height: 1.4,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: handleFileChange,
+                icon: const Icon(Icons.upload_file_rounded, size: 17),
+                label: const Text(
+                  'Upload File',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: primary,
+                  side: const BorderSide(color: accent),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              if (fileName != null)
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: border),
+                    ),
+                    child: Text(
+                      fileName!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: textSecond,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
   Widget _successState() {
     return Container(
-      padding: const EdgeInsets.all(24),
-      child: const Text(
-        '✅ Question submitted successfully!',
-        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEBF7F2),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+        border: Border.all(color: const Color(0xFFB2DDD0)),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.check_circle_rounded, color: success, size: 26),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Question submitted successfully!',
+                  style: TextStyle(
+                    color: success,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Our team will review your question and respond as soon as possible.',
+                  style: TextStyle(
+                    color: success,
+                    fontSize: 13,
+                    height: 1.4,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

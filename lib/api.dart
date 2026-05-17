@@ -84,6 +84,38 @@ Future<http.Response> loginUser(Map<String, dynamic> userData) async {
   }
 }
 
+Future<Map<String, dynamic>> sendEmailOtp(String tempToken) async {
+  try {
+    final response = await http.post(
+      Uri.parse('$API_URL/mfa/send-email-otp'),
+      headers: _publicHeaders(),
+      body: jsonEncode({'tempToken': tempToken}),
+    );
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  } catch (error) {
+    print('API error: $error');
+    rethrow;
+  }
+}
+
+Future<Map<String, dynamic>> verifyMfaLogin({
+  required String tempToken,
+  required String token,
+  required String method,
+}) async {
+  try {
+    final response = await http.post(
+      Uri.parse('$API_URL/mfa/verify-login'),
+      headers: _publicHeaders(),
+      body: jsonEncode({'tempToken': tempToken, 'token': token, 'method': method}),
+    );
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  } catch (error) {
+    print('API error: $error');
+    rethrow;
+  }
+}
+
 Future<http.Response> checkstatus(int userid) async {
   try {
     final response = await http.get(
@@ -1474,26 +1506,48 @@ Future<Map<String, dynamic>> calculateBookingPrice(
 // Cart
 Future<List<dynamic>> fetchCart() async {
   final userid = await Session.getUserId();
+  
+  try {
+    if (userid == null) {
+      print('API: User ID not found in session, returning empty cart');
+      return [];
+    }
 
-  if (userid == null) {
-    throw Exception('User ID not found. Please login again.');
-  }
-
-  final response = await http.get(
-    Uri.parse('$API_URL/cart?userid=${Uri.encodeComponent(userid.toString())}'),
-    headers: await _authHeaders(),
-  );
-
-  print('API: Cart response status: ${response.statusCode}');
-
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw Exception(
-      'Failed to fetch reservations (${response.statusCode}): ${response.body}',
+    print('API: Fetching cart for userid: $userid');
+    final response = await http.get(
+      Uri.parse('$API_URL/cart?userid=$userid'),
+      headers: await _authHeaders(),
     );
-  }
 
-  final data = jsonDecode(response.body);
-  return data['reservations'] ?? [];
+    print('API: Cart response status: ${response.statusCode}');
+
+    // 404 means no cart items found - that's okay
+    if (response.statusCode == 404) {
+      print('API: No cart items found (404), returning empty list');
+      return [];
+    }
+
+    if (response.statusCode != 200) {
+      print('API: Unexpected status ${response.statusCode}, returning empty list');
+      return [];
+    }
+
+    final data = jsonDecode(response.body);
+    
+    // Try different possible keys
+    if (data['reservations'] != null && data['reservations'] is List) {
+      print('API: Found ${(data['reservations'] as List).length} cart items');
+      return data['reservations'];
+    } else if (data is List) {
+      print('API: Response is direct list with ${data.length} cart items');
+      return data;
+    }
+    
+    return [];
+  } catch (error) {
+    print('API error fetching cart: $error');
+    return [];
+  }
 }
 
 // Remove Reservation
@@ -1541,8 +1595,7 @@ Future<Map<String, dynamic>> fetchBookLog(int userid) async {
 }
 
 // Fetch Book and Pay Logs (for admin/moderator/owner)
-Future<List<dynamic>> fetchBookAndPayLogs(int userid) async {
-  // Try different possible endpoint paths
+Future<List<dynamic>> fetchBookAndPayLogs(int userid, [String usergroup = '']) async {
   final endpoints = [
     '/book-and-pay-log',
     '/users/book-and-pay-log',
@@ -1553,9 +1606,10 @@ Future<List<dynamic>> fetchBookAndPayLogs(int userid) async {
 
   for (final endpoint in endpoints) {
     try {
-      print('API: Trying endpoint: $endpoint?userid=$userid');
+      final params = 'userid=${Uri.encodeComponent(userid.toString())}${usergroup.isNotEmpty ? '&usergroup=${Uri.encodeComponent(usergroup)}' : ''}';
+      print('API: Trying endpoint: $endpoint?$params');
       final response = await http.get(
-        Uri.parse('$API_URL$endpoint?userid=$userid'),
+        Uri.parse('$API_URL$endpoint?$params'),
         headers: await _authHeaders(),
       ).timeout(
         const Duration(seconds: 10),
@@ -1567,7 +1621,6 @@ Future<List<dynamic>> fetchBookAndPayLogs(int userid) async {
       print('API: Response status: ${response.statusCode}');
       print('API: Response content-type: ${response.headers['content-type']}');
 
-      // Check if response is HTML (404 error page)
       final contentType = response.headers['content-type'] ?? '';
       final bodyStart = response.body.trim();
       if (contentType.contains('text/html') || bodyStart.startsWith('<!DOCTYPE') || bodyStart.startsWith('<html')) {
@@ -1576,31 +1629,24 @@ Future<List<dynamic>> fetchBookAndPayLogs(int userid) async {
       }
 
       if (response.statusCode != 200) {
-        // Try to parse error message if it's JSON
         try {
           final errorData = jsonDecode(response.body);
           print('API: Error response from $endpoint: ${errorData['message'] ?? 'Unknown error'}');
-          // Don't throw yet, try next endpoint
-          continue;
         } catch (e) {
-          // If not JSON, it might be HTML or plain text
           print('API: Non-200 status (${response.statusCode}) with non-JSON response from $endpoint, trying next endpoint...');
-          continue;
         }
+        continue;
       }
 
-      // Try to parse JSON
       try {
-        // First, let's see what we're getting
         final responseBody = response.body;
         print('API: Response body length: ${responseBody.length}');
         print('API: Response body preview (first 500 chars): ${responseBody.length > 500 ? responseBody.substring(0, 500) : responseBody}');
-        
+
         final data = jsonDecode(responseBody);
         print('API: Successfully parsed JSON response from $endpoint');
         print('API: Response type: ${data.runtimeType}');
-        
-        // Handle different response formats - check List first to avoid index errors
+
         if (data is List) {
           print('API: Response is direct list with ${data.length} items');
           try {
@@ -1613,21 +1659,19 @@ Future<List<dynamic>> fetchBookAndPayLogs(int userid) async {
             print('API: Error accessing first item: $e');
           }
           try {
-            return List<dynamic>.from(data); // Ensure it's a proper List
+            return List<dynamic>.from(data);
           } catch (e) {
             print('API: Error converting to List: $e');
-            // If conversion fails, try to return as-is if it's already a List
-            if (data is List) {
-              return data;
-            }
+            if (data is List) return data;
             rethrow;
           }
         } else if (data is Map) {
           print('API: Response is a Map with keys: ${data.keys.toList()}');
-          // If it's a Map, check for nested arrays
           if (data.containsKey('bookAndPayLogs') && data['bookAndPayLogs'] is List) {
             print('API: Found bookAndPayLogs with ${(data['bookAndPayLogs'] as List).length} items');
             return List<dynamic>.from(data['bookAndPayLogs'] as List);
+          } else if (data.containsKey('bookLogs') && data['bookLogs'] is List) {
+            return List<dynamic>.from(data['bookLogs'] as List);
           } else if (data.containsKey('logs') && data['logs'] is List) {
             print('API: Found logs with ${(data['logs'] as List).length} items');
             return List<dynamic>.from(data['logs'] as List);
@@ -1643,18 +1687,132 @@ Future<List<dynamic>> fetchBookAndPayLogs(int userid) async {
       }
     } catch (error) {
       print('API: Error with endpoint $endpoint: $error');
-      // Continue to next endpoint
       continue;
     }
   }
 
-  // If all endpoints failed, throw an error with helpful message
   throw Exception(
     'Failed to fetch book and pay logs: All endpoints returned errors.\n'
     'Tried endpoints: ${endpoints.join(", ")}\n'
     'Please ensure the backend endpoint is implemented.\n'
     'Expected endpoint format: /book-and-pay-log?userid=$userid or /users/book-and-pay-log?userid=$userid'
   );
+}
+
+
+// Fetch Ledger Records
+Future<Map<String, dynamic>> fetchLedger(int userid, {
+  int page = 1,
+  int limit = 10,
+  String search = '',
+  String status = '',
+  String selectedDate = '',
+  String sortOrder = 'reservation_latest',
+}) async {
+  try {
+    final uri = Uri.parse('$API_URL/ledger').replace(queryParameters: {
+      'userid': userid.toString(),
+      'page': page.toString(),
+      'limit': limit.toString(),
+      'search': search,
+      'status': status,
+      'selectedDate': selectedDate,
+      'sortOrder': sortOrder,
+    });
+    final response = await http.get(uri, headers: await _authHeaders());
+    if (response.statusCode != 200) {
+      throw Exception('Failed to fetch ledger (${response.statusCode})');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  } catch (error) {
+    print('API error fetching ledger: $error');
+    rethrow;
+  }
+}
+
+// Fetch Ledger Summary
+Future<Map<String, dynamic>> fetchLedgerSummary(int userid, {String selectedDate = ''}) async {
+  try {
+    final uri = Uri.parse('$API_URL/ledger/summary').replace(queryParameters: {
+      'userid': userid.toString(),
+      'selectedDate': selectedDate,
+    });
+    final response = await http.get(uri, headers: await _authHeaders());
+    if (response.statusCode != 200) {
+      throw Exception('Failed to fetch ledger summary (${response.statusCode})');
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return data['summary'] as Map<String, dynamic>? ?? {};
+  } catch (error) {
+    print('API error fetching ledger summary: $error');
+    rethrow;
+  }
+}
+
+// Fetch Finance Ledger Card (summary + monthly breakdown)
+Future<Map<String, dynamic>> fetchFinanceLedgerCard(int userid) async {
+  try {
+    final uri = Uri.parse('$API_URL/finance/ledger-card').replace(queryParameters: {
+      'userid': userid.toString(),
+    });
+    final response = await http.get(uri, headers: await _authHeaders());
+    if (response.statusCode != 200) {
+      print('API: Finance ledger-card returned status ${response.statusCode}');
+      return {};
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  } catch (error) {
+    print('API error fetching finance ledger card: $error');
+    return {};
+  }
+}
+
+// Fetch Finance Review Chart (summary + monthly breakdown)
+Future<Map<String, dynamic>> fetchFinanceReviewChart(int userid) async {
+  try {
+    final uri = Uri.parse('$API_URL/finance/review-chart').replace(queryParameters: {
+      'userid': userid.toString(),
+    });
+    final response = await http.get(uri, headers: await _authHeaders());
+    if (response.statusCode != 200) {
+      print('API: Finance review-chart returned status ${response.statusCode}');
+      return {};
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  } catch (error) {
+    print('API error fetching finance review chart: $error');
+    return {};
+  }
+}
+
+// Fetch Finance Chart Data
+Future<List<dynamic>> fetchFinanceChart(int userid, {
+  String chartType = 'booking_revenue',
+  String year = '',
+  String month = '',
+}) async {
+  try {
+    final params = <String, String>{
+      'userid': userid.toString(),
+      'chartType': chartType,
+    };
+    if (year.isNotEmpty) params['year'] = year;
+    if (month.isNotEmpty) params['month'] = month;
+
+    final uri = Uri.parse('$API_URL/users/finance/chart').replace(queryParameters: params);
+    final response = await http.get(uri, headers: await _authHeaders());
+    if (response.statusCode != 200) return [];
+    final data = jsonDecode(response.body);
+    if (data is List) return data;
+    if (data is Map) {
+      if (data['data'] is List) return data['data'] as List;
+      if (data['chart'] is List) return data['chart'] as List;
+    }
+    return [];
+  } catch (error) {
+    print('API error fetching finance chart: $error');
+    return [];
+  }
 }
 
 // Fetch Finance 
@@ -2211,6 +2369,41 @@ Future<Map<String, dynamic>> submitReview(
   }
 }
 
+// Fetch all reviews for a moderator/owner (by userid)
+Future<List<dynamic>> fetchOwnerReviews(int userid) async {
+  try {
+    final response = await http.get(
+      Uri.parse('$API_URL/owner-reviews/$userid'),
+      headers: await _authHeaders(),
+    );
+    if (response.statusCode != 200) {
+      print('API: owner-reviews returned ${response.statusCode}');
+      return [];
+    }
+    final data = jsonDecode(response.body);
+    if (data is List) return data;
+    return [];
+  } catch (error) {
+    print('API error fetching owner reviews: $error');
+    return [];
+  }
+}
+
+// Reply to a review (PUT with owner_reply text, or null to delete reply)
+Future<bool> replyToReview(int reviewId, String? reply) async {
+  try {
+    final response = await http.put(
+      Uri.parse('$API_URL/reviews/$reviewId/reply'),
+      headers: await _authHeaders(),
+      body: jsonEncode({'owner_reply': reply}),
+    );
+    return response.statusCode == 200;
+  } catch (error) {
+    print('API error replying to review: $error');
+    return false;
+  }
+}
+
 // Fetch reviews for a specific property
 Future<Map<String, dynamic>> fetchReviews(int propertyid) async {
   try {
@@ -2479,10 +2672,15 @@ Future<Map<String, dynamic>> paymentSuccess(int reservationid) async {
 }
 
 // Notification History Feature
+// Fetch Notifications for User
 // Fetch Notification
 Future<List<dynamic>> fetchNotifications(int userid) async {
   try {
-    final uri = Uri.parse('$API_URL/notifications?userid=$userid');
+    final uri = Uri.parse('$API_URL/notifications').replace(
+      queryParameters: {
+        'userid': userid.toString(),
+      },
+    );
 
     print('API: Fetch notifications URL: $uri');
 
@@ -2791,6 +2989,29 @@ Future<dynamic> fetchBlackoutDates() async {
   return jsonDecode(response.body);
 }
 
+// Fetch Blackout Dates (for moderator — filtered to own properties server-side)
+Future<List<dynamic>> fetchBlackouts(int userid, String usergroup) async {
+  try {
+    final url = '$API_URL/blackouts?userid=$userid&usergroup=${Uri.encodeComponent(usergroup)}';
+    print('API: Fetching blackouts from $url');
+    final response = await http.get(Uri.parse(url), headers: await _authHeaders());
+    print('API: fetchBlackouts status ${response.statusCode}');
+    if (response.statusCode == 404) return [];
+    if (response.statusCode != 200) {
+      print('API: fetchBlackouts unexpected status ${response.statusCode}');
+      return [];
+    }
+    final data = jsonDecode(response.body);
+    if (data is List) return data;
+    if (data['blackouts'] is List) return data['blackouts'];
+    if (data['data'] is List) return data['data'];
+    return [];
+  } catch (error) {
+    print('API error fetching blackouts: $error');
+    return [];
+  }
+}
+
 Future<dynamic> createBlackout(Map<String, dynamic> blackoutData) async {
   final userid = await Session.getUserId() ?? '';
   final username = await Session.getUsername() ?? '';
@@ -2854,13 +3075,14 @@ Future<dynamic> deleteBlackout(dynamic blackoutId) async {
   final userid = (await Session.getUserId())?.toString() ?? '';
   final userGroup = (await Session.getUserGroup())?.toString() ?? '';
 
-  final response = await http.delete(
-    Uri.parse(
-      '$API_URL/blackouts/$blackoutId'
-      '?userid=${Uri.encodeComponent(userid)}'
-      '&usergroup=${Uri.encodeComponent(userGroup)}',
-    ),
+  final uri = Uri.parse('$API_URL/blackouts/$blackoutId').replace(
+    queryParameters: {
+      'userid': userid,
+      'usergroup': userGroup,
+    },
   );
+
+  final response = await http.delete(uri);
 
   final data = jsonDecode(response.body);
 

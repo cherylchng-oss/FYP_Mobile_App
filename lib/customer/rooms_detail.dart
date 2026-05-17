@@ -239,6 +239,76 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
     return '${normalizeText(baseName)}__${normalizeText(packageName)}';
   }
 
+  String get propertyAvailabilityKey => '__entire_property__';
+
+  Future<void> refreshEntirePropertyAvailabilityOnly() async {
+    final safeCheckIn = toSafeIsoDate(checkIn);
+    final safeCheckOut = toSafeIsoDate(checkOut);
+    final nights = calculateNights(safeCheckIn, safeCheckOut);
+
+    if (!mounted) return;
+
+    if (safeCheckIn.isEmpty || safeCheckOut.isEmpty || nights <= 0) {
+      setState(() {
+        roomsLeft = selectedRoomQuantity();
+        isSoldOut = false;
+        isBlackedOut = false;
+        isDateOverlapping = false;
+        isLoadingRoomOptions = false;
+      });
+      return;
+    }
+
+    setState(() {
+      isLoadingRoomOptions = true;
+    });
+
+    final totalQty = selectedRoomQuantity();
+
+    try {
+      final availability = await api.fetchPropertyAvailability(
+        propertyId: propertyIdInt,
+        checkIn: safeCheckIn,
+        checkOut: safeCheckOut,
+      );
+
+      final booked = countOverlappingPropertyBookings(
+        availability['bookings'] is List ? availability['bookings'] : [],
+      );
+
+      final left = math.max(0, totalQty - booked);
+      final blackedOut = isSelectedRangeBlackedOut();
+
+      if (!mounted) return;
+
+      setState(() {
+        roomAvailabilityMap[propertyAvailabilityKey] = {
+          'total': totalQty,
+          'booked': booked,
+          'left': left,
+          'soldOut': left <= 0,
+        };
+
+        roomsLeft = blackedOut ? 0 : left;
+        isBlackedOut = blackedOut;
+        isDateOverlapping = left <= 0;
+        isSoldOut = blackedOut || left <= 0;
+        isLoadingRoomOptions = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        roomsLeft = totalQty;
+        isSoldOut = false;
+        isDateOverlapping = false;
+        isLoadingRoomOptions = false;
+      });
+
+      print('Failed to refresh entire property availability: $e');
+    }
+  }
+
   int countOverlappingPropertyBookings(List bookings) {
     final selectedStart = DateTime.tryParse(toSafeIsoDate(checkIn));
     final selectedEnd = DateTime.tryParse(toSafeIsoDate(checkOut));
@@ -1083,13 +1153,7 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
     final selectedRoom = bookingData['selectedRoom'];
 
     if (selectedRoom is! Map) {
-      setState(() {
-        isLoadingRoomOptions = false;
-        roomsLeft = selectedRoomQuantity();
-        isSoldOut = false;
-        isBlackedOut = isSelectedRangeBlackedOut();
-        isDateOverlapping = false;
-      });
+      await refreshEntirePropertyAvailabilityOnly();
       return;
     }
 
@@ -1197,7 +1261,18 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
     int selectedLeft = selectedRoomQuantity();
     bool selectedSoldOut = false;
 
-    if (selectedRoom is Map) {
+    if (selectedRoom is! Map) {
+      final availability = roomAvailabilityMap[propertyAvailabilityKey];
+
+      if (availability is Map) {
+        selectedLeft = parseInt(
+          availability['left'],
+          selectedRoomQuantity(),
+        );
+
+        selectedSoldOut = availability['soldOut'] == true || selectedLeft <= 0;
+      }
+    } else {
       final baseName =
           '${selectedRoom['baseRoomName'] ?? selectedRoom['name'] ?? ''}';
 
@@ -1232,13 +1307,18 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
     final safeCheckOut = toSafeIsoDate(checkOut);
     final nights = calculateNights(safeCheckIn, safeCheckOut);
 
-    if (safeCheckIn.isEmpty || safeCheckOut.isEmpty || nights <= 0 || availableRooms.isEmpty) {
+    if (safeCheckIn.isEmpty || safeCheckOut.isEmpty || nights <= 0) {
       if (!mounted) return;
       setState(() {
         roomOptionPriceMap = {};
         roomAvailabilityMap = {};
         isLoadingRoomOptions = false;
       });
+      return;
+    }
+
+    if (availableRooms.isEmpty) {
+      await refreshEntirePropertyAvailabilityOnly();
       return;
     }
 
@@ -1878,61 +1958,92 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
     required VoidCallback onBack,
   }) {
     return Container(
-      decoration: BoxDecoration(
-        color: AppColors.primary,
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.18),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFF3D1F0A),
+            AppColors.primary,
+            AppColors.primaryLight,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
       ),
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               InkWell(
                 onTap: onBack,
                 borderRadius: BorderRadius.circular(14),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.white.withOpacity(0.18)),
+                    border: Border.all(color: Colors.white.withOpacity(0.20)),
                   ),
                   child: const Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.arrow_back_rounded, color: Colors.white, size: 18),
-                      SizedBox(width: 8),
+                      Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        color: Colors.white,
+                        size: 15,
+                      ),
+                      SizedBox(width: 6),
                       Text(
                         'Back',
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w800,
+                          fontSize: 13,
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
+
               const SizedBox(width: 14),
+
               Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      title == 'Property Details'
+                          ? 'View stay details, rooms, reviews and facilities.'
+                          : title == 'Payment Summary'
+                              ? 'Review your dates, price and availability.'
+                              : title == 'Booking Information'
+                                  ? 'Fill in your guest details to continue.'
+                                  : '',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.72),
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 48),
             ],
           ),
         ),

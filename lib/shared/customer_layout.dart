@@ -60,8 +60,8 @@ class CustomerLayout extends StatelessWidget {
             children: [
               _navItem(context, scaffoldKey, 0, Icons.home_rounded,
                   Icons.home_outlined, 'Home'),
-              _navItem(context, scaffoldKey, 1, Icons.bed_rounded,
-                  Icons.bed_outlined, 'Explore'),
+              _navItem(context, scaffoldKey, 1, Icons.hotel_rounded,
+                  Icons.hotel_outlined, 'Stay'),
               _navItem(context, scaffoldKey, 2, Icons.shopping_cart_rounded,
                   Icons.shopping_cart_outlined, 'Cart'),
               _navItem(context, scaffoldKey, 3, Icons.menu_rounded,
