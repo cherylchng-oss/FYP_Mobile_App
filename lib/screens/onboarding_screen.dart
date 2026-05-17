@@ -1,9 +1,69 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // for HapticFeedback
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import '../api.dart' as api;
+import '../app.dart';
 import '../services/session.dart';
+import '../shared/colors.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Firebase Storage URL for WaterFront.jpeg
+// If the token ever expires: Firebase Console → Storage → WaterFront.jpeg
+// → click the three-dot menu → "Get download URL" and paste the new URL here.
+// ─────────────────────────────────────────────────────────────────────────────
+const _kBgUrl =
+    'https://firebasestorage.googleapis.com/v0/b/fypcams2026.firebasestorage.app'
+    '/o/WaterFront.jpeg?alt=media&token=0b18d4a9-94cc-4c61-83af-b2e8e0df434f';
+
+// Overlay: ~80 % opaque espresso brown — matches the OwnerHeader overlay
+const _kOverlay = Color(0xCC2C1A0E);
+
+// "Sign Up with Email" warm amber — AdminColors.accent shade
+const _kBtnEmail = Color(0xFFB88746);
+
+// "Continue with Google" near-black espresso
+const _kBtnGoogle = Color(0xFF1A0F07);
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Page data
+// ─────────────────────────────────────────────────────────────────────────────
+class _PageData {
+  final String eyebrow;
+  final String title;
+  final String body;
+
+  const _PageData({
+    required this.eyebrow,
+    required this.title,
+    required this.body,
+  });
+}
+
+const _kPages = [
+  _PageData(
+    eyebrow: 'EXPLORE SARAWAK',
+    title: 'Your Story\nBegins Here',
+    body:
+        'Discover the land of hornbills, ancient caves,\nand living traditions.',
+  ),
+  _PageData(
+    eyebrow: 'FIND YOUR STAY',
+    title: 'Perfect\nHomestays',
+    body:
+        'Browse and book cozy homestays across\nall 12 divisions of Sarawak.',
+  ),
+  _PageData(
+    eyebrow: 'WELCOME HOME',
+    title: 'Begin Your\nJourney',
+    body:
+        'Join a community of explorers and discover\nthe hidden gems of Sarawak.',
+  ),
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  OnboardingScreen
+// ─────────────────────────────────────────────────────────────────────────────
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -11,348 +71,191 @@ class OnboardingScreen extends StatefulWidget {
   State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen>
-    with SingleTickerProviderStateMixin {
-  final PageController _pageController = PageController();
+class _OnboardingScreenState extends State<OnboardingScreen> {
+  final _pageController = PageController();
   int _currentPage = 0;
-
-  // animation states
-  double _fadeOpacity = 1.0; // used for text fade
-  Offset _slideOffset = Offset.zero;
-
-  // floating animation for image
-  late final AnimationController _floatController;
-  late final Animation<Offset> _floatAnimation;
-
-  final Color descColor = const Color(0xFF6E5B4B);
-
-  final List<Map<String, dynamic>> _pages = [
-    {
-      'title': 'Hello, \nSarawak!',
-      'description': 'Explore stays across the land of the hornbills.',
-      'image': 'assets/ob1.png',
-    },
-    {
-      'title': 'Stay\nConnected',
-      'description': 'All your stays in one app.',
-      'image': 'assets/ob2.png',
-    },
-    {
-      'title': 'Ready to\nBegin?',
-      'description': 'Start your journey with us.',
-      'image': 'assets/ob3.png',
-    },
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-
-    // floating/breathing animation for image
-    _floatController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
-
-    _floatAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.01),
-      end: const Offset(0, -0.01),
-    ).animate(
-      CurvedAnimation(
-        parent: _floatController,
-        curve: Curves.easeInOut,
-      ),
-    );
-
-    WidgetsBinding.instance.addPostFrameCallback((_) => _runFadeAnimation());
-  }
+  bool _googleLoading = false;
 
   @override
   void dispose() {
     _pageController.dispose();
-    _floatController.dispose();
     super.dispose();
   }
 
-  Future<void> _runFadeAnimation() async {
-    setState(() {
-      _fadeOpacity = 0; // text fade out
-      _slideOffset = const Offset(0, 0.03); // slight slide down
-    });
-
-    await Future.delayed(const Duration(milliseconds: 20));
-    if (!mounted) return;
-
-    setState(() {
-      _fadeOpacity = 1; // text fade in
-      _slideOffset = Offset.zero;
-    });
-  }
+  // ── Navigation helpers ─────────────────────────────────────────────────────
 
   void _nextPage() {
-    if (_currentPage < _pages.length - 1) {
+    if (_currentPage < _kPages.length - 1) {
       _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
+        duration: const Duration(milliseconds: 380),
+        curve: Curves.easeOutCubic,
       );
-    } else {
-      _finishOnboarding();
     }
   }
 
-  Future<void> _finishOnboarding() async {
+  Future<void> _goToSignup() async {
     await Session.markOnboardingSeen();
-    if (mounted) {
-      Navigator.pushReplacementNamed(context, '/before-login');
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(context, '/signup');
+  }
+
+  Future<void> _goToLogin() async {
+    await Session.markOnboardingSeen();
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(context, '/login');
+  }
+
+  Future<void> _skipOnboarding() async {
+    await Session.markOnboardingSeen();
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(context, '/before-login');
+  }
+
+  // ── Google Sign-In (same logic as login_screen.dart) ──────────────────────
+
+  Future<void> _googleSignIn() async {
+    setState(() => _googleLoading = true);
+    try {
+      final gsi = GoogleSignIn(scopes: ['email', 'profile']);
+      try {
+        await gsi.signOut();
+      } catch (_) {}
+
+      final googleUser = await gsi.signIn();
+      if (googleUser == null) {
+        if (mounted) setState(() => _googleLoading = false);
+        return;
+      }
+
+      final auth = await googleUser.authentication;
+      final accessToken = auth.accessToken;
+      if (accessToken == null) throw Exception('Failed to get Google access token');
+
+      final res = await api.googleLogin(accessToken);
+      if (res['success'] != true) {
+        throw Exception(res['message'] ?? 'Google login failed');
+      }
+
+      // Save session
+      final userid = (res['userid'] as num).toInt();
+      final usergroup = (res['usergroup'] as String).trim().toLowerCase();
+      final uactivation = (res['uactivation'] as String).trim().toLowerCase();
+      final username =
+          res['username'] as String? ?? googleUser.email.split('@')[0];
+
+      await Session.saveLogin(
+        userid: userid,
+        usergroup: usergroup,
+        uactivation: uactivation,
+        username: username,
+      );
+      if (res['accessToken'] != null && res['refreshToken'] != null) {
+        await Session.saveTokens(
+          accessToken: res['accessToken'] as String,
+          refreshToken: res['refreshToken'] as String,
+        );
+      }
+      await Session.markOnboardingSeen();
+
+      if (!mounted) return;
+      setState(() => _googleLoading = false);
+      FocusScope.of(context).unfocus();
+
+      final nav = appNavigatorKey.currentState!;
+      nav.popUntil((r) => r.isFirst);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      await nav.pushReplacementNamed('/after-login');
+    } catch (e) {
+      if (mounted) {
+        setState(() => _googleLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: AdminColors.danger,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
-  // Gradient title using Seymour One + Figma colours
-  Widget _buildGradientTitle(String text) {
-    return ShaderMask(
-      shaderCallback: (bounds) {
-        return const LinearGradient(
-          colors: [
-            Color(0xFFFF9F1C), // 0%
-            Color(0xFFF88449), // 50%
-            Color(0xFFFFBF68), // 100%
-          ],
-        ).createShader(
-          Rect.fromLTWH(0, 0, bounds.width, bounds.height),
-        );
-      },
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: GoogleFonts.seymourOne(
-          fontSize: 29,
-          height: 1.1,
-          color: Colors.white, // replaced by shader
-        ),
-      ),
-    );
-  }
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Column(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
+        backgroundColor: const Color(0xFF2C1A0E),
+        body: Stack(
           children: [
-            // ----------------- PAGES -----------------------
-            Expanded(
-              child: PageView.builder(
-                controller: _pageController,
-                itemCount: _pages.length,
-                onPageChanged: (index) {
-                  setState(() => _currentPage = index);
-                  HapticFeedback.lightImpact(); // tiny vibration
-                  _runFadeAnimation();
+            // ── Hero background photo ──────────────────────────────────────
+            Positioned.fill(
+              child: Image.network(
+                _kBgUrl,
+                fit: BoxFit.cover,
+                loadingBuilder: (_, child, progress) {
+                  if (progress == null) return child;
+                  return Container(color: const Color(0xFF2C1A0E));
                 },
-                itemBuilder: (context, index) {
-                  final page = _pages[index];
-
-                  return AnimatedSlide(
-                    offset: _slideOffset,
-                    duration: const Duration(milliseconds: 400),
-                    curve: Curves.easeOut,
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final headerHeight = constraints.maxHeight * 0.5;
-
-                        // tweak overlap + spacing for last page (characters taller)
-                        final bool isLast = index == 2;
-                        final double overlapFactor =
-                            isLast ? 0.10 : 0.12; // smaller = sits higher
-                        final double spacerFactor =
-                            isLast ? 0.10 : 0.08; // space below image
-
-                        return Column(
-                          children: [
-                            const SizedBox(height: 8),
-
-                            // 🔶 TOP: soft orange gradient + floating image
-                            SizedBox(
-                              height: headerHeight,
-                              width: double.infinity,
-                              child: Stack(
-                                clipBehavior: Clip.none,
-                                children: [
-                                  // gradient background with gentle wave bottom
-                                  ClipPath(
-                                    clipper: BottomWaveClipper(),
-                                    child: Container(
-                                      decoration: const BoxDecoration(
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                          colors: [
-                                            Color(0xFFFFEED6), 
-                                            Color(0xFFFFBF68), 
-                                            Color(0xFFFF9F1C),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-
-                                  // floating illustration overlapping the wave
-                                  Positioned(
-                                    bottom:
-                                        -constraints.maxHeight * overlapFactor,
-                                    left: 0,
-                                    right: 0,
-                                    child: SlideTransition(
-                                      position: _floatAnimation,
-                                      child: Center(
-                                        child: Image.asset(
-                                          page['image'],
-                                          width: constraints.maxWidth * 0.55,
-                                          fit: BoxFit.contain,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            // space to account for the image overlap
-                            SizedBox(
-                              height: constraints.maxHeight * spacerFactor,
-                            ),
-
-                            // 🔶 Title, description, dots (soft fade-in)
-                            AnimatedOpacity(
-                              opacity: _fadeOpacity,
-                              duration:
-                                  const Duration(milliseconds: 400),
-                              curve: Curves.easeOut,
-                              child: Column(
-                                children: [
-                                  _buildGradientTitle(page['title']),
-                                  const SizedBox(height: 10),
-
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 32,
-                                    ),
-                                    child: Text(
-                                      page['description'],
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 14.5,
-                                        height: 1.4,
-                                        color: descColor,
-                                      ),
-                                    ),
-                                  ),
-
-                                  const SizedBox(height: 90),
-
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
-                                    children: List.generate(
-                                      _pages.length,
-                                      (i) {
-                                        final active = i == _currentPage;
-                                        return AnimatedContainer(
-                                          duration: const Duration(
-                                              milliseconds: 250),
-                                          margin: const EdgeInsets.symmetric(
-                                              horizontal: 4),
-                                          height: 8,
-                                          width: active ? 22 : 8,
-                                          decoration: BoxDecoration(
-                                            color: active
-                                                ? const Color(0xFFDF6A1F)
-                                                : const Color(0xFFFFD6A6),
-                                            borderRadius:
-                                                BorderRadius.circular(20),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            const Spacer(),
-                          ],
-                        );
-                      },
-                    ),
-                  );
-                },
+                errorBuilder: (_, __, ___) =>
+                    Container(color: const Color(0xFF2C1A0E)),
               ),
             ),
 
-            // ----------------- BOTTOM: SKIP + BUTTON -----------------------
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            // ── Dark overlay ───────────────────────────────────────────────
+            Positioned.fill(child: Container(color: _kOverlay)),
+
+            // ── Content ───────────────────────────────────────────────────
+            SafeArea(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // SKIP (grey, left)
-                  TextButton(
-                    onPressed: _finishOnboarding,
-                    child: const Text(
-                      'SKIP',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey,
+                  // Skip button (hidden on last page)
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: AnimatedOpacity(
+                      opacity: _currentPage < _kPages.length - 1 ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 200),
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.only(top: 18, right: 24),
+                        child: GestureDetector(
+                          onTap: _skipOnboarding,
+                          behavior: HitTestBehavior.opaque,
+                          child: Text(
+                            'SKIP',
+                            style: GoogleFonts.plusJakartaSans(
+                              color: Colors.white.withOpacity(0.55),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.8,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
 
-                  // Gradient NEXT / GET STARTED button
-                  SizedBox(
-                    height: 50,
-                    width: null,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(26),
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Color(0xFFFFBF68), // 0%
-                              Color(0xFFFF9F1C), // 100%
-                            ],
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Color(0x33FF9F1C),
-                              blurRadius: 10,
-                              offset: Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: ElevatedButton(
-                          onPressed: _nextPage,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            shadowColor: Colors.transparent,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(26),
-                            ),
-                          ),
-                          child: Text(
-                            _currentPage == _pages.length - 1
-                                ? 'GET STARTED'
-                                : 'NEXT',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
+                  // Pages
+                  Expanded(
+                    child: PageView.builder(
+                      controller: _pageController,
+                      itemCount: _kPages.length,
+                      onPageChanged: (i) {
+                        HapticFeedback.lightImpact();
+                        setState(() => _currentPage = i);
+                      },
+                      itemBuilder: (_, i) => _OnboardingPage(
+                        data: _kPages[i],
+                        isLast: i == _kPages.length - 1,
+                        currentDot: _currentPage,
+                        totalDots: _kPages.length,
+                        onNext: _nextPage,
+                        onSignup: _goToSignup,
+                        onGoogle: _googleLoading ? null : _googleSignIn,
+                        onLogin: _goToLogin,
+                        googleLoading: _googleLoading,
                       ),
                     ),
                   ),
@@ -366,26 +269,325 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 }
 
-/// Simple bottom wave clipper so the gradient feels like a soft band
-class BottomWaveClipper extends CustomClipper<Path> {
+// ─────────────────────────────────────────────────────────────────────────────
+//  Individual onboarding page
+// ─────────────────────────────────────────────────────────────────────────────
+class _OnboardingPage extends StatelessWidget {
+  final _PageData data;
+  final bool isLast;
+  final int currentDot;
+  final int totalDots;
+  final VoidCallback onNext;
+  final VoidCallback onSignup;
+  final VoidCallback? onGoogle;
+  final VoidCallback onLogin;
+  final bool googleLoading;
+
+  const _OnboardingPage({
+    required this.data,
+    required this.isLast,
+    required this.currentDot,
+    required this.totalDots,
+    required this.onNext,
+    required this.onSignup,
+    required this.onGoogle,
+    required this.onLogin,
+    required this.googleLoading,
+  });
+
   @override
-  Path getClip(Size size) {
-    final path = Path();
-    path.lineTo(0, size.height - 60);
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── Upper spacer: lets the photo breathe at the top ───────────────
+        const Spacer(),
 
-    // smooth curve across the bottom
-    path.quadraticBezierTo(
-      size.width / 2,
-      size.height,
-      size.width,
-      size.height - 60,
+        // ── Text block ────────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Eyebrow
+              Text(
+                data.eyebrow,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white.withOpacity(0.55),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 2.8,
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // Title
+              Text(
+                data.title,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white,
+                  fontSize: 44,
+                  fontWeight: FontWeight.w800,
+                  height: 1.08,
+                  letterSpacing: -1.2,
+                ),
+              ),
+              const SizedBox(height: 18),
+
+              // Body / subtitle
+              Text(
+                data.body,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white.withOpacity(0.60),
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w500,
+                  height: 1.6,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 44),
+
+        // ── CTA: last page = signup buttons, other pages = NEXT pill ──────
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: isLast ? _buildLastPageCta() : _buildNextButton(),
+        ),
+
+        const SizedBox(height: 36),
+
+        // ── Dot indicators ────────────────────────────────────────────────
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(totalDots, (i) {
+            final active = i == currentDot;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 280),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              width: active ? 24 : 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: active
+                    ? Colors.white
+                    : Colors.white.withOpacity(0.30),
+                borderRadius: BorderRadius.circular(10),
+              ),
+            );
+          }),
+        ),
+
+        const SizedBox(height: 24),
+
+        // ── Copyright ─────────────────────────────────────────────────────
+        Text(
+          'SARAWAK HERITAGE & TOURISM © 2024',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.plusJakartaSans(
+            color: Colors.white.withOpacity(0.30),
+            fontSize: 9,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.5,
+          ),
+        ),
+
+        const SizedBox(height: 22),
+      ],
     );
-
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
   }
 
+  // ── Last page CTA: two buttons + log-in link ──────────────────────────────
+  Widget _buildLastPageCta() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Sign Up with Email ─────────────────────────────────────────────
+        _PillButton(
+          onTap: onSignup,
+          backgroundColor: _kBtnEmail,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.email_outlined, color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              Text(
+                'Sign Up with Email',
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
+        // Continue with Google ───────────────────────────────────────────
+        _PillButton(
+          onTap: onGoogle,
+          backgroundColor: _kBtnGoogle,
+          border: Border.all(color: Colors.white.withOpacity(0.12), width: 1),
+          child: googleLoading
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Google "G" logo from local assets
+                    Image.asset(
+                      'assets/google_logo.png',
+                      width: 20,
+                      height: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Continue with Google',
+                      style: GoogleFonts.plusJakartaSans(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+
+        const SizedBox(height: 24),
+
+        // Already have an account? Log In ────────────────────────────────
+        GestureDetector(
+          onTap: onLogin,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: RichText(
+              textAlign: TextAlign.center,
+              text: TextSpan(
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white.withOpacity(0.60),
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w500,
+                ),
+                children: [
+                  const TextSpan(text: 'Already have an account?  '),
+                  TextSpan(
+                    text: 'Log In',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Pages 1 & 2 CTA: frosted-glass NEXT pill ─────────────────────────────
+  Widget _buildNextButton() {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: GestureDetector(
+        onTap: onNext,
+        child: Container(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.14),
+            borderRadius: BorderRadius.circular(30),
+            border:
+                Border.all(color: Colors.white.withOpacity(0.25), width: 1),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'NEXT',
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.6,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.arrow_forward_rounded,
+                color: Colors.white,
+                size: 16,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Reusable pill-shaped button
+// ─────────────────────────────────────────────────────────────────────────────
+class _PillButton extends StatefulWidget {
+  final VoidCallback? onTap;
+  final Color backgroundColor;
+  final BoxBorder? border;
+  final Widget child;
+
+  const _PillButton({
+    required this.onTap,
+    required this.backgroundColor,
+    required this.child,
+    this.border,
+  });
+
   @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+  State<_PillButton> createState() => _PillButtonState();
+}
+
+class _PillButtonState extends State<_PillButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap?.call();
+      },
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOutCubic,
+        child: Container(
+          height: 54,
+          decoration: BoxDecoration(
+            color: widget.onTap == null
+                ? widget.backgroundColor.withOpacity(0.55)
+                : widget.backgroundColor,
+            borderRadius: BorderRadius.circular(30),
+            border: widget.border,
+          ),
+          child: Center(child: widget.child),
+        ),
+      ),
+    );
+  }
 }

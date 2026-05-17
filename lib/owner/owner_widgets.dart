@@ -152,60 +152,60 @@ class OwnerHeader extends StatelessWidget {
                     behavior: HitTestBehavior.opaque,
                     onTap: () => _showOwnerNotifications(context),
                     child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(22),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.10),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.20),
+                      clipBehavior: Clip.none,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(22),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                            child: Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.10),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.20),
+                                ),
                               ),
-                            ),
-                            child: const Icon(
-                              Icons.notifications_outlined,
-                              color: Colors.white,
-                              size: 20,
+                              child: const Icon(
+                                Icons.notifications_outlined,
+                                color: Colors.white,
+                                size: 20,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      if (notifCount > 0)
-                        Positioned(
-                          top: -3,
-                          right: -3,
-                          child: Container(
-                            width: 19,
-                            height: 19,
-                            decoration: BoxDecoration(
-                              color: AdminColors.danger,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: AdminColors.drawerBg,
-                                width: 1.5,
+                        if (notifCount > 0)
+                          Positioned(
+                            top: -3,
+                            right: -3,
+                            child: Container(
+                              width: 19,
+                              height: 19,
+                              decoration: BoxDecoration(
+                                color: AdminColors.danger,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: AdminColors.drawerBg,
+                                  width: 1.5,
+                                ),
                               ),
-                            ),
-                            child: Center(
-                              child: Text(
-                                notifCount > 9 ? '9+' : '$notifCount',
-                                style: GoogleFonts.plusJakartaSans(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w800,
+                              child: Center(
+                                child: Text(
+                                  notifCount > 9 ? '9+' : '$notifCount',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
-                  ),
-                  ),  // GestureDetector
+                      ],
+                    ),
+                  ), // GestureDetector
               ],
             ),
           ],
@@ -242,8 +242,7 @@ class OwnerSectionHeader extends StatelessWidget {
           if (count != null) ...[
             const SizedBox(width: 10),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: AdminColors.primary.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(20),
@@ -259,6 +258,131 @@ class OwnerSectionHeader extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pagination Widget — For List Heavy Pages
+// ---------------------------------------------------------------------------
+class OwnerPagination extends StatelessWidget {
+  final int currentPage;
+  final int totalPages;
+  final ValueChanged<int> onPageChanged;
+
+  const OwnerPagination({
+    super.key,
+    required this.currentPage,
+    required this.totalPages,
+    required this.onPageChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (totalPages <= 1) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _buildNavButton(
+            icon: Icons.chevron_left_rounded,
+            enabled: currentPage > 1,
+            onTap: () => onPageChanged(currentPage - 1),
+          ),
+          const SizedBox(width: 12),
+          ...List.generate(totalPages, (index) {
+            final page = index + 1;
+            // Simple logic to show surrounding pages or dots if many pages
+            if (page == 1 ||
+                page == totalPages ||
+                (page >= currentPage - 1 && page <= currentPage + 1)) {
+              return _buildPageNumber(page);
+            } else if (page == currentPage - 2 || page == currentPage + 2) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 6),
+                child: Text('...', style: TextStyle(color: AdminColors.textMuted)),
+              );
+            }
+            return const SizedBox.shrink();
+          }),
+          const SizedBox(width: 12),
+          _buildNavButton(
+            icon: Icons.chevron_right_rounded,
+            enabled: currentPage < totalPages,
+            onTap: () => onPageChanged(currentPage + 1),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPageNumber(int page) {
+    final isActive = page == currentPage;
+    return GestureDetector(
+      onTap: () => onPageChanged(page),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: isActive ? AdminColors.drawerBg : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: isActive
+              ? null
+              : Border.all(color: AdminColors.border, width: 1.5),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: AdminColors.drawerBg.withOpacity(0.2),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  )
+                ]
+              : [],
+        ),
+        child: Center(
+          child: Text(
+            '$page',
+            style: GoogleFonts.plusJakartaSans(
+              color: isActive ? Colors.white : AdminColors.textPrimary,
+              fontSize: 14,
+              fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavButton({
+    required IconData icon,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: enabled ? Colors.white : AdminColors.cream,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: enabled ? AdminColors.border : Colors.transparent,
+            width: 1.5,
+          ),
+        ),
+        child: Icon(
+          icon,
+          size: 20,
+          color: enabled
+              ? AdminColors.textPrimary
+              : AdminColors.textMuted.withOpacity(0.4),
+        ),
       ),
     );
   }
@@ -435,7 +559,7 @@ class OwnerEmptyState extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Notification Sheet — hardcoded until backend is connected
+// Notification Sheet
 // ---------------------------------------------------------------------------
 void _showOwnerNotifications(BuildContext context) {
   showModalBottomSheet(
@@ -446,10 +570,17 @@ void _showOwnerNotifications(BuildContext context) {
   );
 }
 
-class _OwnerNotificationSheet extends StatelessWidget {
+class _OwnerNotificationSheet extends StatefulWidget {
   const _OwnerNotificationSheet();
 
-  static final _items = <Map<String, dynamic>>[
+  @override
+  State<_OwnerNotificationSheet> createState() =>
+      _OwnerNotificationSheetState();
+}
+
+class _OwnerNotificationSheetState extends State<_OwnerNotificationSheet> {
+  // Using a local state list so we can clear it dynamically
+  List<Map<String, dynamic>> _items = [
     {
       'title': 'New booking request',
       'body': 'Alex Smith booked Riverside Majestic Suite for 3 nights',
@@ -484,6 +615,12 @@ class _OwnerNotificationSheet extends StatelessWidget {
     },
   ];
 
+  void _clearAll() {
+    setState(() {
+      _items.clear();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final unreadCount = _items.where((n) => !(n['read'] as bool)).length;
@@ -506,7 +643,7 @@ class _OwnerNotificationSheet extends StatelessWidget {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          // Header row
+          // Header row with Clear All
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 12, 12),
             child: Row(
@@ -524,7 +661,7 @@ class _OwnerNotificationSheet extends StatelessWidget {
                 ),
                 if (unreadCount > 0)
                   Container(
-                    margin: const EdgeInsets.only(right: 8),
+                    margin: const EdgeInsets.only(right: 12),
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
@@ -540,6 +677,24 @@ class _OwnerNotificationSheet extends StatelessWidget {
                       ),
                     ),
                   ),
+                if (_items.isNotEmpty)
+                  TextButton(
+                    onPressed: _clearAll,
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(
+                      'Clear All',
+                      style: GoogleFonts.plusJakartaSans(
+                        color: AdminColors.drawerBg,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 4),
                 IconButton(
                   onPressed: () => Navigator.pop(context),
                   icon: Icon(Icons.close_rounded,
@@ -551,13 +706,31 @@ class _OwnerNotificationSheet extends StatelessWidget {
               ],
             ),
           ),
-          Divider(
-              height: 1, color: AdminColors.border.withOpacity(0.6)),
-          // Items
-          ..._items.map((n) => _buildItem(n)),
+          Divider(height: 1, color: AdminColors.border.withOpacity(0.6)),
+          // Items or Empty State
+          if (_items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 48),
+              child: Column(
+                children: [
+                  Icon(Icons.notifications_off_outlined,
+                      size: 48, color: AdminColors.textMuted.withOpacity(0.3)),
+                  const SizedBox(height: 16),
+                  Text(
+                    'You\'re all caught up!',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: AdminColors.textMuted,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ..._items.map((n) => _buildItem(n)),
           // Bottom safe-area padding
-          SizedBox(
-              height: MediaQuery.of(context).padding.bottom + 20),
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
         ],
       ),
     );
@@ -571,14 +744,11 @@ class _OwnerNotificationSheet extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(16, 6, 16, 0),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: isRead
-            ? Colors.white
-            : AdminColors.primary.withOpacity(0.04),
+        color: isRead ? Colors.white : AdminColors.primary.withOpacity(0.04),
         borderRadius: BorderRadius.circular(18),
         border: isRead
             ? Border.all(color: AdminColors.border.withOpacity(0.4))
-            : Border.all(
-                color: AdminColors.primary.withOpacity(0.12)),
+            : Border.all(color: AdminColors.primary.withOpacity(0.12)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.03),
@@ -596,8 +766,7 @@ class _OwnerNotificationSheet extends StatelessWidget {
               color: color.withOpacity(0.10),
               borderRadius: BorderRadius.circular(12),
             ),
-            child:
-                Icon(n['icon'] as IconData, size: 15, color: color),
+            child: Icon(n['icon'] as IconData, size: 15, color: color),
           ),
           const SizedBox(width: 12),
           Expanded(

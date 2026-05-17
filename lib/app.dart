@@ -16,6 +16,7 @@ import 'owner/owner_dashboard.dart';
 import 'owner/owner_users_page.dart';
 import 'owner/owner_cluster.dart';
 import 'owner/owner_logs_page.dart';
+import 'screens/onboarding_screen.dart'
 import 'shared/colors.dart';
 
 void main() {

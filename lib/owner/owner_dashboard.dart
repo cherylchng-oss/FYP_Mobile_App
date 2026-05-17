@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../api.dart' as api;
+import '../services/session.dart';
+
 import '../shared/colors.dart';
 import '../shared/bottom_navigation_bar.dart';
 import '../shared/navigation_menu.dart' as nav;
@@ -19,14 +22,14 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
   bool _isLoading = true;
   final String _selectedPeriod = 'This month';
 
-  // Mock data — replace with real API calls
-  final double _totalRevenue = 12450.00;
-  final int _totalUsers = 142;
-  final int _totalProperties = 34;
-  final int _totalReservations = 89;
-  final double _guestRating = 4.8;
-  final int _totalClusters = 6;
-  final double _netEarnings = 9876.50;
+  // Live Backend Variables
+  double _totalRevenue = 0.0;
+  int _totalUsers = 0;
+  int _totalProperties = 0;
+  int _totalReservations = 0;
+  double _guestRating = 0.0;
+  int _totalClusters = 0;
+  double _netEarnings = 0.0;
 
   @override
   void initState() {
@@ -35,8 +38,58 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
   }
 
   Future<void> _loadDashboard() async {
-    await Future.delayed(const Duration(milliseconds: 700));
-    if (mounted) setState(() => _isLoading = false);
+    setState(() => _isLoading = true);
+    try {
+      final userId = await Session.getUserId();
+      if (userId == null) return;
+
+      // Run all API calls in parallel
+      final results = await Future.wait([
+        api.fetchCustomers(),                      // [0]
+        api.fetchPropertiesListingTable(),         // [1]
+        api.fetchReservation(),                    // [2]
+        api.fetchClusters(),                       // [3]
+        api.fetchGuestSatisfactionScore(userId),   // [4]
+        api.fetchFinanceLedgerCard(userId),        // [5]
+      ]);
+
+      final customersData   = results[0] as Map<String, dynamic>;
+      final propertiesData  = results[1] as Map<String, dynamic>;
+      final reservations    = results[2] as List<dynamic>;
+      final clustersData    = results[3] as Map<String, dynamic>;
+      final satisfactionData= results[4] as Map<String, dynamic>;
+      final financeData     = results[5] as Map<String, dynamic>;
+
+      if (!mounted) return;
+      setState(() {
+        // Users
+        final customersList = customersData['customers'] as List? ?? [];
+        _totalUsers = customersList.length;
+
+        // Properties
+        final propList = propertiesData['properties'] as List? ?? [];
+        _totalProperties = propList.length;
+
+        // Reservations
+        _totalReservations = reservations.length;
+
+        // Clusters
+        final clusterList = clustersData['clusters'] as List? ?? [];
+        _totalClusters = clusterList.length;
+
+        // Guest rating
+        _guestRating = (satisfactionData['averageScore'] as num?)?.toDouble() ?? 0.0;
+
+        // Finance
+        _totalRevenue = (financeData['totalRevenue'] as num?)?.toDouble() ?? 0.0;
+        _netEarnings  = (financeData['netEarnings']  as num?)?.toDouble() ?? 0.0;
+
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Dashboard load error: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   void _onNavTap(int index) {
@@ -72,8 +125,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
               greeting: 'Good morning, Owner',
               title: 'Owner Panel',
               notifCount: 3,
-              // Extra bottom padding creates the "shelf" the revenue card
-              // slides up into, giving the floating overlap effect.
               bottomPadding: 80.0,
             ),
           ),
@@ -83,13 +134,8 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             bottom: false,
             child: Column(
               children: [
-                // Spacer height = header content height below status bar
-                // (greeting 22 + gap 6 + title 30 + bottomPad 80) − overlap 48
-                // ≈ 90. Wrapped in Builder so context reads correct MediaQuery.
                 Builder(
                   builder: (ctx) => SizedBox(
-                    // Use a proportion of the LOGICAL content area so the
-                    // floating card lands correctly on all Android sizes.
                     height: MediaQuery.of(ctx).size.height * 0.115,
                   ),
                 ),
@@ -124,9 +170,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Hero Revenue Card — white floating card with warm shadow
-  // ---------------------------------------------------------------------------
   Widget _buildHeroRevenueCard() {
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
@@ -142,7 +185,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(28),
-          // 2025 trend: colored ambient shadow (warm espresso tint)
           boxShadow: [
             BoxShadow(
               color: AdminColors.drawerBg.withOpacity(0.14),
@@ -160,7 +202,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Label + period selector ───────────────────────────────────
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -198,10 +239,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 ),
               ],
             ),
-
             const SizedBox(height: 14),
-
-            // ── Animated revenue counter ──────────────────────────────────
             TweenAnimationBuilder<double>(
               tween: Tween(begin: 0, end: _totalRevenue),
               duration: const Duration(milliseconds: 1600),
@@ -210,7 +248,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 'RM ${value.toStringAsFixed(2)}',
                 style: GoogleFonts.plusJakartaSans(
                   color: AdminColors.textPrimary,
-                  // Responsive: slightly smaller on narrow phones
                   fontSize: MediaQuery.of(context).size.width < 380 ? 36 : 42,
                   fontWeight: FontWeight.w800,
                   letterSpacing: -2.0,
@@ -218,10 +255,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 ),
               ),
             ),
-
             const SizedBox(height: 16),
-
-            // ── Growth pill ───────────────────────────────────────────────
             Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -252,11 +286,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Stats Grid
-  // LayoutBuilder → childAspectRatio adapts to the actual card width,
-  // so cards never clip on narrow (360px) or wide (480px) phones.
-  // ---------------------------------------------------------------------------
   Widget _buildStatsGrid() {
     final stats = [
       _StatData(
@@ -299,10 +328,8 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Available width for the grid (minus outer padding)
         final gridWidth = constraints.maxWidth - 40;
-        final cardWidth = (gridWidth - 16) / 2; // 16 = column gap
-        // Clamp ensures comfortable content height on all screen sizes
+        final cardWidth = (gridWidth - 16) / 2;
         final cardHeight = cardWidth.clamp(155.0, 210.0);
 
         return Padding(
@@ -344,7 +371,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
-              // Colored ambient shadow — 2025 trend
               BoxShadow(
                 color: baseColor.withOpacity(0.08),
                 blurRadius: 24,
@@ -362,7 +388,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             borderRadius: BorderRadius.circular(24),
             child: Stack(
               children: [
-                // 1. Ghost watermark icon (bottom-right, 7% opacity)
                 Positioned(
                   right: -14,
                   bottom: -14,
@@ -372,15 +397,12 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                     color: AdminColors.textMuted.withOpacity(0.07),
                   ),
                 ),
-
-                // 2. Card content
                 Padding(
                   padding: const EdgeInsets.all(18),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Circular icon badge
                       Container(
                         width: 42,
                         height: 42,
@@ -390,7 +412,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                         ),
                         child: Icon(stat.icon, color: baseColor, size: 20),
                       ),
-                      // Bottom stats
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -423,8 +444,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                     ],
                   ),
                 ),
-
-                // 3. Gradient accent bar — bottom edge (2025 trend)
                 Positioned(
                   bottom: 0,
                   left: 0,
@@ -452,9 +471,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Data model
-// ---------------------------------------------------------------------------
 class _StatData {
   final String label;
   final String value;

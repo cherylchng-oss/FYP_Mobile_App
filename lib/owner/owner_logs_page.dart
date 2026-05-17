@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../api.dart' as api;
+import '../services/session.dart';
+
 import '../shared/colors.dart';
 import '../shared/bottom_navigation_bar.dart';
 import '../shared/navigation_menu.dart' as nav;
@@ -21,20 +24,11 @@ class _OwnerLogsPageState extends State<OwnerLogsPage> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
-  final List<Map<String, dynamic>> _bookLogs = [
-    {'action': 'New Booking Created', 'type': 'Booking', 'user': 'Alex Smith', 'time': '13 May 2025, 10:45'},
-    {'action': 'Payment Successful — RM 250', 'type': 'Payment', 'user': 'Sarah Connor', 'time': '13 May 2025, 09:12'},
-    {'action': 'Booking Cancelled', 'type': 'Cancel', 'user': 'John Doe', 'time': '12 May 2025, 14:30'},
-    {'action': 'New Booking — Kuching Suite', 'type': 'Booking', 'user': 'Nurul Ain', 'time': '11 May 2025, 08:00'},
-    {'action': 'Payment Received — RM 480', 'type': 'Payment', 'user': 'James Lau', 'time': '10 May 2025, 17:45'},
-  ];
+  int _currentPage = 1;
+  int _totalPages = 1; 
 
-  final List<Map<String, dynamic>> _auditLogs = [
-    {'action': 'Updated Property Rate', 'type': 'Other', 'user': 'AdminUser', 'time': '13 May 2025, 11:00'},
-    {'action': 'Suspended Customer Account', 'type': 'Cancel', 'user': 'ModTeam', 'time': '12 May 2025, 16:20'},
-    {'action': 'New Moderator Added', 'type': 'Other', 'user': 'AdminUser', 'time': '10 May 2025, 09:30'},
-    {'action': 'Property Listing Approved', 'type': 'Booking', 'user': 'ModTeam', 'time': '08 May 2025, 14:15'},
-  ];
+  List<Map<String, dynamic>> _bookLogs = [];
+  List<Map<String, dynamic>> _auditLogs = [];
 
   @override
   void initState() {
@@ -52,8 +46,64 @@ class _OwnerLogsPageState extends State<OwnerLogsPage> {
   }
 
   Future<void> _loadData() async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) setState(() => _isLoading = false);
+    setState(() => _isLoading = true);
+    try {
+      final userId = await Session.getUserId();
+      if (userId == null) return;
+
+      final results = await Future.wait([
+        api.fetchBookAndPayLogs(userId, 'owner'),  
+        api.auditTrails(userId),                    
+      ]);
+
+      final bookLogsRaw   = results[0] as List<dynamic>;
+      final auditLogsRaw  = results[1] as List<dynamic>;
+
+      List<Map<String, dynamic>> mapBookLog(dynamic raw) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        final status = (m['status'] ?? m['type'] ?? '').toString().toLowerCase();
+        String type = 'Other';
+        if (status.contains('book') || status.contains('reserv')) type = 'Booking';
+        if (status.contains('pay') || status.contains('payment')) type = 'Payment';
+        if (status.contains('cancel')) type = 'Cancel';
+
+        return {
+          'action': m['action'] ?? m['description'] ?? m['log_action'] ?? 'Log Entry',
+          'type':   type,
+          'user':   m['username'] ?? m['user'] ?? m['name'] ?? 'User',
+          'time':   m['created_at'] ?? m['timestamp'] ?? m['time'] ?? '',
+        };
+      }
+
+      List<Map<String, dynamic>> mapAuditLog(dynamic raw) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        final action = (m['action'] ?? m['description'] ?? '').toString().toLowerCase();
+        String type = 'Other';
+        if (action.contains('book') || action.contains('reserv')) type = 'Booking';
+        if (action.contains('pay')) type = 'Payment';
+        if (action.contains('cancel') || action.contains('suspend')) type = 'Cancel';
+
+        return {
+          'action': m['action'] ?? m['description'] ?? 'Audit Entry',
+          'type':   type,
+          'user':   m['username'] ?? m['user'] ?? m['performed_by'] ?? 'System',
+          'time':   m['created_at'] ?? m['timestamp'] ?? '',
+        };
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _bookLogs  = bookLogsRaw.map(mapBookLog).toList();
+        _auditLogs = auditLogsRaw.map(mapAuditLog).toList();
+        const pageSize = 10;
+        final activeList = _tabIndex == 0 ? _bookLogs : _auditLogs;
+        _totalPages = (activeList.length / pageSize).ceil().clamp(1, 999);
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Logs load error: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   void _onNavTap(int index) {
@@ -87,19 +137,15 @@ class _OwnerLogsPageState extends State<OwnerLogsPage> {
               title: 'Logs & Audit',
               subtitle: 'All platform activity',
               notifCount: 3,
-              bottomPadding: 40,
+              bottomPadding: 80,
             ),
           ),
           SafeArea(
             bottom: false,
             child: Column(
               children: [
-                SizedBox(height: OwnerHeader.spacerHeight()),
-                _buildSegmentedToggle(),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: _buildSearchBar(),
-                ),
+                SizedBox(height: OwnerHeader.spacerHeight(bottomPadding: 80) - 45),
+                _buildCommandCenter(),
                 OwnerSectionHeader(title: 'Recent Entries', count: _visibleList.length),
                 Expanded(
                   child: _isLoading
@@ -108,9 +154,21 @@ class _OwnerLogsPageState extends State<OwnerLogsPage> {
                           ? const OwnerEmptyState(message: 'No log entries found.')
                           : ListView.builder(
                               physics: const BouncingScrollPhysics(),
-                              padding: const EdgeInsets.only(top: 4, bottom: 100),
-                              itemCount: _visibleList.length,
-                              itemBuilder: (_, i) => _buildLogCard(_visibleList[i], i),
+                              padding: const EdgeInsets.only(top: 4, bottom: 40),
+                              itemCount: _visibleList.length + 1,
+                              itemBuilder: (_, i) {
+                                if (i == _visibleList.length) {
+                                  return OwnerPagination(
+                                    currentPage: _currentPage,
+                                    totalPages: _totalPages,
+                                    onPageChanged: (page) {
+                                      setState(() => _currentPage = page);
+                                      _loadData();
+                                    },
+                                  );
+                                }
+                                return _buildLogCard(_visibleList[i], i);
+                              },
                             ),
                 ),
               ],
@@ -126,12 +184,33 @@ class _OwnerLogsPageState extends State<OwnerLogsPage> {
     );
   }
 
-  Widget _buildSegmentedToggle() {
+  Widget _buildCommandCenter() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(color: AdminColors.drawerBg.withOpacity(0.12), blurRadius: 32, offset: const Offset(0, 16), spreadRadius: -4),
+          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        children: [
+          _buildSegmentedToggle(),
+          const SizedBox(height: 12),
+          _buildSearchBar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSegmentedToggle() {
+    return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AdminColors.border.withOpacity(0.55),
+        color: AdminColors.cream, 
         borderRadius: BorderRadius.circular(22),
       ),
       child: Row(children: [
@@ -144,22 +223,22 @@ class _OwnerLogsPageState extends State<OwnerLogsPage> {
   Widget _buildTogglePill(String label, int index) {
     final isActive = _tabIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _tabIndex = index),
+      onTap: () {
+        setState(() {
+          _tabIndex = index;
+          _currentPage = 1;
+          const pageSize = 10;
+          final activeList = _tabIndex == 0 ? _bookLogs : _auditLogs;
+          _totalPages = (activeList.length / pageSize).ceil().clamp(1, 999);
+        });
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
           color: isActive ? Colors.white : Colors.transparent,
           borderRadius: BorderRadius.circular(18),
-          boxShadow: isActive
-              ? [
-                  BoxShadow(
-                    color: AdminColors.drawerBg.withOpacity(0.08),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  )
-                ]
-              : [],
+          boxShadow: isActive ? [BoxShadow(color: AdminColors.drawerBg.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, 4))] : [],
         ),
         alignment: Alignment.center,
         child: Text(
@@ -179,15 +258,15 @@ class _OwnerLogsPageState extends State<OwnerLogsPage> {
   Widget _buildSearchBar() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: AdminColors.textPrimary.withOpacity(0.04), blurRadius: 24, offset: const Offset(0, 8))],
+        color: const Color(0xFFF8F9FA), 
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AdminColors.border.withOpacity(0.4)),
       ),
       child: TextField(
         controller: _searchController,
         style: GoogleFonts.plusJakartaSans(color: AdminColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w500),
         decoration: InputDecoration(
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
           contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           hintText: 'Search logs…',
           hintStyle: GoogleFonts.plusJakartaSans(color: AdminColors.textMuted.withOpacity(0.55), fontSize: 15),

@@ -62,11 +62,11 @@ class SharedBottomNavigationBar extends StatelessWidget {
         ];
       case UserRole.owner:
         return const [
-          BottomNavItem(Icons.dashboard_rounded, 'Dashboard'),
-          BottomNavItem(Icons.people_rounded, 'Users'),
-          BottomNavItem(Icons.location_city_rounded, 'Clusters'),
-          BottomNavItem(Icons.receipt_long_rounded, 'Logs'),
-          BottomNavItem(Icons.person_rounded, 'Profile'),
+          BottomNavItem(Icons.dashboard_outlined, 'Dashboard'),
+          BottomNavItem(Icons.people_outline, 'Users'),
+          BottomNavItem(Icons.location_city_outlined, 'Clusters'),
+          BottomNavItem(Icons.receipt_long_outlined, 'Logs'),
+          BottomNavItem(Icons.person_outline, 'Profile'),
         ];
       case UserRole.customer:
         return const [
@@ -116,9 +116,7 @@ class SharedBottomNavigationBar extends StatelessWidget {
   Widget _buildBottomNavItem(IconData icon, String label, int index) {
     final isSelected = selectedIndex == index;
     // Admin and Moderator use index 4 as a drawer trigger. Owner/Customer route normally.
-    final isMoreButton =
-        index == 4 &&
-        (role == UserRole.admin || role == UserRole.moderator);
+    final isMoreButton = index == 4 && (role == UserRole.admin || role == UserRole.moderator);
 
     return Expanded(
       child: InkWell(

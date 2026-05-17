@@ -2,6 +2,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../api.dart' as api;
+
 import '../shared/colors.dart';
 import '../shared/bottom_navigation_bar.dart';
 import '../shared/navigation_menu.dart' as nav;
@@ -23,6 +25,10 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  // Pagination states
+  int _currentPage = 1;
+  int _totalPages = 1; 
+
   @override
   void initState() {
     super.initState();
@@ -41,43 +47,25 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
   }
 
   Future<void> _loadClusters() async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    final mockData = [
-      {
-        'id': '1',
-        'name': 'Kuching City Center',
-        'state': 'Sarawak',
-        'province': 'Kuching',
-        'propertyCount': 14,
-      },
-      {
-        'id': '2',
-        'name': 'Damai Beach Resort',
-        'state': 'Sarawak',
-        'province': 'Santubong',
-        'propertyCount': 3,
-      },
-      {
-        'id': '3',
-        'name': 'Miri Commercial Hub',
-        'state': 'Sarawak',
-        'province': 'Miri',
-        'propertyCount': 8,
-      },
-      {
-        'id': '4',
-        'name': 'Bintulu Industrial',
-        'state': 'Sarawak',
-        'province': 'Bintulu',
-        'propertyCount': 5,
-      },
-    ];
+    setState(() => _isLoading = true);
+    try {
+      final result = await api.fetchClusters();
+      // API returns: {'clusters': [{'id': ..., 'name': ..., 'state': ..., 'province': ..., 'propertyCount': ...}, ...]}
+      final list = (result['clusters'] as List?)
+          ?.map((e) => Map<String, dynamic>.from(e as Map))
+          .toList() ?? [];
 
-    if (!mounted) return;
-    setState(() {
-      _clusters = mockData;
-      _isLoading = false;
-    });
+      if (!mounted) return;
+      setState(() {
+        _clusters = list;
+        const pageSize = 10;
+        _totalPages = (list.length / pageSize).ceil().clamp(1, 999);
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Cluster load error: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   void _onNavTap(int index) {
@@ -124,19 +112,15 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
               title: 'Clusters',
               subtitle: 'Regional property groups',
               notifCount: 3,
-              bottomPadding: 40,
+              bottomPadding: 80, 
             ),
           ),
           SafeArea(
             bottom: false,
             child: Column(
               children: [
-                SizedBox(height: OwnerHeader.spacerHeight()),
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: _buildSearchBar(),
-                ),
+                SizedBox(height: OwnerHeader.spacerHeight(bottomPadding: 80) - 45),
+                _buildCommandCenter(),
                 OwnerSectionHeader(
                   title: 'All Clusters',
                   count: _visibleClusters.length,
@@ -149,11 +133,21 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
                               message: 'No clusters found.')
                           : ListView.builder(
                               physics: const BouncingScrollPhysics(),
-                              padding:
-                                  const EdgeInsets.only(top: 4, bottom: 100),
-                              itemCount: _visibleClusters.length,
-                              itemBuilder: (_, i) =>
-                                  _buildClusterCard(_visibleClusters[i], i),
+                              padding: const EdgeInsets.only(top: 4, bottom: 40),
+                              itemCount: _visibleClusters.length + 1,
+                              itemBuilder: (_, i) {
+                                if (i == _visibleClusters.length) {
+                                  return OwnerPagination(
+                                    currentPage: _currentPage,
+                                    totalPages: _totalPages,
+                                    onPageChanged: (page) {
+                                      setState(() => _currentPage = page);
+                                      _loadClusters();
+                                    },
+                                  );
+                                }
+                                return _buildClusterCard(_visibleClusters[i], i);
+                              },
                             ),
                 ),
               ],
@@ -169,21 +163,37 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Search bar
-  // ---------------------------------------------------------------------------
+  Widget _buildCommandCenter() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: AdminColors.drawerBg.withOpacity(0.12),
+            blurRadius: 32,
+            offset: const Offset(0, 16),
+            spreadRadius: -4,
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: _buildSearchBar(),
+    );
+  }
+
   Widget _buildSearchBar() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: AdminColors.textPrimary.withOpacity(0.04),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        color: const Color(0xFFF8F9FA),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AdminColors.border.withOpacity(0.4)),
       ),
       child: TextField(
         controller: _searchController,
@@ -194,7 +204,7 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
         ),
         decoration: InputDecoration(
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(20),
             borderSide: BorderSide.none,
           ),
           contentPadding:
@@ -218,9 +228,6 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Cluster card
-  // ---------------------------------------------------------------------------
   Widget _buildClusterCard(Map<String, dynamic> c, int index) {
     final loc = [c['state'], c['province']]
         .where((s) => s != null && s.toString().isNotEmpty)
@@ -248,7 +255,6 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(26),
             boxShadow: [
-              // Green-tinted ambient shadow for cluster cards
               BoxShadow(
                 color: AdminColors.success.withOpacity(0.07),
                 blurRadius: 24,
@@ -264,7 +270,6 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
           ),
           child: Row(
             children: [
-              // Gradient icon container
               Hero(
                 tag: 'cluster-icon-${c['id']}',
                 child: Container(
@@ -319,7 +324,6 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
                 ),
               ),
               const SizedBox(width: 10),
-              // Property count pill
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
