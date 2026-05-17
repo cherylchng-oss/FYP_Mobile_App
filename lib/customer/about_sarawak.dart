@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import '../shared/customer_layout.dart';
+import '../api.dart' as api;
+import '../services/session.dart'; 
+import '../shared/colors.dart';
+
 
 // ─────────────────────────────────────────────
 // COLORS
 // ─────────────────────────────────────────────
 class _C {
-  static const primary = Color(0xFF6B3F1A);
+  static const primary       = AdminColors.primary;
   static const primaryDark = Color(0xFF2C1A0E);
-  static const accent = Color(0xFFBF8040);
-  static const accentLight = Color(0xFFE8B97A);
+  static const accent        = AdminColors.accent;
+  static const accentLight   = AdminColors.accentLight;
 }
 
 // ─────────────────────────────────────────────
@@ -51,8 +55,8 @@ class AboutSarawakPage extends StatefulWidget {
 }
 
 class _AboutSarawakPageState extends State<AboutSarawakPage> {
-  // Demo online images first.
-  // Later, replace only the image URLs with your real Sarawak images.
+  int _unreadCount = 0;
+
   final List<SarawakSection> sections = const [
     SarawakSection(
       title: 'About Sarawak',
@@ -61,17 +65,17 @@ class _AboutSarawakPageState extends State<AboutSarawakPage> {
           'Sarawak is Malaysia’s largest state, located on the island of Borneo. It is known for its rainforest, rivers, caves, culture, wildlife, and warm hospitality.',
       images: [
         SarawakImage(
-          url: 'https://picsum.photos/seed/sarawak-about-1/1200/1800',
+          url: 'assets/about_flag.png',
           title: 'A brand new journey',
           caption: 'Discover the beauty, culture, and nature of Sarawak.',
         ),
         SarawakImage(
-          url: 'https://picsum.photos/seed/sarawak-about-2/1200/1800',
+          url: 'assets/about_waterfront.png',
           title: 'Borneo beauty',
           caption: 'A destination filled with rainforest, rivers, and stories.',
         ),
         SarawakImage(
-          url: 'https://picsum.photos/seed/sarawak-about-3/1200/1800',
+          url: 'assets/about_cat.png',
           title: 'Authentic escape',
           caption: 'Experience Sarawak through people, places, and heritage.',
         ),
@@ -84,17 +88,17 @@ class _AboutSarawakPageState extends State<AboutSarawakPage> {
           'Sarawak is home to many ethnic groups including Iban, Bidayuh, Orang Ulu, Malay, Melanau, and Chinese communities. Each group contributes to Sarawak’s rich cultural identity.',
       images: [
         SarawakImage(
-          url: 'https://picsum.photos/seed/sarawak-culture-1/1200/1800',
+          url: 'assets/about_craft.png',
           title: 'Living traditions',
           caption: 'Explore customs, festivals, crafts, and traditional lifestyles.',
         ),
         SarawakImage(
-          url: 'https://picsum.photos/seed/sarawak-culture-2/1200/1800',
+          url: 'assets/about_culture.png',
           title: 'Local communities',
           caption: 'Discover the people and heritage that shape Sarawak.',
         ),
         SarawakImage(
-          url: 'https://picsum.photos/seed/sarawak-culture-3/1200/1800',
+          url: 'assets/about_tradition.png',
           title: 'Cultural colours',
           caption: 'A beautiful mix of language, food, music, and celebration.',
         ),
@@ -107,17 +111,17 @@ class _AboutSarawakPageState extends State<AboutSarawakPage> {
           'Sarawak offers unforgettable natural attractions, from tropical rainforests and national parks to limestone caves, beaches, rivers, and mountain landscapes.',
       images: [
         SarawakImage(
-          url: 'https://picsum.photos/seed/sarawak-nature-1/1200/1800',
+          url: 'assets/about_rainforest.png',
           title: 'Rainforest adventure',
           caption: 'Walk through lush greenery and peaceful natural scenery.',
         ),
         SarawakImage(
-          url: 'https://picsum.photos/seed/sarawak-nature-2/1200/1800',
+          url: 'assets/about_cave.png',
           title: 'Hidden wonders',
           caption: 'Explore caves, trails, rivers, and breathtaking landscapes.',
         ),
         SarawakImage(
-          url: 'https://picsum.photos/seed/sarawak-nature-3/1200/1800',
+          url: 'assets/about_beach.png',
           title: 'Nature escape',
           caption: 'Reconnect with nature in Sarawak’s beautiful environment.',
         ),
@@ -130,17 +134,17 @@ class _AboutSarawakPageState extends State<AboutSarawakPage> {
           'Sarawak is home to fascinating wildlife such as orangutans, hornbills, proboscis monkeys, and many other species living in forests, rivers, and protected areas.',
       images: [
         SarawakImage(
-          url: 'https://picsum.photos/seed/sarawak-wildlife-1/1200/1800',
+          url: 'assets/about_hornbill.png',
           title: 'Wildlife moments',
           caption: 'Observe unique animals and learn about conservation.',
         ),
         SarawakImage(
-          url: 'https://picsum.photos/seed/sarawak-wildlife-2/1200/1800',
+          url: 'assets/about_habitat.png',
           title: 'Nature habitat',
           caption: 'Discover ecosystems filled with life and biodiversity.',
         ),
         SarawakImage(
-          url: 'https://picsum.photos/seed/sarawak-wildlife-3/1200/1800',
+          url: 'assets/about_orangutan.png',
           title: 'Borneo wildlife',
           caption: 'A meaningful journey for nature and animal lovers.',
         ),
@@ -153,17 +157,17 @@ class _AboutSarawakPageState extends State<AboutSarawakPage> {
           'Sarawak’s food reflects its multicultural identity. Visitors can enjoy Sarawak laksa, kolo mee, traditional delicacies, local markets, and many unique flavours.',
       images: [
         SarawakImage(
-          url: 'https://picsum.photos/seed/sarawak-food-1/1200/1800',
+          url: 'assets/about_laksa.png',
           title: 'Local favourites',
           caption: 'Taste dishes that represent Sarawak’s culture and warmth.',
         ),
         SarawakImage(
-          url: 'https://picsum.photos/seed/sarawak-food-2/1200/1800',
+          url: 'assets/about_stalls.png',
           title: 'Food adventure',
           caption: 'Explore markets, local stalls, and traditional recipes.',
         ),
         SarawakImage(
-          url: 'https://picsum.photos/seed/sarawak-food-3/1200/1800',
+          url: 'assets/about_family.png',
           title: 'Flavours of home',
           caption: 'Every dish tells a story of community and heritage.',
         ),
@@ -172,17 +176,35 @@ class _AboutSarawakPageState extends State<AboutSarawakPage> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _loadUnreadCount();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    try {
+      final userid = await Session.getUserId();
+
+      if (userid == null) return;
+
+      final notifications = await api.fetchNotifications(userid);
+
+      if (!mounted) return;
+
+      setState(() {
+        _unreadCount = notifications.where((n) {
+          final isRead = n['isread'] ?? n['isRead'] ?? false;
+          return isRead == false;
+        }).length;
+      });
+    } catch (_) {}
+  }
+
+  @override
   Widget build(BuildContext context) {
     return CustomerLayout(
       selectedIndex: 3,
       backgroundColor: _C.primaryDark,
-
-      // Removed the top brown heading/app bar.
-      // If your CustomerLayout does not accept null, use the alternative below:
-      // appBar: const PreferredSize(
-      //   preferredSize: Size.zero,
-      //   child: SizedBox.shrink(),
-      // ),
       appBar: null,
 
       body: LayoutBuilder(
@@ -196,7 +218,12 @@ class _AboutSarawakPageState extends State<AboutSarawakPage> {
               height: constraints.maxHeight,
               child: _FullScreenSarawakSection(
                 section: sections[index],
-                isLastSection: index == sections.length - 1, // NEW
+                isLastSection: index == sections.length - 1,
+                unreadCount: _unreadCount,
+                onNotificationTap: () {
+                  Navigator.pushNamed(context, '/customer-notifications')
+                      .then((_) => _loadUnreadCount());
+                },
               ),
             );
           },
@@ -213,11 +240,15 @@ class _AboutSarawakPageState extends State<AboutSarawakPage> {
 class _FullScreenSarawakSection extends StatefulWidget {
   const _FullScreenSarawakSection({
     required this.section,
-    required this.isLastSection, // NEW
+    required this.isLastSection,
+    required this.unreadCount, 
+    required this.onNotificationTap, 
   });
 
   final SarawakSection section;
-  final bool isLastSection; // NEW
+  final bool isLastSection;
+  final int unreadCount;
+  final VoidCallback onNotificationTap;
 
   @override
   State<_FullScreenSarawakSection> createState() =>
@@ -292,6 +323,63 @@ class _FullScreenSarawakSectionState extends State<_FullScreenSarawakSection> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
+              ),
+            ),
+          ),
+
+          // Notification bell
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 18,
+            right: isWide ? horizontalPadding : 22,
+            child: GestureDetector(
+              onTap: widget.onNotificationTap,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(9),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.25),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.14),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.notifications_outlined,
+                      color: Colors.white,
+                      size: 15,
+                    ),
+                  ),
+
+                  if (widget.unreadCount > 0)
+                    Positioned(
+                      top: -4,
+                      right: -4,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFE0A43A),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          widget.unreadCount > 9 ? '9+' : '${widget.unreadCount}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
@@ -441,24 +529,27 @@ class _BackgroundImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.network(
+    return buildSmartImage(
       url,
       width: double.infinity,
       height: double.infinity,
       fit: BoxFit.cover,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
+    );
+  }
+}
 
-        return Container(
-          color: _C.primaryDark,
-          child: const Center(
-            child: CircularProgressIndicator(
-              color: _C.accentLight,
-              strokeWidth: 2.5,
-            ),
-          ),
-        );
-      },
+Widget buildSmartImage(
+  String url, {
+  double? width,
+  double? height,
+  BoxFit fit = BoxFit.cover,
+}) {
+  if (url.startsWith('assets/')) {
+    return Image.asset(
+      url,
+      width: width,
+      height: height,
+      fit: fit,
       errorBuilder: (_, __, ___) {
         return Container(
           color: _C.primaryDark,
@@ -473,6 +564,38 @@ class _BackgroundImage extends StatelessWidget {
       },
     );
   }
+
+  return Image.network(
+    url,
+    width: width,
+    height: height,
+    fit: fit,
+    loadingBuilder: (context, child, loadingProgress) {
+      if (loadingProgress == null) return child;
+
+      return Container(
+        color: _C.primaryDark,
+        child: const Center(
+          child: CircularProgressIndicator(
+            color: _C.accentLight,
+            strokeWidth: 2.5,
+          ),
+        ),
+      );
+    },
+    errorBuilder: (_, __, ___) {
+      return Container(
+        color: _C.primaryDark,
+        child: const Center(
+          child: Icon(
+            Icons.image_not_supported_rounded,
+            color: _C.accentLight,
+            size: 38,
+          ),
+        ),
+      );
+    },
+  );
 }
 
 // ─────────────────────────────────────────────
@@ -524,35 +647,9 @@ class _FloatingImageCard extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Image.network(
+              buildSmartImage(
                 image.url,
                 fit: BoxFit.cover,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-
-                  return Container(
-                    color: _C.primaryDark,
-                    child: const Center(
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          color: _C.accentLight,
-                          strokeWidth: 2,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-                errorBuilder: (_, __, ___) {
-                  return Container(
-                    color: _C.primaryDark,
-                    child: const Icon(
-                      Icons.image_not_supported_rounded,
-                      color: _C.accentLight,
-                    ),
-                  );
-                },
               ),
 
               if (selected)
@@ -621,7 +718,7 @@ class _DescriptionGlassCardState extends State<_DescriptionGlassCard> {
               widget.description,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.justify, // NEW
+              textAlign: TextAlign.justify,
               style: TextStyle(
                 color: Colors.white.withOpacity(0.90),
                 fontSize: 13,
@@ -631,7 +728,7 @@ class _DescriptionGlassCardState extends State<_DescriptionGlassCard> {
             ),
             secondChild: Text(
               widget.description,
-              textAlign: TextAlign.justify, // NEW
+              textAlign: TextAlign.justify,
               style: TextStyle(
                 color: Colors.white.withOpacity(0.90),
                 fontSize: 13,

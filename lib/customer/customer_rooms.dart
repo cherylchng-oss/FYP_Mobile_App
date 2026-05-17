@@ -3,27 +3,29 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../api.dart' as api;
+import '../services/session.dart';
 import 'rooms_detail.dart';
 import '../shared/customer_layout.dart';
+import '../shared/colors.dart';
 
 // ─────────────────────────────────────────────
 // Design Tokens
 // ─────────────────────────────────────────────
 class AppColors {
-  static const primary      = Color(0xFF6B3F1A);
-  static const primaryLight = Color(0xFF8B5E3C); 
-  static const accent       = Color(0xFFBF8040); 
-  static const accentLight  = Color(0xFFE8B97A);
-  static const cream        = Color(0xFFFAF6F0); 
-  static const cardBg       = Color(0xFFFFFFFF);
-  static const surface      = Color(0xFFF5EDE0); 
-  static const border       = Color(0xFFE8D9C5);
-  static const textPrimary  = Color(0xFF2C1A0E); 
-  static const textSecond   = Color(0xFF6B4C30); 
-  static const textMuted    = Color(0xFFA07850);
-  static const success      = Color(0xFF3D7A5C);
-  static const danger       = Color(0xFFB83232);
-  static const drawerBg     = Color(0xFF2C1A0E);
+  static const primary      = AdminColors.primary;
+  static const primaryLight = AdminColors.primaryLight;
+  static const accent       = AdminColors.accent;
+  static const accentLight  = AdminColors.accentLight;
+  static const cream        = AdminColors.cream; 
+  static const cardBg       = AdminColors.cardBg;
+  static const surface      = AdminColors.surface;
+  static const border       = AdminColors.border;
+  static const textPrimary  = AdminColors.textPrimary;
+  static const textSecond   = AdminColors.textSecond;
+  static const textMuted    = AdminColors.textMuted;
+  static const success      = AdminColors.success;
+  static const danger       = AdminColors.danger;
+  static const drawerBg     = AdminColors.drawerBg;
   static const drawerAccent = Color(0xFF8B5E3C);
 }
 
@@ -411,6 +413,8 @@ class _CustomerRoomsPageState extends State<CustomerRoomsPage> {
   int page = 1;
   final int itemsPerPage = 8;
 
+  int _unreadCount = 0; 
+
   @override
   void initState() {
     super.initState();
@@ -422,6 +426,7 @@ class _CustomerRoomsPageState extends State<CustomerRoomsPage> {
       adults: widget.initialAdults,
       children: widget.initialChildren,
     );
+    _loadUnreadCount();
     _loadProperties();
 
     if (widget.filterRegion.isNotEmpty && (bookingData.checkIn.isEmpty || bookingData.checkOut.isEmpty)) {
@@ -451,6 +456,25 @@ class _CustomerRoomsPageState extends State<CustomerRoomsPage> {
         if (mounted) setState(() => showToast = false);
       });
     }
+  }
+
+  Future<void> _loadUnreadCount() async {
+    try {
+      final userid = await Session.getUserId();
+
+      if (userid == null) return;
+
+      final notifications = await api.fetchNotifications(userid);
+
+      if (!mounted) return;
+
+      setState(() {
+        _unreadCount = notifications.where((n) {
+          final isRead = n['isread'] ?? n['isRead'] ?? false;
+          return isRead == false;
+        }).length;
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadProperties() async {
@@ -911,137 +935,8 @@ class _CustomerRoomsPageState extends State<CustomerRoomsPage> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
                   // ── Hero App Bar ──
-                  SliverAppBar(
-                    expandedHeight: 140,
-                    collapsedHeight: kToolbarHeight,
-                    toolbarHeight: kToolbarHeight,
-                    floating: false,
-                    pinned: true,
-                    elevation: 0,
-                    backgroundColor: AppColors.primary,
-                    automaticallyImplyLeading: false,
-                    actions: const [SizedBox.shrink()],
-
-                    flexibleSpace: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final topPadding = MediaQuery.of(context).padding.top;
-                        final currentHeight = constraints.maxHeight;
-
-                        final showExpandedHeader = currentHeight > 125;
-                        final showCollapsedTitle = currentHeight <= 125;
-
-                        return Stack(
-                          fit: StackFit.expand,
-                          clipBehavior: Clip.hardEdge,
-                          children: [
-                            Container(color: AppColors.primary),
-
-                            Opacity(
-                              opacity: 0.06,
-                              child: CustomPaint(painter: _BatikPatternPainter()),
-                            ),
-
-                            if (showExpandedHeader)
-                              Positioned(
-                                top: topPadding + 12,
-                                left: 20,
-                                right: 20,
-                                height: 115,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          width: 36,
-                                          height: 36,
-                                          decoration: BoxDecoration(
-                                            color: AppColors.accentLight.withOpacity(0.2),
-                                            borderRadius: BorderRadius.circular(10),
-                                            border: Border.all(
-                                              color: AppColors.accentLight.withOpacity(0.4),
-                                            ),
-                                          ),
-                                          child: const Icon(
-                                            Icons.home_work_rounded,
-                                            color: AppColors.accentLight,
-                                            size: 20,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        const Expanded(
-                                          child: Text(
-                                            'Hello Sarawak',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.w800,
-                                              letterSpacing: 0.4,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    const Text(
-                                      'Find your perfect stay',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.w900,
-                                        height: 1.1,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Discover authentic Sarawak hospitality',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: Colors.white.withOpacity(0.72),
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                            if (showCollapsedTitle)
-                              Positioned(
-                                top: topPadding,
-                                left: 0,
-                                right: 0,
-                                height: kToolbarHeight,
-                                child: const Center(
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.bed_rounded,
-                                        color: AppColors.accentLight,
-                                        size: 20,
-                                      ),
-                                      SizedBox(width: 8),
-                                      Text(
-                                        'Rooms',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                          ],
-                        );
-                      },
-                    ),
+                  SliverToBoxAdapter(
+                    child: _buildRoomsHeader(MediaQuery.of(context).padding.top),
                   ),
 
                   // ── Search Bar (floating over content) ──
@@ -1094,6 +989,144 @@ class _CustomerRoomsPageState extends State<CustomerRoomsPage> {
                 right: 16,
                 child: _ToastBox(type: toastType, message: toastMessage),
               ),
+        ],
+      ),
+    );
+  }
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  Widget _buildRoomsHeader(double topPad) {
+    return Container(
+      width: double.infinity,
+      child: Stack(
+        children: [
+          // Full-opacity background image
+          Positioned.fill(
+            child: Image.asset(
+              'assets/customer_stay.png',
+              fit: BoxFit.cover,
+            ),
+          ),
+
+          // Dark brown overlay
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF3D1E0C).withOpacity(0.62),
+                    const Color(0xFF8B4A2F).withOpacity(0.55),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          Padding(
+            padding: EdgeInsets.fromLTRB(20, topPad + 24, 20, 36),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Left icon box
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.25),
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.bed_rounded,
+                    color: Colors.white,
+                    size: 26,
+                  ),
+                ),
+
+                const SizedBox(width: 14),
+
+                // Title and subtitle
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Property Listings',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w600,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Find and book authentic\nstays across Sarawak.',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.72),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Notification bell
+                GestureDetector(
+                  onTap: () {
+                    Navigator.pushNamed(context, '/customer-notifications')
+                        .then((_) => _loadUnreadCount());
+                  },
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(9),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.25),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.notifications_outlined,
+                          color: Colors.white,
+                          size: 15,
+                        ),
+                      ),
+
+                      if (_unreadCount > 0)
+                        Positioned(
+                          top: -4,
+                          right: -4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFE0A43A),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              '$_unreadCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

@@ -1,25 +1,26 @@
 import 'package:flutter/material.dart';
 import '../api.dart' as api;
 import '../services/session.dart';
+import '../shared/colors.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design Tokens
 // ─────────────────────────────────────────────────────────────────────────────
 class _C {
-  static const primary      = Color(0xFF6B3F1A);
-  static const primaryLight = Color(0xFF8B5E3C);
-  static const accent       = Color(0xFFBF8040);
-  static const accentLight  = Color(0xFFE8B97A);
-  static const cream        = Color(0xFFFAF6F0);
-  static const surface      = Color(0xFFF5EDE0);
+  static const primary       = AdminColors.primary;
+  static const primaryLight  = AdminColors.primaryLight;
+  static const accent        = AdminColors.accent;
+  static const accentLight   = AdminColors.accentLight;
+  static const cream         = AdminColors.cream;
+  static const surface       = AdminColors.surface;
   static const surfaceAlt   = Color(0xFFF0E6D8);
-  static const border       = Color(0xFFE8D9C5);
-  static const textPrimary  = Color(0xFF2C1A0E);
-  static const textSecond   = Color(0xFF6B4C30);
-  static const textMuted    = Color(0xFFA07850);
+  static const border        = AdminColors.border;
+  static const textPrimary   = AdminColors.textPrimary;
+  static const textSecond    = AdminColors.textSecond;
+  static const textMuted     = AdminColors.textMuted;
   static const unreadBg     = Color(0xFFFFF8F0);
   static const unreadAccent = Color(0xFFBF8040);
-  static const success      = Color(0xFF3D7A5C);
+  static const success       = AdminColors.success;
   static const successBg    = Color(0xFFEBF7F2);
 }
 
@@ -277,79 +278,174 @@ class _NotificationPageState extends State<NotificationPage> {
 
   // ── Header
   Widget _buildHeader() {
+    final topPad = MediaQuery.of(context).padding.top;
+
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF3D1F0A), _C.primary, _C.primaryLight],
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
-        ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
-          child: LayoutBuilder(builder: (context, constraints) {
-            final isWide = constraints.maxWidth > 600;
-            return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // Back button
-              InkWell(
-                onTap: () => Navigator.pop(context),
-                borderRadius: BorderRadius.circular(14),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.white.withOpacity(0.20)),
-                  ),
-                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 15),
-                    SizedBox(width: 6),
-                    Text('Back', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
-                  ]),
+      width: double.infinity,
+      child: Stack(
+        children: [
+          // Background image
+          Positioned.fill(
+            child: Image.asset(
+              'assets/customer_stay.png', 
+              fit: BoxFit.cover,
+            ),
+          ),
+
+          // Dark brown overlay
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF3D1E0C).withOpacity(0.62),
+                    const Color(0xFF8B4A2F).withOpacity(0.55),
+                  ],
                 ),
               ),
-              const SizedBox(width: 14),
-              // Title block
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  const Text('Notifications', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
-                  if (unreadCount > 0) ...[
+            ),
+          ),
+
+          Padding(
+            padding: EdgeInsets.fromLTRB(20, topPad + 24, 20, 36),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final showMarkAllRead = constraints.maxWidth > 390;
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Back button / left icon box
+                    InkWell(
+                      onTap: () => Navigator.pop(context),
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.25),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 14),
+
+                    // Title and subtitle
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Flexible(
+                                child: Text(
+                                  'Notifications',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.2,
+                                  ),
+                                ),
+                              ),
+
+                              if (unreadCount > 0) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE0A43A),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    '$unreadCount new',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+
+                          const SizedBox(height: 4),
+
+                          Text(
+                            'View your latest and\nprevious notifications.',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.72),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w400,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
                     const SizedBox(width: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                      decoration: BoxDecoration(color: _C.accent, borderRadius: BorderRadius.circular(20)),
-                      child: Text('$unreadCount new', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
-                    ),
+
+                    // Mark all read button
+                    if (showMarkAllRead)
+                      InkWell(
+                        onTap: handleMarkAllRead,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 9,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.25),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.done_all_rounded,
+                                color: Colors.white,
+                                size: 15,
+                              ),
+                              SizedBox(width: 6),
+                              Text(
+                                'Mark all read',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                   ],
-                ]),
-                const SizedBox(height: 3),
-                Text('View your latest and previous notifications.',
-                  style: TextStyle(color: Colors.white.withOpacity(0.72), fontSize: 12, height: 1.4)),
-              ])),
-              const SizedBox(width: 10),
-              // Mark all read button
-              if (isWide || constraints.maxWidth > 400)
-                InkWell(
-                  onTap: handleMarkAllRead,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withOpacity(0.20)),
-                    ),
-                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.done_all_rounded, color: Colors.white, size: 15),
-                      SizedBox(width: 6),
-                      Text('Mark all read', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
-                    ]),
-                  ),
-                ),
-            ]);
-          }),
-        ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

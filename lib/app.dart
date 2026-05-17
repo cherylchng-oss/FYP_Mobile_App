@@ -10,6 +10,8 @@ import 'customer/about_sarawak.dart';
 import 'customer/about_us.dart';
 import 'customer/customer_faq.dart';
 import 'beforeLogin/pre_customer_room.dart';
+import 'beforeLogin/pre_customer_cart.dart';
+import 'beforeLogin/pre_customer_booking.dart';
 import 'moderator/moderator_dashboard.dart';
 import 'moderator/moderator_notification.dart';
 import 'admin/admin_dashboard.dart';
@@ -121,6 +123,11 @@ class CamsApp extends StatelessWidget {
           return _outfit(context, AdminUserManagementPage(viewerRole: role));
         },
 
+        // Pre login routes
+        '/pre-customer-rooms': (context) => const CustomerRoomsNotLogin(),
+        '/pre-customer-cart': (context) => const CustomerCartNotLogin(),
+        '/pre-customer-bookings': (context) => const CustomerBookingsNotLogin(),
+
         // Customer routes
         '/customer-home': (context) => const HomePage(),
         '/customer-rooms': (context) => const CustomerRoomsPage(),
@@ -141,6 +148,7 @@ class CamsApp extends StatelessWidget {
         '/admin-customer-reviews': (context) => _outfit(context, const AdminCustomerReviewsPage()),
         '/admin-audit-trails': (context) => _outfit(context, const AdminAuditTrails()),
         '/admin-book-and-pay': (context) => _outfit(context, const AdminBooknPayLog()),
+
         // Moderator routes
         '/moderator-notifications': (context) => _outfit(context, const ModeratorNotifications()),
         '/moderator-audit-trails': (context) => _outfit(context, const ModeratorAuditTrails()),

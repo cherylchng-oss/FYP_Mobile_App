@@ -669,26 +669,34 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
   }
 
   Future<void> fetchPropertyDetailsIfNeeded() async {
-    if (propertyDetails != null && propertyDetails!.isNotEmpty) return;
+    final id = propertyIdInt;
+
+    if (id <= 0) return;
+
     setState(() => loading = true);
+
     try {
-      final products = await api.fetchProduct();
-      final list = products is List
-          ? products
-          : products is Map
-              ? (products['data'] ?? products['properties'] ?? [])
-              : [];
-      final found = (list as List).cast<dynamic>().firstWhere(
-            (item) => '${(item as Map)['propertyid']}' == propertyId,
-            orElse: () => null,
-          );
-      if (found != null && mounted) {
-        setState(() => propertyDetails = Map<String, dynamic>.from(found as Map));
-      }
+      final fullProperty = await api.fetchSinglePropertyDetails(id);
+
+      if (!mounted) return;
+
+      setState(() {
+        propertyDetails = fullProperty;
+
+        roomsLeft = parseInt(
+          fullProperty['quantity'] ?? fullProperty['propertyquantity'] ?? 1,
+          1,
+        );
+      });
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      print('Failed to fetch full property details: $e');
+
+      // Keep using passed-in preview data if full fetch fails.
+      if (!mounted) return;
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted) {
+        setState(() => loading = false);
+      }
     }
   }
 
@@ -1980,30 +1988,16 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                 onTap: onBack,
                 borderRadius: BorderRadius.circular(14),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: Colors.white.withOpacity(0.20)),
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        color: Colors.white,
-                        size: 15,
-                      ),
-                      SizedBox(width: 6),
-                      Text(
-                        'Back',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
+                  child: const Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white,
+                    size: 20,
                   ),
                 ),
               ),

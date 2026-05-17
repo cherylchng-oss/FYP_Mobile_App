@@ -191,6 +191,33 @@ Future<dynamic> fetchProduct() async {
   }
 }
 
+// Fetch single property details with ALL images
+Future<Map<String, dynamic>> fetchSinglePropertyDetails(int propertyId) async {
+  final uri = Uri.parse('$API_URL/property/$propertyId');
+
+  print('API: Fetch single property details URL: $uri');
+
+  final response = await http.get(
+    uri,
+    headers: await _authHeaders(),
+  );
+
+  print('API: Fetch single property details status: ${response.statusCode}');
+  print('API: Fetch single property details body: ${response.body}');
+
+  if (response.statusCode != 200) {
+    throw Exception('Failed to fetch property details');
+  }
+
+  final data = jsonDecode(response.body);
+
+  if (data is Map && data['property'] is Map) {
+    return Map<String, dynamic>.from(data['property']);
+  }
+
+  throw Exception('Invalid property details response');
+}
+
 Future<Map<String, dynamic>> fetchPropertyAvailability({
   required int propertyId,
   required String checkIn,

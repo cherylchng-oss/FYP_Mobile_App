@@ -107,6 +107,31 @@ flutter:
     - assets/notification.png
     - assets/dashboard.png
     - assets/profile.png
+    - assets/customer_stay.png
+    - assets/customer_cart.png
+    - assets/about_laksa.png
+    - assets/about_stalls.png
+    - assets/about_family.png
+    - assets/about_hornbill.png
+    - assets/about_habitat.png
+    - assets/about_orangutan.png
+    - assets/about_rainforest.png
+    - assets/about_cave.png
+    - assets/about_beach.png
+    - assets/about_craft.png
+    - assets/about_culture.png
+    - assets/about_tradition.png
+    - assets/about_flag.png
+    - assets/about_waterfront.png
+    - assets/about_cat.png
+    - assets/about_header.png
+    - assets/team_photo.png
+    - assets/about_bako.png
+    - assets/about_mulu.png
+    - assets/about_damai.png
+    - assets/about_semenggoh.png
+    - assets/aboutus_waterfront.png
+
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 

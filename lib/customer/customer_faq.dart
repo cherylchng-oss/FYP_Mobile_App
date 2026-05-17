@@ -3,25 +3,27 @@ import 'ask_question_form.dart';
 import '../shared/customer_layout.dart';
 import 'package:flutter/services.dart';
 import '../api.dart' as api;
+import '../services/session.dart'; 
+import '../shared/colors.dart';
 
 // ─────────────────────────────────────────────
 // Design Tokens
 // ─────────────────────────────────────────────
 class _C {
-  static const primary = Color(0xFF6B3F1A);
-  static const primaryLight = Color(0xFF8B5E3C);
-  static const accent = Color(0xFFBF8040);
-  static const accentLight = Color(0xFFE8B97A);
-  static const cream = Color(0xFFFAF6F0);
-  static const surface = Color(0xFFF5EDE0);
-  static const surfaceAlt = Color(0xFFF0E6D8);
-  static const border = Color(0xFFE8D9C5);
-  static const borderDark = Color(0xFFD5B896);
-  static const textPrimary = Color(0xFF2C1A0E);
-  static const textSecond = Color(0xFF6B4C30);
-  static const textMuted = Color(0xFFA07850);
-  static const highlight = Color(0x3DC4956A);
-  static const white = Colors.white;
+  static const primary       = AdminColors.primary;
+  static const primaryLight  = AdminColors.primaryLight;
+  static const accent        = AdminColors.accent;
+  static const accentLight   = AdminColors.accentLight;
+  static const cream         = AdminColors.cream;
+  static const surface       = AdminColors.surface;
+  static const surfaceAlt    = Color(0xFFF0E6D8);
+  static const border        = AdminColors.border;
+  static const borderDark    = Color(0xFFD5B896);
+  static const textPrimary   = AdminColors.textPrimary;
+  static const textSecond    = AdminColors.textSecond;
+  static const textMuted     = AdminColors.textMuted;
+  static const highlight     = Color(0x3DC4956A);
+  static const white         = Colors.white;
 }
 
 BoxDecoration _card({double radius = 18, Color? bg, bool elevated = false}) =>
@@ -103,6 +105,8 @@ class _CustomerFAQState extends State<CustomerFAQ> {
   bool showSupportForm = false;
   List<FaqItem> publishedFaqs = [];
   bool isFaqLoading = false;
+
+  int _unreadCount = 0;
 
   final Map<String, String> feedbackState = {};
   final Map<String, GlobalKey> faqKeys = {};
@@ -248,6 +252,25 @@ class _CustomerFAQState extends State<CustomerFAQ> {
     return null;
   }
 
+  Future<void> _loadUnreadCount() async {
+    try {
+      final userid = await Session.getUserId();
+
+      if (userid == null) return;
+
+      final notifications = await api.fetchNotifications(userid);
+
+      if (!mounted) return;
+
+      setState(() {
+        _unreadCount = notifications.where((n) {
+          final isRead = n['isread'] ?? n['isRead'] ?? false;
+          return isRead == false;
+        }).length;
+      });
+    } catch (_) {}
+  }
+
   Future<void> loadPublishedFaqs() async {
     try {
       setState(() => isFaqLoading = true);
@@ -292,6 +315,8 @@ class _CustomerFAQState extends State<CustomerFAQ> {
   @override
   void initState() {
     super.initState();
+
+    _loadUnreadCount();
 
     for (final faq in faqs) {
       faqKeys[faq.id] = GlobalKey();
@@ -431,6 +456,63 @@ class _CustomerFAQState extends State<CustomerFAQ> {
     );
   }
 
+  Widget _notificationBell() {
+    return GestureDetector(
+      onTap: () {
+        Navigator.pushNamed(context, '/customer-notifications')
+            .then((_) => _loadUnreadCount());
+      },
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.18),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.25),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.14),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.notifications_outlined,
+              color: Colors.white,
+              size: 15,
+            ),
+          ),
+
+          if (_unreadCount > 0)
+            Positioned(
+              top: -4,
+              right: -4,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE0A43A),
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  _unreadCount > 9 ? '9+' : '$_unreadCount',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   // ── Hero ──────────────────────────────────────
   Widget _buildHero() {
     return Container(
@@ -453,6 +535,7 @@ class _CustomerFAQState extends State<CustomerFAQ> {
         ),
       ),
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
           Positioned(
             right: -34,
@@ -478,6 +561,13 @@ class _CustomerFAQState extends State<CustomerFAQ> {
               ),
             ),
           ),
+
+          Positioned(
+            top: -4,
+            right: 2,
+            child: _notificationBell(),
+          ),
+          
           Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 980),

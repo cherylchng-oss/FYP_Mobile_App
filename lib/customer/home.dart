@@ -1,12 +1,43 @@
-import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import '../widgets/map.dart';
 import '../shared/customer_layout.dart';
+import '../api.dart' as api;
+import '../services/session.dart';
+import '../shared/colors.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Design tokens — mirrors AppColors from customer_rooms.dart
+// ─────────────────────────────────────────────────────────────────────────────
+class HSColors {
+  static const cream        = AdminColors.cream;
+  static const surface      = AdminColors.surface;
+  static const surfaceAlt   = Color(0xFFF0E6D8);
+  static const primary      = AdminColors.primary;
+  static const primaryLight = AdminColors.primaryLight;
+  static const accent       = AdminColors.accent;
+  static const accentLight  = AdminColors.accentLight;
+  static const border       = AdminColors.border;
+  static const borderDark   = Color(0xFFD5B896);
+  static const textPrimary  = AdminColors.textPrimary;
+  static const textSecond   = AdminColors.textSecond;
+  static const textMuted    = AdminColors.textMuted;
+  static const dark         = Color(0xFF1A0E06);
+  static const darkSurface  = Color(0xFF2C1A0E);
+  static const gold         = Color(0xFFBF8040);
+  static const brownSoft    = Color(0xFF8B5E3C); 
+}
+
+BoxDecoration _card({double radius = 20, Color? bg}) => BoxDecoration(
+  color: bg ?? Colors.white,
+  borderRadius: BorderRadius.circular(radius),
+  border: Border.all(color: HSColors.border),
+  boxShadow: [BoxShadow(color: HSColors.primary.withOpacity(0.07), blurRadius: 16, offset: const Offset(0, 5))],
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HomePage
+// ─────────────────────────────────────────────────────────────────────────────
 class HomePage extends StatefulWidget {
   const HomePage({super.key, this.fetchProperties});
-
   final Future<List<Map<String, dynamic>>> Function()? fetchProperties;
 
   @override
@@ -16,47 +47,31 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final ScrollController _scrollController = ScrollController();
 
-  final List<String> clusters = const [
-    'Kuching',
-    'Miri',
-    'Sibu',
-    'Bintulu',
-    'Limbang',
-    'Sarikei',
-    'Sri Aman',
-    'Kapit',
-    'Mukah',
-    'Betong',
-    'Samarahan',
-    'Serian',
-    'Lundu',
-    'Lawas',
-    'Marudi',
-    'Simunjan',
-    'Tatau',
-    'Belaga',
-    'Debak',
-    'Kabong',
-    'Pusa',
-    'Sebuyau',
-    'Saratok',
-    'Selangau',
-    'Tebedu',
-  ];
-
-  String selectedCluster = '';
-  DateTime? checkIn;
-  DateTime? checkOut;
-  int adults = 1;
-  int children = 0;
-  String? activeTab;
-
-  late Future<List<Map<String, dynamic>>> _propertiesFuture;
+  int _unreadCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _propertiesFuture = widget.fetchProperties?.call() ?? Future.value([]);
+    _loadUnreadCount();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    try {
+      final userid = await Session.getUserId();
+
+      if (userid == null) return;
+
+      final notifications = await api.fetchNotifications(userid);
+
+      if (!mounted) return;
+
+      setState(() {
+        _unreadCount = notifications.where((n) {
+          final isRead = n['isread'] ?? n['isRead'] ?? false;
+          return isRead == false;
+        }).length;
+      });
+    } catch (_) {}
   }
 
   @override
@@ -65,886 +80,49 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  String _formatDate(DateTime? date) {
-    if (date == null) return 'dd/mm/yyyy';
-    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
-  }
-
-  void _selectCheckIn(DateTime date) {
-    setState(() {
-      checkIn = date;
-      if (checkOut != null && !checkOut!.isAfter(date)) checkOut = null;
-      activeTab = 'checkout';
-    });
-  }
-
-  void _selectCheckOut(DateTime date) {
-    setState(() {
-      checkOut = date;
-      activeTab = 'guests';
-    });
-  }
-
-  void _clearDates() {
-    setState(() {
-      checkIn = null;
-      checkOut = null;
-      activeTab = null;
-    });
-  }
-
   void _handleHomeSearch() {
-    Navigator.pushNamed(
-      context,
-      '/product',
-      arguments: {
-        'filterRegion': selectedCluster,
-        'searchDates': {
-          'checkIn': checkIn?.toIso8601String(),
-          'checkOut': checkOut?.toIso8601String(),
-          'adults': adults,
-          'children': children,
-        },
-      },
-    );
+    Navigator.pushNamed(context, '/product');
   }
 
-  void _handleViewDetails(Map<String, dynamic> property) {
-    Navigator.pushNamed(
-      context,
-      '/product/${property['propertyid']}',
-      arguments: {
-        'propertyDetails': property,
-        'searchDates': {
-          'checkIn': checkIn?.toIso8601String(),
-          'checkOut': checkOut?.toIso8601String(),
-          'adults': adults,
-          'children': children,
-        },
-        'filterRegion': selectedCluster.isNotEmpty ? selectedCluster : property['clustername'] ?? '',
-      },
-    );
-  }
-
-  List<Map<String, dynamic>> _featuredProperties(List<Map<String, dynamic>> data) {
-    final available = data
-        .where((p) => (p['propertystatus'] ?? '').toString() == 'Available')
-        .toList();
-
-    available.sort((a, b) {
-      final ratingA = double.tryParse('${a['rating'] ?? 0}') ?? 0;
-      final ratingB = double.tryParse('${b['rating'] ?? 0}') ?? 0;
-      if (ratingB.compareTo(ratingA) != 0) return ratingB.compareTo(ratingA);
-      final idA = int.tryParse('${a['propertyid'] ?? 0}') ?? 0;
-      final idB = int.tryParse('${b['propertyid'] ?? 0}') ?? 0;
-      return idB.compareTo(idA);
-    });
-
-    return available.take(4).toList();
-  }
-
+  // ─────────────────────────────────────────────────────────────────────────
+  // BUILD
+  // ─────────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return CustomerLayout(
       selectedIndex: 0,
-      backgroundColor: HSColors.darkBg,
-      body: Stack(
-        children: [
-          SingleChildScrollView(
-            controller: _scrollController,
-            child: Column(
-              children: [
-                const _NavbarPlaceholder(),
-                _HeroSection(
-                  onFindStay: () {
-                    _scrollController.animateTo(
-                      MediaQuery.of(context).size.height - 20,
-                      duration: const Duration(milliseconds: 600),
-                      curve: Curves.easeOut,
-                    );
-                  },
-                ),
-                Container(
-                  width: double.infinity,
-                  decoration: const BoxDecoration(
-                    color: HSColors.cream,
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(48)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Color(0x731A140F),
-                        blurRadius: 70,
-                        offset: Offset(0, -30),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      _MapSearchSection(
-                        clusters: clusters,
-                        selectedCluster: selectedCluster,
-                        checkInText: _formatDate(checkIn),
-                        checkOutText: _formatDate(checkOut),
-                        adults: adults,
-                        children: children,
-                        activeTab: activeTab,
-                        onTabChanged: (tab) => setState(() => activeTab = activeTab == tab ? null : tab),
-                        onSearch: _handleHomeSearch,
-                        panel: _buildPanel(),
-
-                        onRegionSelected: (regionName) {
-                          setState(() {
-                            selectedCluster = regionName;
-                            activeTab = null;
-                          });
-                        },
-                      ),
-                      const _AdBannerSection(),
-                      _AvailablePropertiesSection(
-                        propertiesFuture: _propertiesFuture,
-                        featuredBuilder: _featuredProperties,
-                        onViewAll: _handleHomeSearch,
-                        onViewDetails: _handleViewDetails,
-                      ),
-                      const _CuratedSection(),
-                      const _TestimonialsSection(),
-                      const _AppPromoSection(),
-                      const _FooterPlaceholder(),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget? _buildPanel() {
-    switch (activeTab) {
-      case 'location':
-        return _SearchPanel(
-          title: 'Popular destinations',
-          child: _ClusterSelector(
-            clusters: clusters,
-            selectedCluster: selectedCluster,
-            onSelected: (value) {
-              setState(() {
-                selectedCluster = value;
-                activeTab = null;
-              });
-            },
-          ),
-        );
-      case 'checkin':
-        return _SearchPanel(
-          title: 'Select check-in date',
-          action: (checkIn != null || checkOut != null)
-              ? TextButton(
-                  onPressed: _clearDates,
-                  child: const Text('Clear Dates', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w700)),
-                )
-              : null,
-          child: HomeCalendar(
-            value: checkIn,
-            minDate: DateTime.now(),
-            onChange: _selectCheckIn,
-          ),
-        );
-      case 'checkout':
-        return _SearchPanel(
-          title: 'Select check-out date',
-          action: (checkIn != null || checkOut != null)
-              ? TextButton(
-                  onPressed: _clearDates,
-                  child: const Text('Clear Dates', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w700)),
-                )
-              : null,
-          child: HomeCalendar(
-            value: checkOut,
-            disabled: checkIn == null,
-            minDate: checkIn?.add(const Duration(days: 1)) ?? DateTime.now(),
-            onChange: _selectCheckOut,
-          ),
-        );
-      case 'guests':
-        return _SearchPanel(
-          title: "Who's coming?",
-          child: Column(
-            children: [
-              _GuestCounter(
-                title: 'Adults',
-                subtitle: 'Ages 13+',
-                value: adults,
-                min: 1,
-                onChanged: (value) => setState(() => adults = value),
-              ),
-              const Divider(color: HSColors.border),
-              _GuestCounter(
-                title: 'Children',
-                subtitle: 'Ages 2-12',
-                value: children,
-                min: 0,
-                onChanged: (value) => setState(() => children = value),
-              ),
-            ],
-          ),
-        );
-      default:
-        return null;
-    }
-  }
-}
-
-class HSColors {
-  static const cream = Color(0xFFF5F0E8);
-  static const light = Color(0xFFF8F4EF);
-  static const brownDark = Color(0xFF2C2016);
-  static const brown = Color(0xFF493829);
-  static const brownSoft = Color(0xFF7A6555);
-  static const gold = Color(0xFFC4956A);
-  static const goldDark = Color(0xFFA9774D);
-  static const border = Color(0xFFE8E1D9);
-  static const darkBg = Color(0xFF1A140F);
-}
-
-class _NavbarPlaceholder extends StatelessWidget {
-  const _NavbarPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 0,
-      color: HSColors.darkBg,
-    );
-  }
-}
-
-class _FooterPlaceholder extends StatelessWidget {
-  const _FooterPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      color: HSColors.darkBg,
-      padding: const EdgeInsets.all(28),
-      child: const Text(
-        'Footer',
-        textAlign: TextAlign.center,
-        style: TextStyle(color: Colors.white70),
-      ),
-    );
-  }
-}
-
-class _HeroSection extends StatelessWidget {
-  const _HeroSection({required this.onFindStay});
-
-  final VoidCallback onFindStay;
-
-  @override
-  Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-
-    return SizedBox(
-      height: MediaQuery.of(context).size.height,
-      width: double.infinity,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.asset(
-            'assets/WaterFront.jpeg',
-            fit: BoxFit.cover,
-            color: Colors.black.withOpacity(0.3),
-            colorBlendMode: BlendMode.darken,
-          ),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: [HSColors.darkBg, Colors.transparent, Color(0x66000000)],
-              ),
-            ),
-          ),
-          Positioned(
-            left: width > 768 ? 64 : 24,
-            right: width > 768 ? 64 : 24,
-            bottom: width > 768 ? 96 : 64,
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 30, end: 0),
-              duration: const Duration(milliseconds: 850),
-              curve: Curves.easeOutCubic,
-              builder: (context, value, child) => Opacity(
-                opacity: 1 - value / 30,
-                child: Transform.translate(offset: Offset(0, value), child: child),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  RichText(
-                    text: TextSpan(
-                      style: TextStyle(
-                        fontSize: width < 480 ? 32 : width < 768 ? 46 : 72,
-                        height: 0.98,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -2.2,
-                        color: Colors.white,
-                      ),
-                      children: const [
-                        TextSpan(text: 'YOUR STORY BEGINS IN '),
-                        TextSpan(
-                          text: 'SARAWAK.',
-                          style: TextStyle(
-                            color: HSColors.gold,
-                            fontFamily: 'Georgia',
-                            fontStyle: FontStyle.italic,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  const SizedBox(
-                    width: 500,
-                    child: Text(
-                      'Explore the land of hornbills, ancient caves, and living traditions. Find your perfect homestay today.',
-                      style: TextStyle(color: Colors.white, fontSize: 18, height: 1.5),
-                    ),
-                  ),
-                  const SizedBox(height: 30),
-                  OutlinedButton(
-                    onPressed: onFindStay,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Colors.white70, width: 1.5),
-                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                      shape: const StadiumBorder(),
-                    ),
-                    child: const Text('Find a Stay', style: TextStyle(fontWeight: FontWeight.w700)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MapSearchSection extends StatelessWidget {
-  const _MapSearchSection({
-    required this.clusters,
-    required this.selectedCluster,
-    required this.checkInText,
-    required this.checkOutText,
-    required this.adults,
-    required this.children,
-    required this.activeTab,
-    required this.onTabChanged,
-    required this.onRegionSelected,
-    required this.onSearch,
-    required this.panel,
-  });
-
-  final List<String> clusters;
-  final String selectedCluster;
-  final String checkInText;
-  final String checkOutText;
-  final int adults;
-  final int children;
-  final String? activeTab;
-  final ValueChanged<String> onTabChanged;
-  final ValueChanged<String> onRegionSelected;
-  final VoidCallback onSearch;
-  final Widget? panel;
-
-  @override
-  Widget build(BuildContext context) {
-    final isSmall = MediaQuery.of(context).size.width <= 900;
-
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.fromLTRB(isSmall ? 16 : 24, isSmall ? 42 : 118, isSmall ? 16 : 24, 50),
-      child: Column(
-        children: [
-          _SearchBar(
-            selectedCluster: selectedCluster,
-            checkInText: checkInText,
-            checkOutText: checkOutText,
-            adults: adults,
-            children: children,
-            activeTab: activeTab,
-            onTabChanged: onTabChanged,
-            onSearch: onSearch,
-            panel: panel,
-          ),
-          const SizedBox(height: 48),
-          const _SectionHeader(
-            pill: 'Explore by Region',
-            title: 'Find your perfect stay',
-            center: true,
-          ),
-          const SizedBox(height: 28),
-          SarawakMapSection(
-            onRegionSelected: onRegionSelected,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SearchBar extends StatelessWidget {
-  const _SearchBar({
-    required this.selectedCluster,
-    required this.checkInText,
-    required this.checkOutText,
-    required this.adults,
-    required this.children,
-    required this.activeTab,
-    required this.onTabChanged,
-    required this.onSearch,
-    required this.panel,
-  });
-
-  final String selectedCluster;
-  final String checkInText;
-  final String checkOutText;
-  final int adults;
-  final int children;
-  final String? activeTab;
-  final ValueChanged<String> onTabChanged;
-  final VoidCallback onSearch;
-  final Widget? panel;
-
-  @override
-  Widget build(BuildContext context) {
-    final isSmall = MediaQuery.of(context).size.width <= 900;
-
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 1260),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            padding: EdgeInsets.all(isSmall ? 18 : 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.97),
-              borderRadius: BorderRadius.circular(isSmall ? 30 : 999),
-              border: Border.all(color: HSColors.border),
-              boxShadow: const [BoxShadow(color: Color(0x29493829), blurRadius: 48, offset: Offset(0, 20))],
-            ),
-            child: isSmall
-                ? Column(
-                    children: _fields(isSmall) + [const SizedBox(height: 12), _searchButton(isSmall)],
-                  )
-                : Row(
-                    children: [Expanded(child: Row(children: _fields(isSmall))), const SizedBox(width: 14), _searchButton(isSmall)],
-                  ),
-          ),
-          if (panel != null)
-            Positioned(
-              top: isSmall ? 360 : 96,
-              left: isSmall ? 0 : null,
-              right: isSmall ? 0 : 80,
-              child: Center(child: panel!),
-            ),
-        ],
-      ),
-    );
-  }
-
-  List<Widget> _fields(bool isSmall) {
-    return [
-      _SearchField(
-        label: 'Where',
-        value: selectedCluster.isEmpty ? 'Search destinations' : selectedCluster,
-        icon: Icons.location_on_rounded,
-        active: activeTab == 'location',
-        onTap: () => onTabChanged('location'),
-        isSmall: isSmall,
-      ),
-      _SearchField(
-        label: 'Check in',
-        value: checkInText,
-        icon: Icons.calendar_month_outlined,
-        active: activeTab == 'checkin',
-        onTap: () => onTabChanged('checkin'),
-        isSmall: isSmall,
-      ),
-      _SearchField(
-        label: 'Check out',
-        value: checkOutText,
-        icon: Icons.calendar_month_outlined,
-        active: activeTab == 'checkout',
-        onTap: () => onTabChanged('checkout'),
-        isSmall: isSmall,
-      ),
-      _SearchField(
-        label: 'Who',
-        value: '$adults adults, $children children',
-        icon: Icons.people_alt_rounded,
-        active: activeTab == 'guests',
-        onTap: () => onTabChanged('guests'),
-        isSmall: isSmall,
-      ),
-    ];
-  }
-
-  Widget _searchButton(bool isSmall) {
-    return SizedBox(
-      width: isSmall ? double.infinity : 70,
-      height: isSmall ? 56 : 70,
-      child: ElevatedButton(
-        onPressed: onSearch,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: HSColors.gold,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(isSmall ? 18 : 999)),
-          elevation: 8,
-        ),
-        child: const Icon(Icons.search_rounded, size: 26),
-      ),
-    );
-  }
-}
-
-class _SearchField extends StatelessWidget {
-  const _SearchField({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.active,
-    required this.onTap,
-    required this.isSmall,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final bool active;
-  final VoidCallback onTap;
-  final bool isSmall;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      flex: isSmall ? 0 : 1,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(24),
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          height: isSmall ? null : 58,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
-          decoration: BoxDecoration(
-            color: active ? HSColors.light : Colors.transparent,
-            borderRadius: BorderRadius.circular(24),
-            border: isSmall ? const Border(bottom: BorderSide(color: HSColors.border)) : null,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                label.toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: HSColors.brownSoft,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.8,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(icon, color: HSColors.brown, size: 17),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: Text(
-                      value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: HSColors.brownDark, fontSize: 15, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SearchPanel extends StatelessWidget {
-  const _SearchPanel({required this.title, required this.child, this.action});
-
-  final String title;
-  final Widget child;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        width: math.min(MediaQuery.of(context).size.width * 0.9, 430),
-        constraints: const BoxConstraints(maxHeight: 430),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: HSColors.border),
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: const [BoxShadow(color: Color(0x2E493829), blurRadius: 45, offset: Offset(0, 18))],
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: const TextStyle(
-                        fontFamily: 'Georgia',
-                        fontSize: 22,
-                        color: HSColors.brown,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  if (action != null) action!,
-                ],
-              ),
-              const SizedBox(height: 12),
-              child,
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ClusterSelector extends StatelessWidget {
-  const _ClusterSelector({required this.clusters, required this.selectedCluster, required this.onSelected});
-
-  final List<String> clusters;
-  final String selectedCluster;
-  final ValueChanged<String> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final allItems = ['All Areas', ...clusters];
-
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: allItems.length,
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 140,
-        mainAxisExtent: 46,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-      ),
-      itemBuilder: (context, index) {
-        final item = allItems[index];
-        final value = item == 'All Areas' ? '' : item;
-        final selected = selectedCluster == value;
-        return InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () => onSelected(value),
-          child: Container(
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: selected ? const Color(0xFFFFF7ED) : Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: selected ? HSColors.gold : const Color(0xFFE2E8F0), width: selected ? 2 : 1),
-            ),
-            child: Text(
-              item,
-              style: TextStyle(
-                color: selected ? HSColors.gold : const Color(0xFF4A5568),
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
-                fontSize: 13,
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _GuestCounter extends StatelessWidget {
-  const _GuestCounter({required this.title, required this.subtitle, required this.value, required this.min, required this.onChanged});
-
-  final String title;
-  final String subtitle;
-  final int value;
-  final int min;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(color: HSColors.brown, fontWeight: FontWeight.w800)),
-              Text(subtitle, style: const TextStyle(color: HSColors.brownSoft, fontSize: 12)),
-            ],
-          ),
-          Row(
-            children: [
-              _RoundCounterButton(icon: Icons.remove, onTap: () => onChanged(math.max(min, value - 1))),
-              SizedBox(width: 36, child: Text('$value', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800))),
-              _RoundCounterButton(icon: Icons.add, onTap: () => onChanged(value + 1)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RoundCounterButton extends StatelessWidget {
-  const _RoundCounterButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: HSColors.gold),
-        ),
-        child: Icon(icon, color: HSColors.gold, size: 18),
-      ),
-    );
-  }
-}
-
-class HomeCalendar extends StatefulWidget {
-  const HomeCalendar({super.key, required this.value, required this.minDate, required this.onChange, this.disabled = false});
-
-  final DateTime? value;
-  final DateTime minDate;
-  final ValueChanged<DateTime> onChange;
-  final bool disabled;
-
-  @override
-  State<HomeCalendar> createState() => _HomeCalendarState();
-}
-
-class _HomeCalendarState extends State<HomeCalendar> {
-  late int viewYear;
-  late int viewMonth;
-
-  @override
-  void initState() {
-    super.initState();
-    final initial = widget.value ?? widget.minDate;
-    viewYear = initial.year;
-    viewMonth = initial.month;
-  }
-
-  int _daysInMonth(int year, int month) => DateTime(year, month + 1, 0).day;
-  int _firstWeekdayIndex(int year, int month) => DateTime(year, month, 1).weekday % 7;
-
-  bool _isSameDate(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
-  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
-
-  @override
-  Widget build(BuildContext context) {
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December',
-    ];
-    const days = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-    final first = _firstWeekdayIndex(viewYear, viewMonth);
-    final totalDays = _daysInMonth(viewYear, viewMonth);
-    final today = _dateOnly(DateTime.now());
-    final minDate = _dateOnly(widget.minDate);
-
-    return Opacity(
-      opacity: widget.disabled ? 0.55 : 1,
-      child: IgnorePointer(
-        ignoring: widget.disabled,
+      backgroundColor: HSColors.cream,
+      body: SingleChildScrollView(
+        controller: _scrollController,
         child: Column(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _CalendarNavButton(
-                  icon: Icons.chevron_left,
-                  onTap: () {
-                    setState(() {
-                      if (viewMonth == 1) {
-                        viewMonth = 12;
-                        viewYear--;
-                      } else {
-                        viewMonth--;
-                      }
-                    });
-                  },
-                ),
-                Text('${months[viewMonth - 1]} $viewYear', style: const TextStyle(color: HSColors.brownDark, fontWeight: FontWeight.w800)),
-                _CalendarNavButton(
-                  icon: Icons.chevron_right,
-                  onTap: () {
-                    setState(() {
-                      if (viewMonth == 12) {
-                        viewMonth = 1;
-                        viewYear++;
-                      } else {
-                        viewMonth++;
-                      }
-                    });
-                  },
-                ),
-              ],
+            // 1. Hero
+            _HeroSection(
+              onExplore: _handleHomeSearch,
+              unreadCount: _unreadCount,
+              onNotificationTap: () {
+                Navigator.pushNamed(context, '/customer-notifications')
+                    .then((_) => _loadUnreadCount());
+              },
             ),
-            const SizedBox(height: 10),
-            GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: 7,
-              childAspectRatio: 1.25,
-              children: [
-                for (final day in days)
-                  Center(child: Text(day, style: const TextStyle(color: Color(0xFF9A8B7D), fontSize: 10, fontWeight: FontWeight.w800))),
-                for (int i = 0; i < first; i++) const SizedBox.shrink(),
-                for (int day = 1; day <= totalDays; day++)
-                  _CalendarDayButton(
-                    day: day,
-                    disabled: DateTime(viewYear, viewMonth, day).isBefore(minDate),
-                    selected: widget.value != null && _isSameDate(widget.value!, DateTime(viewYear, viewMonth, day)),
-                    today: _isSameDate(today, DateTime(viewYear, viewMonth, day)),
-                    onTap: () => widget.onChange(DateTime(viewYear, viewMonth, day)),
-                  ),
-              ],
-            ),
+
+            // 2. Featured destinations
+            const _FeaturedDestinationsSection(),
+
+            // 3. Why choose us
+            const _WhyChooseUsSection(),
+
+            // 4. Ad banner
+            const _AdBannerSection(),
+
+            // 5. Curated experiences
+            const _CuratedSection(),
+
+            // 6. Testimonials
+            const _TestimonialsSection(),
+
+            // Bottom spacing above bottom nav
+            SizedBox(height: MediaQuery.of(context).padding.bottom + 28),
           ],
         ),
       ),
@@ -952,688 +130,613 @@ class _HomeCalendarState extends State<HomeCalendar> {
   }
 }
 
-class _CalendarNavButton extends StatelessWidget {
-  const _CalendarNavButton({required this.icon, required this.onTap});
+// ─────────────────────────────────────────────────────────────────────────────
+// HERO
+// ─────────────────────────────────────────────────────────────────────────────
+class _HeroSection extends StatelessWidget {
+  const _HeroSection({
+    required this.onExplore,
+    required this.unreadCount,
+    required this.onNotificationTap,
+  });
 
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: onTap,
-      child: Container(
-        width: 30,
-        height: 30,
-        decoration: BoxDecoration(color: HSColors.cream, borderRadius: BorderRadius.circular(8)),
-        child: Icon(icon, color: HSColors.brown),
-      ),
-    );
-  }
-}
-
-class _CalendarDayButton extends StatelessWidget {
-  const _CalendarDayButton({required this.day, required this.disabled, required this.selected, required this.today, required this.onTap});
-
-  final int day;
-  final bool disabled;
-  final bool selected;
-  final bool today;
-  final VoidCallback onTap;
+  final VoidCallback onExplore;
+  final int unreadCount;
+  final VoidCallback onNotificationTap;
 
   @override
   Widget build(BuildContext context) {
-    Color bg = Colors.transparent;
-    Color fg = HSColors.brownDark;
-    if (selected) {
-      bg = HSColors.gold;
-      fg = Colors.white;
-    } else if (today) {
-      bg = HSColors.light;
-      fg = HSColors.gold;
-    }
+    final w = MediaQuery.of(context).size.width;
+    final h = MediaQuery.of(context).size.height;
 
-    return Padding(
-      padding: const EdgeInsets.all(2),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: disabled ? null : onTap,
-        child: Container(
-          alignment: Alignment.center,
-          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
-          child: Text(
-            '$day',
-            style: TextStyle(
-              color: disabled ? Colors.grey.shade300 : fg,
-              fontSize: 12,
-              fontWeight: selected || today ? FontWeight.w800 : FontWeight.w500,
+    return SizedBox(
+      height: h * 0.88,
+      width: double.infinity,
+      child: Stack(fit: StackFit.expand, children: [
+        // Background
+        Image.asset('assets/WaterFront.jpeg', fit: BoxFit.cover,
+          color: Colors.black.withOpacity(0.28), colorBlendMode: BlendMode.darken,
+          errorBuilder: (_, __, ___) => Container(color: HSColors.dark)),
+        // Bottom gradient
+        const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+          begin: Alignment.bottomCenter, end: Alignment.topCenter,
+          colors: [HSColors.dark, Colors.transparent, Color(0x44000000)]))),
+        // Left gradient
+        DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+          begin: Alignment.centerLeft, end: Alignment.centerRight,
+          colors: [HSColors.dark.withOpacity(0.55), Colors.transparent]))),
+
+        // Content
+        SafeArea(child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: w > 768 ? 56 : 22),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const SizedBox(height: 20),
+            // Badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: HSColors.accent.withOpacity(0.18),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: HSColors.accent.withOpacity(0.40)),
+              ),
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.location_on_rounded, color: HSColors.accentLight, size: 13),
+                SizedBox(width: 7),
+                Text('BORNEO, MALAYSIA', style: TextStyle(color: HSColors.accentLight, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
+              ]),
+            ),
+            const SizedBox(height: 22),
+            // Headline
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: RichText(text: TextSpan(
+                style: TextStyle(fontSize: w < 480 ? 36 : w < 768 ? 50 : 68, height: 1.0, fontWeight: FontWeight.w900, letterSpacing: -1.5, color: Colors.white),
+                children: const [
+                  TextSpan(text: 'YOUR STORY\nBEGINS IN '),
+                  TextSpan(text: 'SARAWAK.', style: TextStyle(color: HSColors.accentLight, fontStyle: FontStyle.italic)),
+                ],
+              )),
+            ),
+            const SizedBox(height: 20),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: Text('Explore the land of hornbills, ancient caves, and living traditions. Find your perfect homestay today.',
+                style: TextStyle(color: Colors.white.withOpacity(0.78), fontSize: w < 480 ? 15 : 17, height: 1.65)),
+            ),
+            const SizedBox(height: 32),
+            // CTAs
+            Wrap(spacing: 12, runSpacing: 12, children: [
+              _heroCta('Explore Stays', Icons.search_rounded, filled: true, onTap: onExplore),
+              _heroCta('Discover Sarawak', Icons.explore_rounded, filled: false, onTap: onExplore),
+            ]),
+          ]),
+        )),
+
+        // Notification bell
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 18,
+          right: w > 768 ? 56 : 22,
+          child: GestureDetector(
+            onTap: onNotificationTap,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(9),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.25),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.14),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.notifications_outlined,
+                    color: Colors.white,
+                    size: 15,
+                  ),
+                ),
+
+                if (unreadCount > 0)
+                  Positioned(
+                    top: -4,
+                    right: -4,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFE0A43A),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        unreadCount > 9 ? '9+' : '$unreadCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
+
+        // Scroll hint
+        Positioned(bottom: 28, left: 0, right: 0, child: Center(child: Column(children: [
+          Text('SCROLL DOWN', style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 10, letterSpacing: 2, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          const _ScrollArrow(),
+        ]))),
+      ]),
+    );
+  }
+
+  Widget _heroCta(String label, IconData icon, {required bool filled, required VoidCallback onTap}) =>
+    InkWell(
+      onTap: onTap, borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+        decoration: BoxDecoration(
+          color: filled ? HSColors.accent : Colors.white.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(14),
+          border: filled ? null : Border.all(color: Colors.white.withOpacity(0.30)),
+          boxShadow: filled ? [BoxShadow(color: HSColors.accent.withOpacity(0.35), blurRadius: 14, offset: const Offset(0, 5))] : [],
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, color: Colors.white, size: 16), const SizedBox(width: 8),
+          Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
+        ]),
       ),
     );
-  }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.pill, required this.title, this.subtitle, this.center = false});
+class _ScrollArrow extends StatefulWidget {
+  const _ScrollArrow();
+  @override State<_ScrollArrow> createState() => _ScrollArrowState();
+}
+class _ScrollArrowState extends State<_ScrollArrow> with SingleTickerProviderStateMixin {
+  late AnimationController _c;
+  late Animation<double> _a;
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true);
+    _a = Tween(begin: 0.0, end: 6.0).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
+  }
+  @override void dispose() { _c.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _a,
+    builder: (_, __) => Transform.translate(offset: Offset(0, _a.value),
+      child: Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white.withOpacity(0.45), size: 26)),
+  );
+}
 
-  final String pill;
-  final String title;
-  final String? subtitle;
-  final bool center;
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURED DESTINATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+class _FeaturedDestinationsSection extends StatelessWidget {
+  const _FeaturedDestinationsSection();
+
+  static const destinations = [
+    {'name': 'Kuching City', 'tag': 'Cultural Capital', 'img': 'assets/Sarawak.png', 'props': '42 stays'},
+    {'name': 'Gunung Mulu',  'tag': 'UNESCO Heritage',  'img': 'assets/Mulu.jpg',    'props': '18 stays'},
+    {'name': 'Damai Beach',  'tag': 'Coastal Escape',   'img': 'assets/Damai.jpg',   'props': '27 stays'},
+    {'name': 'Bako Park',    'tag': 'Nature & Wildlife','img': 'assets/Bako.jpg',    'props': '11 stays'},
+    {'name': 'Semenggoh',    'tag': 'Orangutan Trail',  'img': 'assets/Semenggoh.jpg','props': '9 stays'},
+    {'name': 'Sibu City',    'tag': 'Riverside Charm',  'img': 'assets/WaterFront.jpeg','props': '33 stays'},
+  ];
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: center ? CrossAxisAlignment.center : CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.75),
-            border: Border.all(color: HSColors.border),
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Text(
-            pill.toUpperCase(),
-            style: const TextStyle(color: HSColors.gold, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4),
-          ),
-        ),
-        const SizedBox(height: 14),
-        Text(
-          title,
-          textAlign: center ? TextAlign.center : TextAlign.left,
-          style: const TextStyle(
-            fontFamily: 'Georgia',
-            color: HSColors.brown,
-            fontSize: 42,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        if (subtitle != null) ...[
-          const SizedBox(height: 12),
-          Text(subtitle!, style: const TextStyle(color: HSColors.brownSoft, fontSize: 17)),
-        ],
-      ],
-    );
-  }
-}
+    final w = MediaQuery.of(context).size.width;
+    final isWide = w > 860;
+    int cols = w > 1000 ? 3 : w > 600 ? 2 : 1;
 
-class _SarawakMapPlaceholder extends StatelessWidget {
-  const _SarawakMapPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(maxWidth: 1120, minHeight: 320),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.55),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: HSColors.border),
-      ),
-      child: const Center(
-        child: Text(
-          'Sarawak Map Component Here',
-          style: TextStyle(color: HSColors.brownSoft, fontWeight: FontWeight.w700),
-        ),
-      ),
+      color: Colors.white,
+      padding: EdgeInsets.fromLTRB(isWide ? 40 : 16, 72, isWide ? 40 : 16, 72),
+      child: Center(child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1100),
+        child: Column(children: [
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Expanded(child: _SectionHeading(
+              eyebrow: 'Explore by Destination',
+              title: 'Top Places\nto Stay',
+              sub: 'Handpicked destinations across the Land of Hornbills.',
+            )),
+            if (w > 600)
+              InkWell(
+                onTap: () {},
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(border: Border.all(color: HSColors.border), borderRadius: BorderRadius.circular(12)),
+                  child: const Text('View all →', style: TextStyle(color: HSColors.textSecond, fontWeight: FontWeight.w700)),
+                ),
+              ),
+          ]),
+          const SizedBox(height: 36),
+          GridView.builder(
+            shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+            itemCount: destinations.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: cols, crossAxisSpacing: 18, mainAxisSpacing: 18,
+              mainAxisExtent: cols == 1 ? 220 : 260,
+            ),
+            itemBuilder: (_, i) => _DestCard(data: destinations[i]),
+          ),
+        ]),
+      )),
     );
   }
 }
 
+class _DestCard extends StatelessWidget {
+  const _DestCard({required this.data});
+  final Map<String, String> data;
+
+  @override
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(20),
+    child: Stack(fit: StackFit.expand, children: [
+      Image.asset(data['img']!, fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(color: HSColors.darkSurface)),
+      // Gradient
+      DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+        begin: Alignment.bottomCenter, end: Alignment.topCenter,
+        colors: [HSColors.dark.withOpacity(0.85), Colors.transparent, Colors.black.withOpacity(0.12)]))),
+      // Content
+      Positioned(left: 16, right: 16, bottom: 16, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+          decoration: BoxDecoration(color: HSColors.accent.withOpacity(0.25), borderRadius: BorderRadius.circular(20)),
+          child: Text(data['tag']!.toUpperCase(), style: const TextStyle(color: HSColors.accentLight, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1.4)),
+        ),
+        const SizedBox(height: 6),
+        Text(data['name']!, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 3),
+        Row(children: [
+          const Icon(Icons.home_rounded, color: Colors.white60, size: 13), const SizedBox(width: 4),
+          Text(data['props']!, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+        ]),
+      ])),
+    ]),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WHY CHOOSE US
+// ─────────────────────────────────────────────────────────────────────────────
+class _WhyChooseUsSection extends StatelessWidget {
+  const _WhyChooseUsSection();
+
+  static const features = [
+    {'icon': 'verified',    'title': 'Verified Stays',       'desc': 'Every property is reviewed and verified by our local team before listing.'},
+    {'icon': 'price',       'title': 'Best Price Promise',    'desc': 'We match any lower price you find — no hidden fees, ever.'},
+    {'icon': 'local',       'title': 'Local Experience',      'desc': 'Connect directly with local hosts for authentic Sarawak hospitality.'},
+    {'icon': 'support',     'title': '24 / 7 Support',       'desc': 'Our team is always here to help before, during, and after your stay.'},
+    {'icon': 'flexible',    'title': 'Flexible Booking',      'desc': 'Easy date changes and deposit-based reservations for peace of mind.'},
+    {'icon': 'safe',        'title': 'Secure Payments',       'desc': 'PayPal-protected transactions keep your booking safe every time.'},
+  ];
+
+  static const _icons = {
+    'verified':  Icons.verified_rounded,
+    'price':     Icons.price_check_rounded,
+    'local':     Icons.people_rounded,
+    'support':   Icons.support_agent_rounded,
+    'flexible':  Icons.date_range_rounded,
+    'safe':      Icons.lock_rounded,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    final isWide = w > 860;
+    int cols = w > 1000 ? 3 : w > 600 ? 2 : 1;
+
+    return Container(
+      color: HSColors.cream,
+      padding: EdgeInsets.fromLTRB(isWide ? 40 : 16, 72, isWide ? 40 : 16, 72),
+      child: Center(child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1100),
+        child: Column(children: [
+          _SectionHeading(
+            eyebrow: 'Why Hello Sarawak?',
+            title: 'Built for travellers\nwho care',
+            sub: 'We make finding and booking authentic Sarawak stays simple, safe, and memorable.',
+            center: true,
+          ),
+          const SizedBox(height: 44),
+          GridView.builder(
+            shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+            itemCount: features.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: cols, crossAxisSpacing: 18, mainAxisSpacing: 18,
+              childAspectRatio: cols == 1 ? 3.2 : 1.4,
+            ),
+            itemBuilder: (_, i) {
+              final f = features[i];
+              final icon = _icons[f['icon']] ?? Icons.check_circle_rounded;
+              return Container(
+                padding: const EdgeInsets.all(22),
+                decoration: _card(),
+                child: cols == 1
+                  // Mobile: horizontal layout
+                  ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Container(width: 46, height: 46, decoration: BoxDecoration(color: HSColors.accent.withOpacity(0.10), borderRadius: BorderRadius.circular(14)),
+                        child: Icon(icon, color: HSColors.accent, size: 22)),
+                      const SizedBox(width: 14),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(f['title']!, style: const TextStyle(color: HSColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w900)),
+                        const SizedBox(height: 5),
+                        Text(f['desc']!, style: const TextStyle(color: HSColors.textSecond, fontSize: 13, height: 1.55)),
+                      ])),
+                    ])
+                  // Wide: vertical layout
+                  : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Container(width: 48, height: 48, decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [HSColors.accent, HSColors.primaryLight], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                        borderRadius: BorderRadius.circular(14)),
+                        child: Icon(icon, color: Colors.white, size: 24)),
+                      const SizedBox(height: 16),
+                      Text(f['title']!, style: const TextStyle(color: HSColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 8),
+                      Expanded(child: Text(f['desc']!, style: const TextStyle(color: HSColors.textSecond, fontSize: 13, height: 1.6), overflow: TextOverflow.visible)),
+                    ]),
+              );
+            },
+          ),
+        ]),
+      )),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AD BANNER
+// ─────────────────────────────────────────────────────────────────────────────
 class _AdBannerSection extends StatelessWidget {
   const _AdBannerSection();
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
     return SizedBox(
-      height: 500,
+      height: 480,
       width: double.infinity,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.asset('assets/AdBanner.jpg', fit: BoxFit.cover),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xCC000000), Color(0x66000000), Colors.transparent],
+      child: Stack(fit: StackFit.expand, children: [
+        Image.asset('assets/AdBanner.jpg', fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: HSColors.dark)),
+        // Overlays
+        const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+          colors: [Color(0xCC000000), Color(0x55000000), Colors.transparent]))),
+        DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+          begin: Alignment.bottomCenter, end: Alignment.topCenter,
+          colors: [Colors.black.withOpacity(0.45), Colors.transparent]))),
+        // Content
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: w > 768 ? 56 : 22),
+          child: Align(alignment: Alignment.centerLeft, child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 680),
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(border: Border.all(color: HSColors.accent), borderRadius: BorderRadius.circular(30), color: Colors.black.withOpacity(0.25)),
+                child: const Text('FEATURED EVENT', style: TextStyle(color: HSColors.accentLight, fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 1.6)),
               ),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: MediaQuery.of(context).size.width > 768 ? 64 : 24),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 760),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      decoration: BoxDecoration(border: Border.all(color: HSColors.gold), borderRadius: BorderRadius.circular(999), color: Colors.black26),
-                      child: const Text('FEATURED EVENT', style: TextStyle(color: HSColors.gold, fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 1.4)),
-                    ),
-                    const SizedBox(height: 18),
-                    const Text(
-                      'Sarawak Rainforest World Music Festival',
-                      style: TextStyle(color: Colors.white, fontFamily: 'Georgia', fontSize: 54, fontWeight: FontWeight.w800, height: 1.05),
-                    ),
-                    const SizedBox(height: 18),
-                    const Text(
-                      'Experience the rhythm of the jungle. Get your early bird tickets now.',
-                      style: TextStyle(color: Colors.white70, fontSize: 20),
-                    ),
-                    const SizedBox(height: 32),
-                    ElevatedButton(
-                      onPressed: () {},
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14), shape: const StadiumBorder()),
-                      child: const Text('Book Tickets', style: TextStyle(fontWeight: FontWeight.w800)),
-                    ),
-                  ],
+              const SizedBox(height: 18),
+              Text('Sarawak Rainforest\nWorld Music Festival',
+                style: TextStyle(color: Colors.white, fontSize: w < 480 ? 30 : w < 768 ? 40 : 52, fontWeight: FontWeight.w900, height: 1.05)),
+              const SizedBox(height: 14),
+              Text('Experience the rhythm of the jungle. Get your early bird tickets now.',
+                style: TextStyle(color: Colors.white.withOpacity(0.80), fontSize: w < 480 ? 14 : 17, height: 1.6)),
+              const SizedBox(height: 28),
+              ElevatedButton.icon(
+                onPressed: () {},
+                icon: const Icon(Icons.confirmation_number_rounded, size: 17),
+                label: const Text('Book Tickets', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: HSColors.accent, foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  elevation: 0,
                 ),
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AvailablePropertiesSection extends StatelessWidget {
-  const _AvailablePropertiesSection({required this.propertiesFuture, required this.featuredBuilder, required this.onViewAll, required this.onViewDetails});
-
-  final Future<List<Map<String, dynamic>>> propertiesFuture;
-  final List<Map<String, dynamic>> Function(List<Map<String, dynamic>>) featuredBuilder;
-  final VoidCallback onViewAll;
-  final ValueChanged<Map<String, dynamic>> onViewDetails;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 96),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1180),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Expanded(child: _SectionHeader(pill: '', title: 'Available Properties', subtitle: 'Highly rated stays across Sarawak.')),
-                  if (MediaQuery.of(context).size.width > 768)
-                    OutlinedButton(
-                      onPressed: onViewAll,
-                      style: OutlinedButton.styleFrom(foregroundColor: HSColors.gold, side: const BorderSide(color: HSColors.gold), shape: const StadiumBorder()),
-                      child: const Text('View All →'),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 40),
-              FutureBuilder<List<Map<String, dynamic>>>(
-                future: propertiesFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) return const _PropertyGridSkeleton();
-                  final featured = featuredBuilder(snapshot.data ?? []);
-                  if (featured.isEmpty) {
-                    return Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(40),
-                      decoration: BoxDecoration(color: HSColors.light, borderRadius: BorderRadius.circular(20), border: Border.all(color: HSColors.border)),
-                      child: const Text('No available properties found.', textAlign: TextAlign.center, style: TextStyle(color: HSColors.brownSoft, fontWeight: FontWeight.w600)),
-                    );
-                  }
-                  return LayoutBuilder(
-                    builder: (context, constraints) {
-                      final columns = constraints.maxWidth > 1000 ? 4 : constraints.maxWidth > 620 ? 2 : 1;
-                      return GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: featured.length,
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: columns,
-                          crossAxisSpacing: 24,
-                          mainAxisSpacing: 24,
-                          mainAxisExtent: 390,
-                        ),
-                        itemBuilder: (context, index) => _PropertyCard(property: featured[index], onTap: () => onViewDetails(featured[index])),
-                      );
-                    },
-                  );
-                },
-              ),
-            ],
-          ),
+            ]),
+          )),
         ),
-      ),
+      ]),
     );
   }
 }
 
-class _PropertyGridSkeleton extends StatelessWidget {
-  const _PropertyGridSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = constraints.maxWidth > 1000 ? 4 : constraints.maxWidth > 620 ? 2 : 1;
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: 4,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: columns, crossAxisSpacing: 24, mainAxisSpacing: 24, mainAxisExtent: 360),
-          itemBuilder: (context, index) => Container(
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: HSColors.border)),
-            child: Column(children: [Container(height: 220, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: const BorderRadius.vertical(top: Radius.circular(18))))]),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _PropertyCard extends StatelessWidget {
-  const _PropertyCard({required this.property, required this.onTap});
-
-  final Map<String, dynamic> property;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final imageList = property['propertyimage'];
-    final firstImage = imageList is List && imageList.isNotEmpty ? '${imageList.first}' : null;
-    final rating = double.tryParse('${property['rating'] ?? ''}');
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: HSColors.border), boxShadow: const [BoxShadow(color: Color(0x12000000), blurRadius: 16)]),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-              child: SizedBox(
-                height: 220,
-                width: double.infinity,
-                child: firstImage == null
-                    ? Container(color: Colors.grey.shade100, child: const Center(child: Text('No images available', style: TextStyle(color: Colors.grey))))
-                    : Image.network(firstImage, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade100, child: const Center(child: Text('Image unavailable')))),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text('${property['propertyaddress'] ?? 'Unnamed Property'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: HSColors.brownDark, fontSize: 17, fontWeight: FontWeight.w800)),
-                      ),
-                      if (rating != null) ...[
-                        Text(rating.toStringAsFixed(rating % 1 == 0 ? 1 : 2).replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), ''), style: const TextStyle(fontWeight: FontWeight.w800, color: HSColors.brown)),
-                        const Icon(Icons.star_rounded, size: 18, color: HSColors.gold),
-                      ] else
-                        const Text('No reviews', style: TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text('${property['clustername'] ?? 'Sarawak'}', style: const TextStyle(color: HSColors.brownSoft)),
-                  const SizedBox(height: 18),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: onTap,
-                      style: OutlinedButton.styleFrom(foregroundColor: HSColors.gold, side: const BorderSide(color: HSColors.gold), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                      child: const Text('Select dates for price', style: TextStyle(fontWeight: FontWeight.w800)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
+// ─────────────────────────────────────────────────────────────────────────────
+// CURATED EXPERIENCES
+// ─────────────────────────────────────────────────────────────────────────────
 class _CuratedSection extends StatelessWidget {
   const _CuratedSection();
 
+  static const destinations = [
+    {'name': 'Bako National Park', 'tag': 'Wildlife & Rainforest', 'img': 'assets/Bako.jpg'},
+    {'name': 'Gunung Mulu',        'tag': 'UNESCO Heritage',       'img': 'assets/Mulu.jpg'},
+    {'name': 'Damai Beach',        'tag': 'Coastal Escape',        'img': 'assets/Damai.jpg'},
+    {'name': 'Semenggoh',          'tag': 'Orangutan Sanctuary',   'img': 'assets/Semenggoh.jpg'},
+  ];
+
   @override
   Widget build(BuildContext context) {
-    const destinations = [
-      {'name': 'Bako National Park', 'tag': 'Wildlife & Rainforest', 'img': 'assets/Bako.jpg'},
-      {'name': 'Gunung Mulu', 'tag': 'UNESCO Heritage', 'img': 'assets/Mulu.jpg'},
-      {'name': 'Damai Beach', 'tag': 'Coastal Escape', 'img': 'assets/Damai.jpg'},
-      {'name': 'Semenggoh', 'tag': 'Orangutan Sanctuary', 'img': 'assets/Semenggoh.jpg'},
-    ];
+    final w = MediaQuery.of(context).size.width;
+    final isWide = w > 860;
+    final cols = w > 768 ? 2 : 1;
 
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 110),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [HSColors.brownDark, Color(0xFF1F1711)]),
-      ),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1180),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                spacing: 32,
-                runSpacing: 24,
-                alignment: WrapAlignment.spaceBetween,
-                children: [
-                  const Text('Curated\nExperiences.', style: TextStyle(color: Colors.white, fontFamily: 'Georgia', fontSize: 64, fontWeight: FontWeight.w800, height: 0.95)),
-                  OutlinedButton(onPressed: () {}, style: OutlinedButton.styleFrom(foregroundColor: HSColors.gold, side: const BorderSide(color: HSColors.gold), padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16)), child: const Text('Discover Attractions →')),
-                ],
+      color: HSColors.dark,
+      padding: EdgeInsets.fromLTRB(isWide ? 40 : 16, 80, isWide ? 40 : 16, 80),
+      child: Center(child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1100),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Expanded(child: _SectionHeading(eyebrow: 'Curated Experiences', title: 'Explore the\nBest of Sarawak', dark: true)),
+            if (isWide)
+              InkWell(
+                onTap: () {},
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(border: Border.all(color: HSColors.accent.withOpacity(0.45)), borderRadius: BorderRadius.circular(12)),
+                  child: const Text('Discover more →', style: TextStyle(color: HSColors.accentLight, fontWeight: FontWeight.w700)),
+                ),
               ),
-              const SizedBox(height: 52),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final columns = constraints.maxWidth > 768 ? 2 : 1;
-                  return GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: destinations.length,
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: columns, crossAxisSpacing: 22, mainAxisSpacing: 22, mainAxisExtent: 280),
-                    itemBuilder: (context, index) => _CuratedCard(data: destinations[index]),
-                  );
-                },
-              ),
-            ],
+          ]),
+          const SizedBox(height: 40),
+          GridView.builder(
+            shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+            itemCount: destinations.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: cols, crossAxisSpacing: 18, mainAxisSpacing: 18, mainAxisExtent: 280),
+            itemBuilder: (_, i) {
+              final d = destinations[i];
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: Stack(fit: StackFit.expand, children: [
+                  Image.asset(d['img']!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: HSColors.darkSurface)),
+                  DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+                    begin: Alignment.bottomCenter, end: Alignment.topCenter,
+                    colors: [HSColors.dark.withOpacity(0.90), Colors.transparent]))),
+                  Positioned(left: 22, bottom: 22, right: 22, child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(d['tag']!.toUpperCase(), style: const TextStyle(color: HSColors.accentLight, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.6)),
+                      const SizedBox(height: 6),
+                      Text(d['name']!, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
+                    ])),
+                ]),
+              );
+            },
           ),
-        ),
-      ),
+        ]),
+      )),
     );
   }
 }
 
-class _CuratedCard extends StatelessWidget {
-  const _CuratedCard({required this.data});
-
-  final Map<String, String> data;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(28),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.asset(data['img']!, fit: BoxFit.cover),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Color(0xE62C2016), Colors.transparent]),
-            ),
-          ),
-          Positioned(
-            left: 28,
-            bottom: 26,
-            right: 28,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(data['tag']!.toUpperCase(), style: const TextStyle(color: HSColors.gold, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4)),
-                const SizedBox(height: 8),
-                Text(data['name']!, style: const TextStyle(color: Colors.white, fontFamily: 'Georgia', fontSize: 28, fontWeight: FontWeight.w700)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
+// ─────────────────────────────────────────────────────────────────────────────
+// TESTIMONIALS
+// ─────────────────────────────────────────────────────────────────────────────
 class _TestimonialsSection extends StatelessWidget {
   const _TestimonialsSection();
 
+  static const testimonials = [
+    {'name': 'Sarah Jenkins', 'location': 'UK',    'text': 'Booking through Hello Sarawak was seamless. The homestay in Kuching gave us an incredible, authentic experience!'},
+    {'name': 'Ahmad Fazil',   'location': 'KL',    'text': 'Easy to navigate and great selection of properties. Our stay in Mulu was simply unforgettable.'},
+    {'name': 'Elena Rossi',   'location': 'Italy', 'text': 'Beautiful platform with amazing customer support. Our longhouse stay was beyond what we imagined.'},
+  ];
+
   @override
   Widget build(BuildContext context) {
-    const testimonials = [
-      {'name': 'Sarah Jenkins', 'location': 'UK', 'text': 'Booking through CAMS was seamless. The homestay in Kuching gave us an incredible, authentic Sarawak experience!'},
-      {'name': 'Ahmad Fazil', 'location': 'KL', 'text': 'The interactive map made planning our road trip so easy. Highly recommend the properties in Mulu.'},
-      {'name': 'Elena Rossi', 'location': 'Italy', 'text': 'Beautiful platform with amazing customer support. Our stay at the longhouse was unforgettable.'},
-    ];
+    final w = MediaQuery.of(context).size.width;
+    final isWide = w > 860;
 
     return Container(
-      width: double.infinity,
       color: HSColors.cream,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 100),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1180),
-          child: Column(
-            children: [
-              const _SectionHeader(pill: 'Community & Trust', title: 'Stories from our guests', center: true),
-              const SizedBox(height: 44),
-              Wrap(
-                spacing: 18,
-                runSpacing: 18,
-                alignment: WrapAlignment.center,
-                children: const [
-                  StatItem(end: 500, label: 'Happy Guests', suffix: '+'),
-                  StatItem(end: 12, label: 'Regions Covered'),
-                  StatItem(end: 4.9, label: 'Avg Rating', suffix: '★', isFloat: true),
-                  StatItem(end: 3, label: 'Years Running', suffix: '+'),
-                ],
-              ),
-              const SizedBox(height: 52),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: testimonials.map((t) => Padding(
-                    padding: const EdgeInsets.only(right: 22),
-                    child: _TestimonialCard(data: t),
-                  )).toList(),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      padding: EdgeInsets.fromLTRB(isWide ? 40 : 16, 80, isWide ? 40 : 16, 80),
+      child: Center(child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1100),
+        child: Column(children: [
+          _SectionHeading(eyebrow: 'Guest Stories', title: 'Loved by travellers\naround the world', center: true),
+          const SizedBox(height: 40),
+          // Stats row
+          Wrap(alignment: WrapAlignment.center, spacing: 16, runSpacing: 16, children: const [
+            _StatChip(value: '500+', label: 'Happy Guests'),
+            _StatChip(value: '12',   label: 'Regions'),
+            _StatChip(value: '4.9★', label: 'Avg Rating'),
+            _StatChip(value: '3+',   label: 'Years Running'),
+          ]),
+          const SizedBox(height: 40),
+          // Cards
+          LayoutBuilder(builder: (context, constraints) {
+            final cols = constraints.maxWidth > 800 ? 3 : constraints.maxWidth > 500 ? 2 : 1;
+            return GridView.builder(
+              shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+              itemCount: testimonials.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: cols, crossAxisSpacing: 18, mainAxisSpacing: 18, mainAxisExtent: 200),
+              itemBuilder: (_, i) {
+                final t = testimonials[i];
+                return Container(
+                  padding: const EdgeInsets.all(22),
+                  decoration: _card(),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text('★★★★★', style: TextStyle(color: HSColors.accent, letterSpacing: 2, fontSize: 13)),
+                    const SizedBox(height: 12),
+                    Expanded(child: Text('"${t['text']}"', style: const TextStyle(color: HSColors.textSecond, fontStyle: FontStyle.italic, height: 1.55, fontSize: 13))),
+                    const SizedBox(height: 14),
+                    Row(children: [
+                      CircleAvatar(radius: 16, backgroundColor: HSColors.accent,
+                        child: Text(t['name']![0], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13))),
+                      const SizedBox(width: 10),
+                      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(t['name']!, style: const TextStyle(color: HSColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 13)),
+                        Text(t['location']!.toUpperCase(), style: const TextStyle(color: HSColors.textMuted, fontSize: 10, letterSpacing: 1.2)),
+                      ]),
+                    ]),
+                  ]),
+                );
+              },
+            );
+          }),
+        ]),
+      )),
     );
   }
 }
 
-class StatItem extends StatefulWidget {
-  const StatItem({super.key, required this.end, required this.label, this.suffix = '', this.isFloat = false});
-
-  final double end;
-  final String label;
-  final String suffix;
-  final bool isFloat;
+class _StatChip extends StatelessWidget {
+  const _StatChip({required this.value, required this.label});
+  final String value, label;
 
   @override
-  State<StatItem> createState() => _StatItemState();
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+    decoration: _card(),
+    child: Column(children: [
+      Text(value, style: const TextStyle(color: HSColors.primary, fontSize: 22, fontWeight: FontWeight.w900)),
+      const SizedBox(height: 3),
+      Text(label.toUpperCase(), style: const TextStyle(color: HSColors.textMuted, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1.3)),
+    ]),
+  );
 }
 
-class _StatItemState extends State<StatItem> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
+// ─────────────────────────────────────────────────────────────────────────────
+// Section heading
+// ─────────────────────────────────────────────────────────────────────────────
+class _SectionHeading extends StatelessWidget {
+  const _SectionHeading({required this.eyebrow, required this.title, this.sub, this.center = false, this.dark = false});
+  final String eyebrow, title;
+  final String? sub;
+  final bool center, dark;
 
   @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..forward();
-    _animation = CurvedAnimation(parent: _controller, curve: Curves.easeOutQuart);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 180,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.55),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: HSColors.border),
-        boxShadow: const [BoxShadow(color: Color(0x0A493829), blurRadius: 30, offset: Offset(0, 8))],
-      ),
-      child: AnimatedBuilder(
-        animation: _animation,
-        builder: (context, child) {
-          final value = widget.end * _animation.value;
-          return Column(
-            children: [
-              Text(
-                '${widget.isFloat ? value.toStringAsFixed(1) : value.round()}${widget.suffix}',
-                style: const TextStyle(fontFamily: 'Georgia', color: HSColors.brown, fontSize: 42, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                widget.label.toUpperCase(),
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: HSColors.brownSoft, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _TestimonialCard extends StatelessWidget {
-  const _TestimonialCard({required this.data});
-
-  final Map<String, String> data;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 360,
-      padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: HSColors.border), boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 16)]),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('★★★★★', style: TextStyle(color: HSColors.gold, letterSpacing: 2)),
-          const SizedBox(height: 16),
-          Text('"${data['text']}"', style: const TextStyle(color: HSColors.brown, fontStyle: FontStyle.italic, height: 1.5)),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              AvatarCircle(name: data['name']!),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(data['name']!, style: const TextStyle(color: HSColors.brownDark, fontWeight: FontWeight.w800)),
-                  Text(data['location']!.toUpperCase(), style: const TextStyle(color: Colors.grey, fontSize: 10, letterSpacing: 1.4)),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class AvatarCircle extends StatelessWidget {
-  const AvatarCircle({super.key, required this.name, this.src});
-
-  final String name;
-  final String? src;
-
-  @override
-  Widget build(BuildContext context) {
-    if (src != null && src!.isNotEmpty) {
-      return CircleAvatar(radius: 20, backgroundImage: NetworkImage(src!));
-    }
-
-    return CircleAvatar(
-      radius: 20,
-      backgroundColor: HSColors.gold,
-      child: Text(name.isNotEmpty ? name[0].toUpperCase() : '?', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-    );
-  }
-}
-
-class _AppPromoSection extends StatelessWidget {
-  const _AppPromoSection();
-
-  @override
-  Widget build(BuildContext context) {
-    final isSmall = MediaQuery.of(context).size.width < 768;
-
-    return Container(
-      width: double.infinity,
-      color: const Color(0xFF251D16),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 90),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1000),
-          child: Flex(
-            direction: isSmall ? Axis.vertical : Axis.horizontal,
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                flex: isSmall ? 0 : 1,
-                child: Column(
-                  crossAxisAlignment: isSmall ? CrossAxisAlignment.center : CrossAxisAlignment.start,
-                  children: [
-                    const Text('Sarawak,\nin your pocket.', style: TextStyle(color: Colors.white, fontFamily: 'Georgia', fontSize: 58, height: 1.05, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 22),
-                    const Text('Manage your homestay bookings, receive instant notifications, and chat with property owners directly from your pocket.', style: TextStyle(color: Colors.white70, fontSize: 18, height: 1.55)),
-                    const SizedBox(height: 32),
-                    ElevatedButton.icon(
-                      onPressed: () {},
-                      icon: const Icon(Icons.shop_rounded),
-                      label: const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('GET IT ON', style: TextStyle(fontSize: 10, color: Colors.white70)),
-                          Text('Google Play', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-                        ],
-                      ),
-                      style: ElevatedButton.styleFrom(backgroundColor: HSColors.brownDark, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 60, height: 42),
-              Transform.rotate(
-                angle: -0.08,
-                child: Container(
-                  width: 260,
-                  height: 550,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(42), border: Border.all(color: const Color(0xFF333333), width: 4), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 60, offset: Offset(0, 30))]),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(32),
-                    child: Image.asset('assets/AppScreenshot.jpg', fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: HSColors.cream, child: const Center(child: Text('App Screenshot', style: TextStyle(color: HSColors.brown, fontWeight: FontWeight.w800))))),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: center ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+    children: [
+      Text(eyebrow.toUpperCase(), textAlign: center ? TextAlign.center : TextAlign.left,
+        style: const TextStyle(color: HSColors.accent, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2.2)),
+      const SizedBox(height: 12),
+      Text(title, textAlign: center ? TextAlign.center : TextAlign.left,
+        style: TextStyle(color: dark ? Colors.white : HSColors.textPrimary, fontSize: 30, fontWeight: FontWeight.w900, height: 1.1)),
+      if (sub != null) ...[
+        const SizedBox(height: 12),
+        Text(sub!, textAlign: center ? TextAlign.center : TextAlign.left,
+          style: TextStyle(color: dark ? Colors.white.withOpacity(0.68) : HSColors.textSecond, fontSize: 14, height: 1.65)),
+      ],
+    ],
+  );
 }

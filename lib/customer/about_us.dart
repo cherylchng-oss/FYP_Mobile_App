@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
 import '../shared/customer_layout.dart';
+import '../api.dart' as api;
+import '../services/session.dart';
+import '../shared/colors.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design Tokens
 // ─────────────────────────────────────────────────────────────────────────────
 class _C {
-  static const primary = Color(0xFF6B3F1A);
-  static const primaryLight = Color(0xFF8B5E3C);
-  static const accent = Color(0xFFBF8040);
-  static const accentLight = Color(0xFFE8B97A);
-  static const cream = Color(0xFFFAF6F0);
-  static const surface = Color(0xFFF5EDE0);
-  static const border = Color(0xFFE8D9C5);
-  static const textPrimary = Color(0xFF2C1A0E);
-  static const textSecond = Color(0xFF6B4C30);
-  static const textMuted = Color(0xFFA07850);
+  static const primary       = AdminColors.primary;
+  static const primaryLight  = AdminColors.primaryLight;
+  static const accent        = AdminColors.accent;
+  static const accentLight   = AdminColors.accentLight;
+  static const cream         = AdminColors.cream;
+  static const surface       = AdminColors.surface;
+  static const border        = AdminColors.border;
+  static const textPrimary   = AdminColors.textPrimary;
+  static const textSecond    = AdminColors.textSecond;
+  static const textMuted     = AdminColors.textMuted;
   static const dark = Color(0xFF1A0E06);
   static const darkSurface = Color(0xFF2C1A0E);
 }
@@ -104,6 +107,34 @@ Widget _onlineImage(
     );
   }
 
+  // Local asset image
+  if (url.startsWith('assets/')) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: Image.asset(
+        url,
+        height: height,
+        width: double.infinity,
+        fit: fit,
+        errorBuilder: (_, __, ___) {
+          return Container(
+            height: height ?? 180,
+            width: double.infinity,
+            color: _C.darkSurface,
+            child: const Center(
+              child: Icon(
+                Icons.image_not_supported_rounded,
+                color: _C.accent,
+                size: 38,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // Existing: Online image
   return ClipRRect(
     borderRadius: BorderRadius.circular(radius),
     child: Image.network(
@@ -160,9 +191,10 @@ class _AboutUsPageState extends State<AboutUsPage> {
   final ScrollController _filmstripController = ScrollController();
   final GlobalKey _servicesKey = GlobalKey();
 
-  // Online demo image first. Replace later with your own image URL or asset.
+  int _unreadCount = 0;
+
   final String heroImage =
-      'https://picsum.photos/seed/hello-sarawak-booking-hero/1200/1600';
+      'assets/about_header.png';
 
   final List<Map<String, dynamic>> moods = const [
     {
@@ -238,22 +270,11 @@ class _AboutUsPageState extends State<AboutUsPage> {
 
   final List<Map<String, String>> founders = const [
     {
-      'name': 'The Stay Finder',
-      'role': 'Finds cozy places and makes sure travellers feel welcome.',
-      'tag': 'COZY BOSS',
-      'img': 'https://picsum.photos/seed/founder-stay-finder/900/1200',
-    },
-    {
-      'name': 'The Route Planner',
-      'role': 'Connects stays, destinations, food stops, and little adventures.',
-      'tag': 'MAP MASTER',
-      'img': 'https://picsum.photos/seed/founder-route-planner/900/1200',
-    },
-    {
-      'name': 'The Experience Maker',
-      'role': 'Turns simple trips into stories filled with local flavour.',
-      'tag': 'STORY MAKER',
-      'img': 'https://picsum.photos/seed/founder-experience-maker/900/1200',
+      'name': 'Our Team',
+      'role':
+          'The team behind Hello Sarawak, working together to create a smoother and more meaningful digital booking experience for travellers and local property owners.',
+      'tag': 'CAMS TEAM',
+      'img': 'assets/team_photo.png',
     },
   ];
 
@@ -263,35 +284,35 @@ class _AboutUsPageState extends State<AboutUsPage> {
       'vibe': 'Monkey business 🐒',
       'desc':
           'A nature escape with trails, coastal views, wildlife, and a proper Borneo adventure mood.',
-      'img': 'https://picsum.photos/seed/bako-national-park/900/700',
+      'img': 'assets/about_bako.png',
     },
     {
       'label': 'Gunung Mulu',
       'vibe': 'Cave mode ON 🦇',
       'desc':
           'A dramatic place for caves, limestone formations, rainforest scenery, and exploration.',
-      'img': 'https://picsum.photos/seed/gunung-mulu/900/700',
+      'img': 'assets/about_mulu.png',
     },
     {
       'label': 'Damai Beach',
       'vibe': 'Sunset therapy 🌅',
       'desc':
           'A relaxing coastal stop for sea breeze, mountain views, and slow travel moments.',
-      'img': 'https://picsum.photos/seed/damai-beach/900/700',
+      'img': 'assets/about_damai.png',
     },
     {
       'label': 'Semenggoh Wildlife Centre',
       'vibe': 'Orangutan moments 🦧',
       'desc':
           'A meaningful wildlife experience where visitors can learn about orangutan conservation.',
-      'img': 'https://picsum.photos/seed/semenggoh-wildlife/900/700',
+      'img': 'assets/about_semenggoh.png',
     },
     {
       'label': 'Sarawak Waterfront',
       'vibe': 'Evening stroll ✨',
       'desc':
           'A lively riverside area for walks, food, views, and beautiful evening lights.',
-      'img': 'https://picsum.photos/seed/sarawak-waterfront/900/700',
+      'img': 'assets/aboutus_waterfront.png',
     },
     {
       'label': 'Local Hospitality',
@@ -339,8 +360,28 @@ class _AboutUsPageState extends State<AboutUsPage> {
   @override
   void initState() {
     super.initState();
+    _loadUnreadCount();
     _startAutoScroll(_marqueeController, 10);
     _startAutoScroll(_filmstripController, 7);
+  }
+
+  Future<void> _loadUnreadCount() async {
+    try {
+      final userid = await Session.getUserId();
+
+      if (userid == null) return;
+
+      final notifications = await api.fetchNotifications(userid);
+
+      if (!mounted) return;
+
+      setState(() {
+        _unreadCount = notifications.where((n) {
+          final isRead = n['isread'] ?? n['isRead'] ?? false;
+          return isRead == false;
+        }).length;
+      });
+    } catch (_) {}
   }
 
   @override
@@ -429,6 +470,7 @@ class _AboutUsPageState extends State<AboutUsPage> {
                   radius: 0,
                   fit: BoxFit.cover,
                 ),
+
                 Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -438,6 +480,66 @@ class _AboutUsPageState extends State<AboutUsPage> {
                       ],
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
+                    ),
+                  ),
+                ),
+
+                // Notification bell
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 18,
+                  right: 22,
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.pushNamed(context, '/customer-notifications')
+                          .then((_) => _loadUnreadCount());
+                    },
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(9),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.25),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.14),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.notifications_outlined,
+                            color: Colors.white,
+                            size: 15,
+                          ),
+                        ),
+
+                        if (_unreadCount > 0)
+                          Positioned(
+                            top: -4,
+                            right: -4,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFE0A43A),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                _unreadCount > 9 ? '9+' : '$_unreadCount',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
