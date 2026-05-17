@@ -1,168 +1,323 @@
-// ============================================================================
-// app.dart — Owner-only test entry point
-//
-// Boots directly to OwnerDashboard so you can test without admin/customer pages.
-// The class is named CamsApp so main.dart (which calls CamsApp()) works as-is.
-//
-// When merging to main, restore the full app.dart with the login flow and
-// all role routes. Swap _StubProfilePage for the real ProfilePage import.
-// ============================================================================
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'owner/owner_dashboard.dart';
-import 'owner/owner_users_page.dart';
-import 'owner/owner_cluster.dart';
-import 'owner/owner_logs_page.dart';
-import 'screens/onboarding_screen.dart'
+import 'services/session.dart';
 import 'shared/colors.dart';
 
-void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-    ),
-  );
-  runApp(const CamsApp());
-}
+// ── Screens ──────────────────────────────────────────────────────────────────
+import 'screens/onboarding_screen.dart';
+import 'screens/login_screen.dart';
+import 'screens/signup_screen.dart';
+import 'screens/mfa_screen.dart';
 
-class CamsApp extends StatelessWidget {
-  const CamsApp({super.key});
+// ── Owner Pages ───────────────────────────────────────────────────────────────
+import 'owner/owner_dashboard.dart';
+import 'owner/owner_cluster.dart';
+import 'owner/owner_users_page.dart';
+import 'owner/owner_logs_page.dart';
+import 'owner/owner_profile.dart';
+
+// ── Customer Pages (Cheryl branch) ───────────────────────────────────────────
+// Uncomment when merged:
+// import 'customer/home_page.dart';
+
+// ── Admin / Moderator Pages ───────────────────────────────────────────────────
+// These come from the existing main branch admin folder — keep your existing
+// imports here.  Examples shown; adjust to your actual file paths.
+// import 'admin/admin_dashboard.dart';
+// import 'moderator/mod_dashboard.dart';
+
+// =============================================================================
+//  MyApp — root widget
+// =============================================================================
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Hello Sarawak — Owner',
+      title: 'Hello Sarawak',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        fontFamily: GoogleFonts.outfit().fontFamily,
-        scaffoldBackgroundColor: AdminColors.cream,
+        // Use Plus Jakarta Sans as the app-wide font
+        textTheme: GoogleFonts.plusJakartaSansTextTheme(
+          Theme.of(context).textTheme,
+        ),
         colorScheme: ColorScheme.fromSeed(
           seedColor: AdminColors.primary,
-          brightness: Brightness.light,
+          background: AdminColors.cream,
         ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: AdminColors.drawerBg,
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
+        scaffoldBackgroundColor: AdminColors.cream,
+        // Remove the default blue splash / highlight on Android
         splashFactory: NoSplash.splashFactory,
         highlightColor: Colors.transparent,
+        // Page transitions — smooth iOS-style slide from right
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          },
+        ),
       ),
-      initialRoute: OwnerDashboard.routeName,
+      // ── Initial Route ─────────────────────────────────────────────────────
+      // _LaunchRouter decides where to send the user based on saved session.
+      home: const _LaunchRouter(),
+      // ── Named Routes ──────────────────────────────────────────────────────
       routes: {
-        OwnerDashboard.routeName: (_) => const OwnerDashboard(),
-        OwnerUsersPage.routeName: (_) => const OwnerUsersPage(),
-        OwnerClusterPage.routeName: (_) => const OwnerClusterPage(),
-        OwnerLogsPage.routeName: (_) => const OwnerLogsPage(),
-        '/profile': (_) => const _StubProfilePage(),
+        // Auth flow
+        OnboardingScreen.routeName:   (_) => const OnboardingScreen(),
+        LoginScreen.routeName:        (_) => const LoginScreen(),
+        SignupScreen.routeName:        (_) => const SignupScreen(),
+
+        // Post-login router (re-checks role and sends to correct section)
+        '/after-login':               (_) => const _AfterLoginRouter(),
+
+        // Owner section
+        OwnerDashboard.routeName:     (_) => const OwnerDashboard(),
+        OwnerUsersPage.routeName:     (_) => const OwnerUsersPage(),
+        OwnerClusterPage.routeName:   (_) => const OwnerClusterPage(),
+        OwnerLogsPage.routeName:      (_) => const OwnerLogsPage(),
+        OwnerProfilePage.routeName:   (_) => const OwnerProfilePage(),
+
+        // Customer section — uncomment when Cheryl's branch merges
+        // '/home': (_) => const HomePage(),
+
+        // Admin / Mod sections — keep your existing routes
+        // AdminDashboard.routeName:  (_) => const AdminDashboard(),
+        // ModDashboard.routeName:    (_) => const ModDashboard(),
       },
+      // ── Unknown Route Handler ─────────────────────────────────────────────
+      onUnknownRoute: (settings) => MaterialPageRoute(
+        builder: (_) => const _NotFoundPage(),
+      ),
     );
   }
 }
 
 // =============================================================================
-// Stub Profile Page
-// Replace this with: import 'profile/profile_page.dart'; once it's available.
+//  _LaunchRouter
+//  Checks SharedPreferences on cold-start and routes accordingly:
+//    • No saved session    → Onboarding (/before-login)
+//    • Onboarding not seen → Onboarding
+//    • Has session         → appropriate section based on role
 // =============================================================================
-class _StubProfilePage extends StatelessWidget {
-  const _StubProfilePage();
+class _LaunchRouter extends StatefulWidget {
+  const _LaunchRouter();
+
+  @override
+  State<_LaunchRouter> createState() => _LaunchRouterState();
+}
+
+class _LaunchRouterState extends State<_LaunchRouter> {
+  @override
+  void initState() {
+    super.initState();
+    _route();
+  }
+
+  Future<void> _route() async {
+    await Future.delayed(Duration.zero); // let the frame render first
+    if (!mounted) return;
+
+    final userId = await Session.getUserId();
+    final hasSeenOnboarding = await Session.hasSeenOnboarding();
+
+    if (userId == null || userId.isEmpty) {
+      // Not logged in
+      _push(hasSeenOnboarding ? LoginScreen.routeName : OnboardingScreen.routeName);
+      return;
+    }
+
+    // Logged in — send to the right section
+    final role = (await Session.getUserGroup() ?? '').toLowerCase();
+    _push(_routeForRole(role));
+  }
+
+  String _routeForRole(String role) {
+    if (role == 'admin' || role == 'administrator') return '/admin';
+    if (role == 'moderator') return '/moderator';
+    if (role == 'owner') return OwnerDashboard.routeName;
+    return '/home'; // customer default
+  }
+
+  void _push(String route) {
+    Navigator.of(context).pushReplacementNamed(route);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Splash / loading screen while we check the session
+    return Scaffold(
+      backgroundColor: AdminColors.drawerBg,
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: const Icon(
+                Icons.travel_explore_rounded,
+                color: Colors.white,
+                size: 40,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Hello Sarawak',
+              style: GoogleFonts.plusJakartaSans(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Your journey begins here',
+              style: GoogleFonts.plusJakartaSans(
+                color: Colors.white.withOpacity(0.55),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 40),
+            const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                color: Colors.white54,
+                strokeWidth: 2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+//  _AfterLoginRouter
+//  Called after every successful login/sign-up to redirect to correct section.
+//  Replaces the current route so the user cannot navigate back to login.
+// =============================================================================
+class _AfterLoginRouter extends StatefulWidget {
+  const _AfterLoginRouter();
+
+  @override
+  State<_AfterLoginRouter> createState() => _AfterLoginRouterState();
+}
+
+class _AfterLoginRouterState extends State<_AfterLoginRouter> {
+  @override
+  void initState() {
+    super.initState();
+    _redirect();
+  }
+
+  Future<void> _redirect() async {
+    await Future.delayed(Duration.zero);
+    if (!mounted) return;
+    final role = (await Session.getUserGroup() ?? '').toLowerCase();
+    String route;
+    if (role == 'admin' || role == 'administrator') {
+      route = '/admin';
+    } else if (role == 'moderator') {
+      route = '/moderator';
+    } else if (role == 'owner') {
+      route = OwnerDashboard.routeName;
+    } else {
+      route = '/home';
+    }
+    Navigator.of(context).pushReplacementNamed(route);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: AdminColors.drawerBg,
+      body: Center(
+        child: CircularProgressIndicator(color: Colors.white54, strokeWidth: 2),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+//  MFA Screen route — note: we use a pushNamed variant so it can be pushed
+//  from LoginScreen. Pass tempToken via arguments.
+//
+//  In LoginScreen call:
+//    Navigator.of(context).push(MaterialPageRoute(
+//      builder: (_) => MfaScreen(tempToken: tempToken),
+//    ));
+//
+//  Or add a named route here if you prefer:
+//  '/mfa': (ctx) {
+//    final token = ModalRoute.of(ctx)!.settings.arguments as String;
+//    return MfaScreen(tempToken: token);
+//  }
+// =============================================================================
+
+// =============================================================================
+//  404 — Unknown Route Fallback
+// =============================================================================
+class _NotFoundPage extends StatelessWidget {
+  const _NotFoundPage();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AdminColors.cream,
-      body: Column(
-        children: [
-          Container(
-            color: AdminColors.drawerBg,
-            height: MediaQuery.of(context).padding.top,
-          ),
-          Container(
-            color: AdminColors.drawerBg,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  child: const Icon(
-                    Icons.arrow_back_ios_new_rounded,
-                    color: Colors.white,
-                    size: 18,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Text(
-                  'Profile',
-                  style: GoogleFonts.outfit(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.map_outlined,
+              size: 64,
+              color: AdminColors.textMuted.withOpacity(0.2),
             ),
-          ),
-          Expanded(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircleAvatar(
-                    radius: 36,
-                    backgroundColor: AdminColors.primaryLight,
-                    child: Text(
-                      'O',
-                      style: GoogleFonts.outfit(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Owner',
-                    style: GoogleFonts.outfit(
-                      color: AdminColors.textPrimary,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Profile page — coming soon',
-                    style: GoogleFonts.outfit(
-                      color: AdminColors.textMuted,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  TextButton.icon(
-                    onPressed: () =>
-                        Navigator.of(context).pushReplacementNamed('/owner'),
-                    icon: const Icon(
-                      Icons.arrow_back_rounded,
-                      color: AdminColors.primary,
-                    ),
-                    label: Text(
-                      'Back to Dashboard',
-                      style: GoogleFonts.outfit(
-                        color: AdminColors.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
+            const SizedBox(height: 20),
+            Text(
+              'Page not found',
+              style: GoogleFonts.plusJakartaSans(
+                color: AdminColors.textPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              'The route you\'re looking for doesn\'t exist.',
+              style: GoogleFonts.plusJakartaSans(
+                color: AdminColors.textMuted,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton(
+              onPressed: () =>
+                  Navigator.of(context).pushReplacementNamed('/before-login'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AdminColors.drawerBg,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 24, vertical: 14),
+              ),
+              child: Text(
+                'Go Home',
+                style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
