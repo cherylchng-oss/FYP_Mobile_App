@@ -510,12 +510,24 @@ class _CustomerRoomsPageState extends State<CustomerRoomsPage> {
 
     var availableOnly = fetchedProperties.where((prop) => prop['propertystatus'] == 'Available').toList();
 
-    if (propertyCategory == 'Hotel') {
-      availableOnly = availableOnly.where((p) => ['Hotel', 'Resort', 'Hostel'].contains(p['categoryname'])).toList();
-    } else if (propertyCategory == 'Homestay') {
-      availableOnly = availableOnly.where((p) => ['Homestay', 'Lodge', 'Guesthouse', 'Apartment'].contains(p['categoryname'])).toList();
-    } else if (propertyCategory == 'Inn') {
-      availableOnly = availableOnly.where((p) => p['categoryname'] == 'Inn').toList();
+    if (selectedPropertyTypes.isNotEmpty) {
+      availableOnly = availableOnly
+          .where((p) => selectedPropertyTypes.contains('${p['categoryname']}'))
+          .toList();
+    } else {
+      if (propertyCategory == 'Hotel') {
+        availableOnly = availableOnly
+            .where((p) => p['categoryname'] == 'Hotel')
+            .toList();
+      } else if (propertyCategory == 'Homestay') {
+        availableOnly = availableOnly
+            .where((p) => p['categoryname'] == 'Homestay')
+            .toList();
+      } else if (propertyCategory == 'Kampungstay') {
+        availableOnly = availableOnly
+            .where((p) => p['categoryname'] == 'Kampungstay')
+            .toList();
+      }
     }
 
     if (selectedCluster.isNotEmpty) {
@@ -547,10 +559,25 @@ class _CustomerRoomsPageState extends State<CustomerRoomsPage> {
         if (propertyPrice < priceRange.start || propertyPrice > priceRange.end) return false;
         if (toInt(property['propertyguestpaxno'], 0) < totalGuests) return false;
         if (targetCluster.isNotEmpty && property['clustername'] != targetCluster) return false;
-        if (selectedPropertyTypes.isNotEmpty && !selectedPropertyTypes.contains('${property['categoryname']}')) return false;
-        if (propertyCategory == 'Hotel' && !['Hotel', 'Resort', 'Hostel'].contains(property['categoryname'])) return false;
-        if (propertyCategory == 'Homestay' && !['Homestay', 'Lodge', 'Guesthouse', 'Apartment'].contains(property['categoryname'])) return false;
-        if (propertyCategory == 'Inn' && property['categoryname'] != 'Inn') return false;
+
+        if (selectedPropertyTypes.isNotEmpty) {
+          if (!selectedPropertyTypes.contains('${property['categoryname']}')) {
+            return false;
+          }
+        } else {
+          if (propertyCategory == 'Hotel' && property['categoryname'] != 'Hotel') {
+            return false;
+          }
+
+          if (propertyCategory == 'Homestay' && property['categoryname'] != 'Homestay') {
+            return false;
+          }
+
+          if (propertyCategory == 'Kampungstay' && property['categoryname'] != 'Kampungstay') {
+            return false;
+          }
+        }
+        
         if (selectedFacilities.isNotEmpty) {
           final propertyFacilities = '${property['facilities'] ?? ''}'
               .split(',')
@@ -804,6 +831,11 @@ class _CustomerRoomsPageState extends State<CustomerRoomsPage> {
       priceRange = tempPriceRange;
       selectedFacilities = List.from(tempSelectedFacilities);
       selectedPropertyTypes = List.from(tempSelectedPropertyTypes);
+
+      if (selectedPropertyTypes.isNotEmpty) {
+        propertyCategory = 'All';
+      }
+
       showFilters = false;
     });
 
@@ -884,7 +916,13 @@ class _CustomerRoomsPageState extends State<CustomerRoomsPage> {
   }
 
   void onCategoryChanged(String type) {
-    setState(() => propertyCategory = type);
+    setState(() {
+      propertyCategory = type;
+
+      selectedPropertyTypes.clear();
+      tempSelectedPropertyTypes.clear();
+    });
+
     if (hasSearchedWithDates && bookingData.checkIn.isNotEmpty && bookingData.checkOut.isNotEmpty) {
       handleCheckAvailability();
     } else {
@@ -1635,7 +1673,7 @@ class _CustomerRoomsPageState extends State<CustomerRoomsPage> {
   }
 
   Widget _categoryButtons() {
-    final types = ['All', 'Hotel', 'Homestay', 'Inn'];
+    final types = ['All', 'Hotel', 'Homestay', 'Kampungstay'];
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -1658,7 +1696,11 @@ class _CustomerRoomsPageState extends State<CustomerRoomsPage> {
                   : [],
             ),
             child: Text(
-              type == 'All' ? 'All Types' : '${type}s',
+              type == 'All'
+                  ? 'All Types'
+                  : type == 'Kampungstay'
+                      ? 'Kampungstays'
+                      : '${type}s',
               style: TextStyle(
                 color: selected ? Colors.white : AppColors.textSecond,
                 fontWeight: FontWeight.w700,
@@ -1720,7 +1762,17 @@ class _CustomerRoomsPageState extends State<CustomerRoomsPage> {
 
   Widget _filtersPanel() {
     final facilities = ['Wi-Fi', 'Kitchen', 'Washer', 'Air Conditioning', 'TV', 'Free Parking', 'Swimming Pool', 'Breakfast'];
-    final propertyTypes = ['Hotel', 'Resort', 'Hostel', 'Homestay', 'Lodge', 'Guesthouse', 'Apartment', 'Inn'];
+    final propertyTypes = [
+      'Hotel',
+      'Resort',
+      'Hostel',
+      'Homestay',
+      'Lodge',
+      'Guesthouse',
+      'Apartment',
+      'Kampungstay',
+      'Inn',
+    ];
 
     return Container(
       margin: const EdgeInsets.only(top: 14),
