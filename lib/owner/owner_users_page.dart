@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../api.dart' as api;
@@ -150,11 +151,13 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final hdrPad      = isLandscape ? 40.0 : 80.0;
     return Scaffold(
       backgroundColor: AdminColors.cream,
       body: Stack(
         children: [
-          const Positioned(
+          Positioned(
             top: 0,
             left: 0,
             right: 0,
@@ -162,15 +165,15 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
               title: 'Users',
               subtitle: 'Manage all platform users',
               notifCount: 3,
-              bottomPadding: 80,
+              bottomPadding: hdrPad,
             ),
           ),
           SafeArea(
             bottom: false,
             child: Column(
               children: [
-                SizedBox(height: OwnerHeader.spacerHeight(bottomPadding: 80, context: context) - 45),
-                _buildCommandCenter(),
+                SizedBox(height: OwnerHeader.spacerHeight(bottomPadding: hdrPad, context: context) - 45),
+                _buildCommandCenter(isLandscape: isLandscape),
                 OwnerSectionHeader(
                   title: _tabIndex == 0 ? 'All Customers' : 'All Staff',
                   count: _visibleList.length,
@@ -210,10 +213,11 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
     );
   }
 
-  Widget _buildCommandCenter() {
+  Widget _buildCommandCenter({bool isLandscape = false}) {
+    final pad = isLandscape ? 10.0 : 16.0;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(pad),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),
@@ -234,7 +238,7 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
       child: Column(
         children: [
           _buildSegmentedToggle(),
-          const SizedBox(height: 12),
+          SizedBox(height: isLandscape ? 6 : 12),
           _buildSearchBar(),
         ],
       ),
@@ -628,7 +632,7 @@ class _UserPopupMenu extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         elevation: 4,
         offset: const Offset(0, 38),
-        onSelected: (value) {
+        onSelected: (value) async {
           switch (value) {
             case 'view':
               final role = user['role'].toString().toLowerCase();
@@ -648,16 +652,19 @@ class _UserPopupMenu extends StatelessWidget {
             case 'copy_email':
               final email = user['email']?.toString() ?? '';
               if (email.isNotEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Email copied: $email'),
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    margin: const EdgeInsets.all(16),
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
+                await Clipboard.setData(ClipboardData(text: email));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Email copied: $email'),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      margin: const EdgeInsets.all(16),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
               }
               break;
           }

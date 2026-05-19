@@ -509,10 +509,7 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
 
   Future<void> handlePayPalApprove(String orderId) async {
     try {
-      final details = await api.capturePayPalOrder(
-        orderId: orderId,
-        reservationId: int.tryParse('${selectedReservation?['reservationid']}') ?? 0,
-      );
+      final details = await api.capturePayPalOrder(orderId);
       if (details['error'] != null) throw Exception(details['error']);
       paymentTimer?.cancel();
       final paidReservationId = selectedReservation?['reservationid'];
@@ -765,7 +762,7 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
 
     try {
       if (reviewState == 'create') {
-        await api.submitReview(payload);
+        await api.submitReview(payload, username);
 
         final localReview = {
           'userid': userId,
@@ -851,7 +848,7 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
   Future<void> handleDeleteReview() async {
     setState(() => isSubmittingReview = true);
     try {
-      await api.deleteReview(existingReviewId);
+      await api.deleteReview(existingReviewId, username);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('deleted_review_${reviewProperty?['propertyid']}_$userId', 'true');
       reviewState = 'deleted';

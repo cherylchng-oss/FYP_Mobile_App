@@ -106,11 +106,13 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final hdrPad      = isLandscape ? 40.0 : 80.0;
     return Scaffold(
       backgroundColor: AdminColors.cream,
       body: Stack(
         children: [
-          const Positioned(
+          Positioned(
             top: 0,
             left: 0,
             right: 0,
@@ -118,15 +120,15 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
               title: 'Clusters',
               subtitle: 'Regional property groups',
               notifCount: 3,
-              bottomPadding: 80, 
+              bottomPadding: hdrPad,
             ),
           ),
           SafeArea(
             bottom: false,
             child: Column(
               children: [
-                SizedBox(height: OwnerHeader.spacerHeight(bottomPadding: 80, context: context) - 45),
-                _buildCommandCenter(),
+                SizedBox(height: OwnerHeader.spacerHeight(bottomPadding: hdrPad, context: context) - 45),
+                _buildCommandCenter(isLandscape: isLandscape),
                 OwnerSectionHeader(
                   title: 'All Clusters',
                   count: _visibleClusters.length,
@@ -169,10 +171,11 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
     );
   }
 
-  Widget _buildCommandCenter() {
+  Widget _buildCommandCenter({bool isLandscape = false}) {
+    final pad = isLandscape ? 10.0 : 16.0;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(pad),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),

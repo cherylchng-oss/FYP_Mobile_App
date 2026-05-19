@@ -100,6 +100,14 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     return NumberFormat('#,##0', 'en_US').format(v);
   }
 
+  // ── Time-aware greeting ───────────────────────────────────────────────────
+  static String _greeting() {
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Good morning, Owner';
+    if (h < 17) return 'Good afternoon, Owner';
+    return 'Good evening, Owner';
+  }
+
   // ── Load ────────────────────────────────────────────────────────────────────
   Future<void> _loadDashboard() async {
     setState(() => _isLoading = true);
@@ -200,10 +208,10 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
       backgroundColor: AdminColors.cream,
       body: Stack(
         children: [
-          const Positioned(
+          Positioned(
             top: 0, left: 0, right: 0,
             child: OwnerHeader(
-              greeting: 'Good morning, Owner',
+              greeting: _greeting(),
               title: 'Owner Panel',
               notifCount: 3,
               bottomPadding: 80.0,
@@ -441,250 +449,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                             maxLines: 1, overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 3),
-                          Text(stat.value,
-                            style: GoogleFonts.plusJakartaSans(
-                              color: AdminColors.textPrimary, fontSize: 28,
-                              fontWeight: FontWeight.w800, letterSpacing: -1.0, height: 1.0,
-                            ),
-                            maxLines: 1, overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                Positioned(
-                  bottom: 0, left: 0, right: 0,
-                  child: Container(
-                    height: 3,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [baseColor.withOpacity(0.25), baseColor],
-                        begin: Alignment.centerLeft, end: Alignment.centerRight,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Sub-stat chip (inside revenue card) ─────────────────────────────────────
-class _SubStatChip extends StatelessWidget {
-  final String label;
-  final String formattedValue; // pre-formatted, e.g. "RM 1,234.56"
-  final Color color;
-
-  const _SubStatChip(this.label, this.formattedValue, this.color);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label,
-            style: GoogleFonts.plusJakartaSans(
-              color: color, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.4,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(formattedValue,
-            style: GoogleFonts.plusJakartaSans(
-              color: color, fontSize: 13, fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Month picker bottom sheet ────────────────────────────────────────────────
-class _MonthPickerSheet extends StatelessWidget {
-  final List<String> months;
-  final String? selectedMonth;
-  final ValueChanged<String?> onSelected;
-
-  const _MonthPickerSheet({
-    required this.months,
-    required this.selectedMonth,
-    required this.onSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // null = All Time option at the top
-    final options = <String?>[null, ...months];
-
-    return Container(
-      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.55),
-      decoration: const BoxDecoration(
-        color: AdminColors.cream,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Drag handle
-          Center(
-            child: Container(
-              width: 44, height: 5,
-              margin: const EdgeInsets.only(top: 14, bottom: 4),
-              decoration: BoxDecoration(
-                color: AdminColors.border, borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Select Period',
-                style: GoogleFonts.plusJakartaSans(
-                  color: AdminColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ),
-          Flexible(
-            child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-              itemCount: options.length,
-              itemBuilder: (_, i) {
-                final month      = options[i];
-                final isSelected = month == selectedMonth;
-                final label      = month == null
-                    ? 'All Time'
-                    : _OwnerDashboardState._formatMonth(month);
-
-                return GestureDetector(
-                  onTap: () {
-                    onSelected(month);
-                    Navigator.pop(context);
-                  },
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: 4),
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: isSelected ? AdminColors.primary : Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: isSelected ? [] : [
-                        BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 3)),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          month == null ? Icons.all_inclusive_rounded : Icons.calendar_month_rounded,
-                          size: 18,
-                          color: isSelected ? Colors.white : AdminColors.textMuted,
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Text(label,
-                            style: GoogleFonts.plusJakartaSans(
-                              color: isSelected ? Colors.white : AdminColors.textPrimary,
-                              fontSize: 14, fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        if (isSelected)
-                          const Icon(Icons.check_rounded, size: 18, color: Colors.white),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Data holder ─────────────────────────────────────────────────────────────
-class _StatData {
-  final String label;
-  final String value;
-  final IconData icon;
-  final bool isSuccess;
-
-  const _StatData(this.label, this.value, this.icon, this.isSuccess);
-}
-liverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 16,
-            crossAxisSpacing: 16,
-            childAspectRatio: cardWidth / cardHeight,
-          ),
-          itemCount: stats.length,
-          itemBuilder: (_, i) => _buildStatCard(stats[i], i),
-        ),
-      );
-    });
-  }
-
-  Widget _buildStatCard(_StatData stat, int index) {
-    final baseColor = stat.isSuccess ? AdminColors.success : AdminColors.primary;
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: Duration(milliseconds: 380 + (index * 90)),
-      curve: Curves.easeOutQuart,
-      builder: (_, val, child) =>
-          Transform.translate(offset: Offset(0, 18 * (1 - val)), child: Opacity(opacity: val, child: child)),
-      child: BouncyInteractiveCard(
-        onTap: () {},
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(color: baseColor.withOpacity(0.08), blurRadius: 24, offset: const Offset(0, 10), spreadRadius: -2),
-              BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 6, offset: const Offset(0, 2)),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: Stack(
-              children: [
-                Positioned(
-                  right: -14, bottom: -14,
-                  child: Icon(stat.icon, size: 88, color: AdminColors.textMuted.withOpacity(0.07)),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        width: 42, height: 42,
-                        decoration: BoxDecoration(color: baseColor.withOpacity(0.09), shape: BoxShape.circle),
-                        child: Icon(stat.icon, color: baseColor, size: 20),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(stat.label,
-                            style: GoogleFonts.plusJakartaSans(
-                              color: AdminColors.textMuted, fontSize: 9,
-                              fontWeight: FontWeight.w700, letterSpacing: 0.7,
-                            ),
-                            maxLines: 1, overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 3),
-                          // FittedBox scales the text down gracefully for long values like "RM 79,700.00"
+                          // FittedBox scales down long values like "RM 79,700.00" instead of clipping
                           FittedBox(
                             fit: BoxFit.scaleDown,
                             alignment: Alignment.centerLeft,

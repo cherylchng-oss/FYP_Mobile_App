@@ -70,16 +70,47 @@ class _OwnerHeaderState extends State<OwnerHeader> {
 
   Future<void> _fetchUnreadCount() async {
     try {
-      final notifications = await api.fetchNotifications();
+      // Fetch both backend notifications and reservations in parallel
+      final results = await Future.wait([
+        api.fetchNotifications(),
+        api.fetchReservation(),
+      ]);
       if (!mounted) return;
-      final unread = notifications.where((n) {
+
+      final notifications = results[0] as List<dynamic>;
+      final reservations  = results[1] as List<dynamic>;
+
+      // Backend unread count
+      final backendUnread = notifications.where((n) {
         final m = n is Map ? n : {};
-        // treat as unread if 'is_read'/'read'/'isRead' is falsy
-        return !(m['is_read'] == true ||
-            m['read'] == true ||
-            m['isRead'] == true);
+        return !(m['is_read'] == true || m['read'] == true || m['isRead'] == true);
       }).length;
-      setState(() => _unreadCount = unread);
+
+      // Owner-synthesised events: reservations from the last 30 days count as unread
+      final cutoff = DateTime.now().subtract(const Duration(days: 30));
+      int ownerUnread = 0;
+      for (final r in reservations) {
+        final m = r is Map ? Map<String, dynamic>.from(r) : <String, dynamic>{};
+        final createdRaw = (m['created_at'] ?? m['createdat'] ??
+            m['createdAt'] ?? m['checkindatetime'] ?? '').toString();
+        DateTime? dt;
+        try { dt = DateTime.parse(createdRaw).toLocal(); } catch (_) {}
+        if (dt != null && dt.isAfter(cutoff)) {
+          ownerUnread += 1; // one for the booking event
+          final status = (m['reservationstatus'] ?? m['reservationStatus'] ??
+              m['status'] ?? '').toString().toLowerCase();
+          final rawAmt = m['totalprice'] ?? m['totalPrice'] ?? m['total_price'];
+          double amount = 0.0;
+          if (rawAmt is num) amount = rawAmt.toDouble();
+          else if (rawAmt is String) amount = double.tryParse(rawAmt) ?? 0.0;
+          if ((status == 'paid' || status == 'partial' || status == 'confirmed' ||
+              status == 'full') && amount > 0) {
+            ownerUnread += 1; // one for the payment event
+          }
+        }
+      }
+
+      setState(() => _unreadCount = backendUnread + ownerUnread);
     } catch (_) {
       // silently ignore — keep badge at 0
     }
@@ -926,7 +957,62 @@ class _OwnerNotificationSheetState extends State<_OwnerNotificationSheet> {
               ),
             )
           else
-            ..._items.map((n) => _buildItem(n)),
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.50,
+              ),
+              child: ListView.builder(
+                padding: const EdgeInsets.only(top: 6, bottom: 8),
+                itemCount: _items.length,
+                itemBuilder: (ctx, i) {
+                  final n = _items[i];
+                  return Dismissible(
+                    key: ValueKey(n['id']?.toString() ?? 'notif_$i'),
+                    direction: DismissDirection.endToStart,
+                    // Red delete background revealed on swipe
+                    background: Container(
+                      margin: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                      decoration: BoxDecoration(
+                        color: AdminColors.danger,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          SizedBox(
+                            width: 88,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.delete_rounded,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Delete',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    onDismissed: (_) {
+                      setState(() => _items.removeAt(i));
+                    },
+                    child: _buildItem(n),
+                  );
+                },
+              ),
+            ),
           // Bottom safe-area padding
           SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
         ],
@@ -1011,160 +1097,7 @@ class _OwnerNotificationSheetState extends State<_OwnerNotificationSheet> {
                 Row(
                   children: [
                     Text(
-                      n['time'] as String,
-                      style: GoogleFonts.plusJakartaSans(
-                        color: AdminColors.textMuted.withOpacity(0.55),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    if (n['source'] == 'reservation') ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: color.withOpacity(0.10),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          'Booking',
-                          style: GoogleFonts.plusJakartaSans(
-                            color: color,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-                      const BoxConstraints(minWidth: 36, minHeight: 36),
-                ),
-              ],
-            ),
-          ),
-          Divider(height: 1, color: AdminColors.border.withOpacity(0.6)),
-          // Loading / Empty / Items
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 48),
-              child: CircularProgressIndicator(strokeWidth: 2, color: AdminColors.drawerBg),
-            )
-          else if (_items.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 48),
-              child: Column(
-                children: [
-                  Icon(Icons.notifications_off_outlined,
-                      size: 48, color: AdminColors.textMuted.withOpacity(0.3)),
-                  const SizedBox(height: 16),
-                  Text(
-                    'You\'re all caught up!',
-                    style: GoogleFonts.plusJakartaSans(
-                      color: AdminColors.textMuted,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else
-            ..._items.map((n) => _buildItem(n)),
-          // Bottom safe-area padding
-          SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildItem(Map<String, dynamic> n) {
-    final isRead = n['read'] as bool;
-    final color  = n['color'] as Color;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isRead ? Colors.white : AdminColors.primary.withOpacity(0.04),
-        borderRadius: BorderRadius.circular(18),
-        border: isRead
-            ? Border.all(color: AdminColors.border.withOpacity(0.4))
-            : Border.all(color: AdminColors.primary.withOpacity(0.12)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(9),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(n['icon'] as IconData, size: 15, color: color),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        n['title'] as String,
-                        style: GoogleFonts.plusJakartaSans(
-                          color: AdminColors.textPrimary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                    if (!isRead)
-                      Container(
-                        width: 7,
-                        height: 7,
-                        margin: const EdgeInsets.only(left: 6),
-                        decoration: const BoxDecoration(
-                          color: AdminColors.primary,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  n['body'] as String,
-                  style: GoogleFonts.plusJakartaSans(
-                    color: AdminColors.textMuted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    height: 1.4,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 5),
-                Row(
-                  children: [
-                    Text(
-                      n['time'] as String,
+                      (n['time'] ?? '') as String,
                       style: GoogleFonts.plusJakartaSans(
                         color: AdminColors.textMuted.withOpacity(0.55),
                         fontSize: 11,
