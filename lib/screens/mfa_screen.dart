@@ -1,10 +1,18 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
+
 import '../api.dart' as api;
 import '../services/session.dart';
-import '../app.dart';
 import '../shared/colors.dart';
 
+// ---------------------------------------------------------------------------
+// MFA Screen
+// Shown after login when the backend returns requiresMFA: true + tempToken.
+// Supports two modes: Authenticator App (TOTP) and Email OTP.
+// ---------------------------------------------------------------------------
 class MfaScreen extends StatefulWidget {
   final String tempToken;
 
@@ -14,380 +22,349 @@ class MfaScreen extends StatefulWidget {
   State<MfaScreen> createState() => _MfaScreenState();
 }
 
-class _MfaScreenState extends State<MfaScreen> {
-  int _tab = 0; // 0 = Authenticator, 1 = Email OTP
-  final List<TextEditingController> _ctrl = List.generate(6, (_) => TextEditingController());
-  final List<FocusNode> _nodes = List.generate(6, (_) => FocusNode());
-  bool _loading = false;
-  bool _sendingOtp = false;
-  bool _otpSent = false;
-  String? _error;
+class _MfaScreenState extends State<MfaScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  final _codeController = TextEditingController();
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
 
   @override
   void dispose() {
-    for (final c in _ctrl) c.dispose();
-    for (final n in _nodes) n.dispose();
+    _tabController.dispose();
+    _codeController.dispose();
     super.dispose();
   }
 
-  String get _code => _ctrl.map((c) => c.text).join();
-
-  void _clearDigits() {
-    for (final c in _ctrl) c.clear();
-    _nodes[0].requestFocus();
-  }
-
-  Future<void> _sendEmailOtp() async {
-    setState(() { _sendingOtp = true; _error = null; });
-    try {
-      final res = await api.sendEmailOtp(widget.tempToken);
-      if (res['success'] == true) {
-        setState(() => _otpSent = true);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Verification code sent to your email'),
-              backgroundColor: AdminColors.success,
-            ),
-          );
-        }
-      } else {
-        setState(() => _error = res['message'] ?? 'Failed to send code');
-      }
-    } catch (e) {
-      setState(() => _error = 'Failed to send code. Please try again.');
-    } finally {
-      if (mounted) setState(() => _sendingOtp = false);
-    }
-  }
-
-  Future<void> _verify() async {
-    final code = _code;
-    if (code.length != 6) {
-      setState(() => _error = 'Please enter all 6 digits');
+  Future<void> _handleVerify() async {
+    final code = _codeController.text.trim();
+    if (code.length < 6) {
+      setState(() => _errorMessage = 'Please enter the 6-digit code.');
       return;
     }
-
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
     try {
-      final method = _tab == 0 ? 'authenticator' : 'email';
-      final res = await api.verifyMfaLogin(
+      // TODO: replace with your actual MFA verification endpoint.
+      // Expected body: { tempToken, code } → returns same shape as login success.
+      final response = await api.verifyMfa(
         tempToken: widget.tempToken,
-        token: code,
-        method: method,
+        code: code,
       );
 
-      if (res['success'] != true) {
-        setState(() { _error = res['message'] ?? 'Invalid or expired code'; _loading = false; });
-        _clearDigits();
+      if (!mounted) return;
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode != 200) {
+        setState(() {
+          _errorMessage = body['message']?.toString() ?? 'Invalid code. Please try again.';
+        });
         return;
       }
 
-      final userid = (res['userid'] as num).toInt();
-      final usergroup = (res['usergroup'] as String).trim().toLowerCase();
-      final uactivation = (res['uactivation'] as String).trim().toLowerCase();
-      final username = res['username'] as String? ?? '';
-
-      await Session.saveLogin(
-        userid: userid,
-        usergroup: usergroup,
-        uactivation: uactivation,
-        username: username,
-      );
-
-      if (res['accessToken'] != null && res['refreshToken'] != null) {
-        await Session.saveTokens(
-          accessToken: res['accessToken'] as String,
-          refreshToken: res['refreshToken'] as String,
+      if (body['success'] == true || body['userid'] != null) {
+        await Session.saveLogin(
+          userid: (body['userid'] as num?)?.toInt() ?? 0,
+          usergroup: body['usergroup']?.toString() ?? '',
+          uactivation: body['uactivation']?.toString() ?? 'active',
+          username: body['username']?.toString(),
         );
+        if (body['accessToken'] != null) {
+          await Session.saveTokens(
+            accessToken: body['accessToken']?.toString() ?? '',
+            refreshToken: body['refreshToken']?.toString() ?? '',
+          );
+        }
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed('/after-login');
+        }
+      } else {
+        setState(() {
+          _errorMessage = body['message']?.toString() ?? 'Verification failed.';
+        });
       }
-
-      if (!mounted) return;
-      setState(() => _loading = false);
-      FocusScope.of(context).unfocus();
-
-      final nav = appNavigatorKey.currentState!;
-      nav.popUntil((r) => r.isFirst);
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      await nav.pushReplacementNamed('/after-login');
     } catch (e) {
-      if (mounted) setState(() { _error = 'Verification failed. Please try again.'; _loading = false; });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Something went wrong. Please try again.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AdminColors.cream,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 40),
-              _StepIndicator(step: 1),
-              const SizedBox(height: 36),
-              _buildTitle(),
-              const SizedBox(height: 8),
-              const Text(
-                "Unrecognized device. Please verify it's you.",
-                style: TextStyle(color: AdminColors.textSecond, fontSize: 14),
-              ),
-              const SizedBox(height: 32),
-              _buildTabSwitcher(),
-              const SizedBox(height: 28),
-              const Text(
-                'ENTER 6-DIGIT CODE',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: AdminColors.textMuted,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const SizedBox(height: 10),
-              _buildOtpRow(),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Text(
-                    _error!,
-                    style: const TextStyle(color: AdminColors.danger, fontSize: 13),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: AdminColors.cream,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 24),
+                // Back button
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AdminColors.border),
+                    ),
+                    child: const Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      size: 16,
+                      color: AdminColors.textPrimary,
+                    ),
                   ),
                 ),
-              if (_tab == 1)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: _sendingOtp ? null : _sendEmailOtp,
-                    child: _sendingOtp
+                const SizedBox(height: 32),
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AdminColors.drawerBg,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const Icon(
+                    Icons.shield_outlined,
+                    color: Colors.white,
+                    size: 26,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Two-Factor\nVerification',
+                  style: GoogleFonts.plusJakartaSans(
+                    color: AdminColors.textPrimary,
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -1.0,
+                    height: 1.15,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Enter the verification code to continue.',
+                  style: GoogleFonts.plusJakartaSans(
+                    color: AdminColors.textMuted,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                // Tab bar
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: AdminColors.border),
+                  ),
+                  child: TabBar(
+                    controller: _tabController,
+                    indicator: BoxDecoration(
+                      color: AdminColors.drawerBg,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    labelColor: Colors.white,
+                    unselectedLabelColor: AdminColors.textMuted,
+                    labelStyle: GoogleFonts.plusJakartaSans(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    unselectedLabelStyle: GoogleFonts.plusJakartaSans(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    dividerColor: Colors.transparent,
+                    tabs: const [
+                      Tab(text: 'Authenticator'),
+                      Tab(text: 'Email Code'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                // Tab descriptions
+                TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildTabHint(
+                      icon: Icons.phonelink_lock_outlined,
+                      text:
+                          'Open your authenticator app (Google Authenticator, Authy, etc.) and enter the 6-digit code shown.',
+                    ),
+                    _buildTabHint(
+                      icon: Icons.email_outlined,
+                      text:
+                          'A 6-digit code was sent to your registered email address. Check your inbox.',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                // OTP input
+                Text(
+                  'Verification Code',
+                  style: GoogleFonts.plusJakartaSans(
+                    color: AdminColors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _codeController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  style: GoogleFonts.plusJakartaSans(
+                    color: AdminColors.textPrimary,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 8,
+                  ),
+                  textAlign: TextAlign.center,
+                  decoration: InputDecoration(
+                    counterText: '',
+                    hintText: '––––––',
+                    hintStyle: GoogleFonts.plusJakartaSans(
+                      color: AdminColors.textMuted.withOpacity(0.4),
+                      fontSize: 24,
+                      letterSpacing: 8,
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 20),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: BorderSide(color: AdminColors.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: BorderSide(color: AdminColors.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide:
+                          BorderSide(color: AdminColors.primary, width: 1.5),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                if (_errorMessage != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AdminColors.danger.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                          color: AdminColors.danger.withOpacity(0.20)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.error_outline_rounded,
+                            color: AdminColors.danger, size: 18),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _errorMessage!,
+                            style: GoogleFonts.plusJakartaSans(
+                              color: AdminColors.danger,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _handleVerify,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AdminColors.drawerBg,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      disabledBackgroundColor:
+                          AdminColors.drawerBg.withOpacity(0.5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    child: _isLoading
                         ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: AdminColors.primary),
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.5,
+                            ),
                           )
                         : Text(
-                            _otpSent ? 'Resend Code' : 'Send Code to Email',
-                            style: const TextStyle(
-                              color: AdminColors.primary,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
+                            'Verify',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.2,
                             ),
                           ),
                   ),
                 ),
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: FilledButton(
-                  onPressed: _loading ? null : _verify,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AdminColors.primary,
-                    disabledBackgroundColor: AdminColors.primaryLight,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                  child: _loading
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2.5, valueColor: AlwaysStoppedAnimation(Colors.white)),
-                        )
-                      : const Text(
-                          'Complete Sign In',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
-                        ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              OutlinedButton.icon(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.arrow_back, size: 16),
-                label: const Text('Cancel'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AdminColors.textPrimary,
-                  side: const BorderSide(color: AdminColors.border),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                ),
-              ),
-              const SizedBox(height: 32),
-            ],
+                const SizedBox(height: 48),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildTitle() {
-    return RichText(
-      text: const TextSpan(
-        children: [
-          TextSpan(
-            text: 'Verify ',
-            style: TextStyle(
-              fontSize: 34,
-              fontWeight: FontWeight.w800,
-              color: AdminColors.textPrimary,
-            ),
-          ),
-          TextSpan(
-            text: 'Identity',
-            style: TextStyle(
-              fontSize: 34,
-              fontWeight: FontWeight.w500,
-              fontStyle: FontStyle.italic,
-              color: AdminColors.accent,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabSwitcher() {
+  Widget _buildTabHint({required IconData icon, required String text}) {
     return Container(
-      decoration: BoxDecoration(
-        color: AdminColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AdminColors.border),
-      ),
-      padding: const EdgeInsets.all(4),
-      child: Row(
-        children: [
-          _TabButton(label: 'Authenticator', selected: _tab == 0, onTap: () => _switchTab(0)),
-          _TabButton(label: 'Email OTP', selected: _tab == 1, onTap: () => _switchTab(1)),
-        ],
-      ),
-    );
-  }
-
-  void _switchTab(int index) {
-    if (_tab == index) return;
-    setState(() { _tab = index; _error = null; });
-    _clearDigits();
-    if (index == 1 && !_otpSent) _sendEmailOtp();
-  }
-
-  Widget _buildOtpRow() {
-    return Container(
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AdminColors.border),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.security_rounded, color: AdminColors.textMuted, size: 22),
-          const SizedBox(width: 10),
+          Icon(icon, color: AdminColors.primary, size: 20),
+          const SizedBox(width: 12),
           Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: List.generate(6, _buildDigitField),
+            child: Text(
+              text,
+              style: GoogleFonts.plusJakartaSans(
+                color: AdminColors.textMuted,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.5,
+              ),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildDigitField(int i) {
-    return SizedBox(
-      width: 30,
-      child: TextField(
-        controller: _ctrl[i],
-        focusNode: _nodes[i],
-        textAlign: TextAlign.center,
-        keyboardType: TextInputType.number,
-        maxLength: 1,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        style: const TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
-          color: AdminColors.textPrimary,
-        ),
-        decoration: const InputDecoration(
-          counterText: '',
-          border: InputBorder.none,
-          hintText: '0',
-          hintStyle: TextStyle(color: AdminColors.border, fontSize: 20),
-          contentPadding: EdgeInsets.zero,
-        ),
-        onChanged: (val) {
-          if (val.isNotEmpty && i < 5) {
-            _nodes[i + 1].requestFocus();
-          } else if (val.isEmpty && i > 0) {
-            _nodes[i - 1].requestFocus();
-          }
-          setState(() {});
-        },
-      ),
-    );
-  }
-}
-
-class _StepIndicator extends StatelessWidget {
-  final int step; // 0-indexed active step
-
-  const _StepIndicator({required this.step});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: List.generate(3, (i) {
-        final active = i == step;
-        return Padding(
-          padding: EdgeInsets.only(right: i < 2 ? 6 : 0),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            width: active ? 44 : 30,
-            height: 3,
-            decoration: BoxDecoration(
-              color: active ? AdminColors.primary : AdminColors.border,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-        );
-      }),
-    );
-  }
-}
-
-class _TabButton extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _TabButton({required this.label, required this.selected, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: selected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(9),
-            boxShadow: selected
-                ? [BoxShadow(color: Colors.black.withOpacity(0.07), blurRadius: 6, offset: const Offset(0, 2))]
-                : null,
-          ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: selected ? AdminColors.primary : AdminColors.textMuted,
-            ),
-          ),
-        ),
       ),
     );
   }

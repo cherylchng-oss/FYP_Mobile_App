@@ -1,13 +1,13 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import '../api.dart' as api;
 
 import '../shared/colors.dart';
 import '../shared/bottom_navigation_bar.dart';
 import '../shared/navigation_menu.dart' as nav;
 
 import 'owner_widgets.dart';
-import 'owner_cluster_detail.dart';
 
 class OwnerClusterPage extends StatefulWidget {
   const OwnerClusterPage({super.key});
@@ -22,6 +22,10 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
   bool _isLoading = true;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+
+  // Pagination states
+  int _currentPage = 1;
+  int _totalPages = 1; 
 
   @override
   void initState() {
@@ -41,43 +45,33 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
   }
 
   Future<void> _loadClusters() async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    final mockData = [
-      {
-        'id': '1',
-        'name': 'Kuching City Center',
-        'state': 'Sarawak',
-        'province': 'Kuching',
-        'propertyCount': 14,
-      },
-      {
-        'id': '2',
-        'name': 'Damai Beach Resort',
-        'state': 'Sarawak',
-        'province': 'Santubong',
-        'propertyCount': 3,
-      },
-      {
-        'id': '3',
-        'name': 'Miri Commercial Hub',
-        'state': 'Sarawak',
-        'province': 'Miri',
-        'propertyCount': 8,
-      },
-      {
-        'id': '4',
-        'name': 'Bintulu Industrial',
-        'state': 'Sarawak',
-        'province': 'Bintulu',
-        'propertyCount': 5,
-      },
-    ];
+    setState(() => _isLoading = true);
+    try {
+      final result = await api.fetchClusters();
+      // Normalise field names — backend uses 'clustername', 'clusterstate', 'clusterprovince'
+      final raw = (result['clusters'] as List?) ?? [];
+      final list = raw.map((e) {
+        final m = Map<String, dynamic>.from(e as Map);
+        return <String, dynamic>{
+          'id':           m['clusterid']      ?? m['clusterId']      ?? m['id']       ?? '',
+          'name':         m['clustername']    ?? m['clusterName']    ?? m['name']     ?? '',
+          'state':        m['clusterstate']   ?? m['clusterState']   ?? m['state']    ?? '',
+          'province':     m['clusterprovince']?? m['clusterProvince']?? m['province'] ?? '',
+          'propertyCount':m['propertyCount']  ?? m['property_count'] ?? m['count']    ?? 0,
+        };
+      }).toList();
 
-    if (!mounted) return;
-    setState(() {
-      _clusters = mockData;
-      _isLoading = false;
-    });
+      if (!mounted) return;
+      setState(() {
+        _clusters = list;
+        const pageSize = 10;
+        _totalPages = (list.length / pageSize).ceil().clamp(1, 999);
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Cluster load error: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   void _onNavTap(int index) {
@@ -124,19 +118,15 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
               title: 'Clusters',
               subtitle: 'Regional property groups',
               notifCount: 3,
-              bottomPadding: 40,
+              bottomPadding: 80, 
             ),
           ),
           SafeArea(
             bottom: false,
             child: Column(
               children: [
-                SizedBox(height: OwnerHeader.spacerHeight()),
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: _buildSearchBar(),
-                ),
+                SizedBox(height: OwnerHeader.spacerHeight(bottomPadding: 80, context: context) - 45),
+                _buildCommandCenter(),
                 OwnerSectionHeader(
                   title: 'All Clusters',
                   count: _visibleClusters.length,
@@ -149,11 +139,21 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
                               message: 'No clusters found.')
                           : ListView.builder(
                               physics: const BouncingScrollPhysics(),
-                              padding:
-                                  const EdgeInsets.only(top: 4, bottom: 100),
-                              itemCount: _visibleClusters.length,
-                              itemBuilder: (_, i) =>
-                                  _buildClusterCard(_visibleClusters[i], i),
+                              padding: const EdgeInsets.only(top: 4, bottom: 40),
+                              itemCount: _visibleClusters.length + 1,
+                              itemBuilder: (_, i) {
+                                if (i == _visibleClusters.length) {
+                                  return OwnerPagination(
+                                    currentPage: _currentPage,
+                                    totalPages: _totalPages,
+                                    onPageChanged: (page) {
+                                      setState(() => _currentPage = page);
+                                      _loadClusters();
+                                    },
+                                  );
+                                }
+                                return _buildClusterCard(_visibleClusters[i], i);
+                              },
                             ),
                 ),
               ],
@@ -169,21 +169,37 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Search bar
-  // ---------------------------------------------------------------------------
+  Widget _buildCommandCenter() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: AdminColors.drawerBg.withOpacity(0.12),
+            blurRadius: 32,
+            offset: const Offset(0, 16),
+            spreadRadius: -4,
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: _buildSearchBar(),
+    );
+  }
+
   Widget _buildSearchBar() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: AdminColors.textPrimary.withOpacity(0.04),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        color: const Color(0xFFF8F9FA),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AdminColors.border.withOpacity(0.4)),
       ),
       child: TextField(
         controller: _searchController,
@@ -194,7 +210,7 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
         ),
         decoration: InputDecoration(
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(20),
             borderSide: BorderSide.none,
           ),
           contentPadding:
@@ -218,132 +234,141 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Cluster card
-  // ---------------------------------------------------------------------------
   Widget _buildClusterCard(Map<String, dynamic> c, int index) {
-    final loc = [c['state'], c['province']]
-        .where((s) => s != null && s.toString().isNotEmpty)
-        .join(', ');
+    final name     = (c['name']     ?? '').toString();
+    final state    = (c['state']    ?? '').toString();
+    final province = (c['province'] ?? '').toString();
+    final count    = (c['propertyCount'] ?? 0).toString();
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
-      duration: Duration(
-          milliseconds: 380 + (index * 100).clamp(0, 500)),
+      duration: Duration(milliseconds: 280 + (index * 80).clamp(0, 400)),
       curve: Curves.easeOutQuart,
       builder: (context, value, child) => Transform.translate(
-        offset: Offset(0, 20 * (1 - value)),
+        offset: Offset(0, 16 * (1 - value)),
         child: Opacity(opacity: value, child: child),
       ),
-      child: BouncyInteractiveCard(
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => OwnerClusterDetailPage(cluster: c),
-          ),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: AdminColors.success.withOpacity(0.06),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(26),
-            boxShadow: [
-              // Green-tinted ambient shadow for cluster cards
-              BoxShadow(
-                color: AdminColors.success.withOpacity(0.07),
-                blurRadius: 24,
-                offset: const Offset(0, 10),
-                spreadRadius: -2,
-              ),
-              BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           child: Row(
             children: [
-              // Gradient icon container
-              Hero(
-                tag: 'cluster-icon-${c['id']}',
-                child: Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AdminColors.success.withOpacity(0.16),
-                        AdminColors.success.withOpacity(0.06),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: const Icon(
-                    Icons.forest_rounded,
+              // ID badge
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AdminColors.success.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  (c['id'] ?? '').toString(),
+                  style: GoogleFonts.plusJakartaSans(
                     color: AdminColors.success,
-                    size: 26,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
+              // Name + State/Province
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      (c['name'] ?? '').toString(),
+                      name.isEmpty ? '—' : name,
                       style: GoogleFonts.plusJakartaSans(
                         color: AdminColors.textPrimary,
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: -0.3,
+                        letterSpacing: -0.2,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      loc.isEmpty ? 'Location not set' : loc,
-                      style: GoogleFonts.plusJakartaSans(
-                        color: AdminColors.textMuted,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
+                    if (state.isNotEmpty || province.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          if (state.isNotEmpty) ...[
+                            _ClusterTag(label: state),
+                            const SizedBox(width: 6),
+                          ],
+                          if (province.isNotEmpty && province != state)
+                            _ClusterTag(label: province, muted: true),
+                        ],
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    ],
                   ],
                 ),
               ),
               const SizedBox(width: 10),
-              // Property count pill
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AdminColors.cream,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Text(
-                  '${c['propertyCount'] ?? 0}',
-                  style: GoogleFonts.plusJakartaSans(
-                    color: AdminColors.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
+              // Property count
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    count,
+                    style: GoogleFonts.plusJakartaSans(
+                      color: AdminColors.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: AdminColors.textMuted.withOpacity(0.35),
-                size: 22,
+                  Text(
+                    'properties',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: AdminColors.textMuted,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Small tag pill used inside cluster cards ──────────────────────────────────
+class _ClusterTag extends StatelessWidget {
+  final String label;
+  final bool muted;
+  const _ClusterTag({required this.label, this.muted = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: muted
+            ? AdminColors.cream
+            : AdminColors.success.withOpacity(0.09),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.plusJakartaSans(
+          color: muted ? AdminColors.textMuted : AdminColors.success,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );

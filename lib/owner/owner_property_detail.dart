@@ -36,17 +36,32 @@ class _OwnerPropertyDetailPageState
   }
 
   Future<void> _loadRecentBookings() async {
-    // Mock data — swap for api.fetchReservation() when ready
-    await Future.delayed(const Duration(milliseconds: 900));
-    final mock = [
-      {'guest': 'Alex Smith', 'status': 'Confirmed', 'price': 240.0},
-      {'guest': 'Maria Garcia', 'status': 'Checkout', 'price': 120.0},
-    ];
-    if (!mounted) return;
-    setState(() {
-      _recentBookings = mock;
-      _loadingBookings = false;
-    });
+    try {
+      final allReservations = await api.fetchReservation();
+      final propertyId = widget.property['id']?.toString();
+
+      final filtered = allReservations
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .where((r) =>
+              r['propertyid']?.toString() == propertyId ||
+              r['property_id']?.toString() == propertyId)
+          .take(5) 
+          .map((r) => {
+                'guest': r['username'] ?? r['guest'] ?? r['customer_name'] ?? 'Guest',
+                'status': r['status'] ?? r['reservation_status'] ?? 'Pending',
+                'price': (r['total_price'] ?? r['price'] ?? r['amount'] as num?)?.toDouble(),
+              })
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        _recentBookings = filtered;
+        _loadingBookings = false;
+      });
+    } catch (e) {
+      debugPrint('Bookings load error: $e');
+      if (mounted) setState(() => _loadingBookings = false);
+    }
   }
 
   @override
@@ -101,10 +116,6 @@ class _OwnerPropertyDetailPageState
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Cinematic SliverAppBar with image carousel
-  // expandedHeight = 35% of screen → looks great on all Android sizes
-  // ---------------------------------------------------------------------------
   SliverAppBar _buildCinematicHeader(
       List<String> images, Map<String, dynamic> p) {
     final expandedH = MediaQuery.of(context).size.height * 0.35;
@@ -140,7 +151,6 @@ class _OwnerPropertyDetailPageState
         background: Stack(
           fit: StackFit.expand,
           children: [
-            // Image carousel or placeholder
             images.isNotEmpty
                 ? PageView.builder(
                     controller: _pageController,
@@ -162,7 +172,6 @@ class _OwnerPropertyDetailPageState
                     child: const Icon(Icons.apartment,
                         size: 56, color: Colors.white54),
                   ),
-            // Gradient scrim at bottom
             Positioned(
               bottom: 0,
               left: 0,
@@ -181,7 +190,6 @@ class _OwnerPropertyDetailPageState
                 ),
               ),
             ),
-            // Page indicator (only if multiple images)
             if (images.length > 1)
               Positioned(
                 bottom: 72,
@@ -212,9 +220,6 @@ class _OwnerPropertyDetailPageState
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Hero stats card (name + status + bento stats)
-  // ---------------------------------------------------------------------------
   Widget _buildHeroCard(Map<String, dynamic> p) {
     final active = p['active'] == true;
     final rate = p['rate'] ?? 0.0;
@@ -274,7 +279,6 @@ class _OwnerPropertyDetailPageState
               ],
             ),
             const SizedBox(height: 22),
-            // Bento stat row — Expanded children prevent overflow on narrow screens
             Row(
               children: [
                 Expanded(
@@ -319,9 +323,6 @@ class _OwnerPropertyDetailPageState
         margin: const EdgeInsets.symmetric(horizontal: 12),
       );
 
-  // ---------------------------------------------------------------------------
-  // Description card
-  // ---------------------------------------------------------------------------
   Widget _buildTextCard(String text) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -349,9 +350,6 @@ class _OwnerPropertyDetailPageState
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Creator card
-  // ---------------------------------------------------------------------------
   Widget _buildCreatorCard(String name, String role) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -412,9 +410,6 @@ class _OwnerPropertyDetailPageState
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Booking tile
-  // ---------------------------------------------------------------------------
   Widget _buildBookingTile(Map<String, dynamic> booking) {
     final isCancelled = (booking['status'] ?? '')
         .toString()
@@ -489,9 +484,6 @@ class _OwnerPropertyDetailPageState
   }
 }
 
-// ---------------------------------------------------------------------------
-// Bento stat widget
-// ---------------------------------------------------------------------------
 class _BentoStat extends StatelessWidget {
   final IconData icon;
   final String value;

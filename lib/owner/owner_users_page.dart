@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../api.dart' as api;
+import '../services/session.dart';
+
 import '../shared/colors.dart';
 import '../shared/bottom_navigation_bar.dart';
 import '../shared/navigation_menu.dart' as nav;
 
 import 'owner_widgets.dart';
 
-// Warm-taupe surface used for dividers / icon backgrounds.
-// Inlined so we never depend on a colour that may not exist in colours.dart.
 const _kSurface = Color(0xFFF0EBE5);
 
 class OwnerUsersPage extends StatefulWidget {
@@ -25,48 +26,11 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
-  final List<Map<String, dynamic>> _customers = [
-    {
-      'name': 'Alex Johnson',
-      'email': 'alex@example.com',
-      'role': 'Customer',
-      'active': true,
-      'phone': '+60 12-345 6789',
-      'joinDate': '12 Jan 2024',
-    },
-    {
-      'name': 'Sarah Smith',
-      'email': 'sarah@example.com',
-      'role': 'Customer',
-      'active': true,
-      'phone': '+60 11-987 6543',
-      'joinDate': '03 Mar 2024',
-    },
-    {
-      'name': 'Mike Ross',
-      'email': 'mike@example.com',
-      'role': 'Customer',
-      'active': false,
-      'joinDate': '20 Jun 2023',
-    },
-  ];
+  int _currentPage = 1;
+  int _totalPages = 1;
 
-  final List<Map<String, dynamic>> _staff = [
-    {
-      'name': 'Admin User',
-      'email': 'admin@hellosarawak.com',
-      'role': 'Admin',
-      'active': true,
-      'joinDate': '01 Jan 2023',
-    },
-    {
-      'name': 'Mod Team',
-      'email': 'mod@hellosarawak.com',
-      'role': 'Moderator',
-      'active': true,
-      'joinDate': '15 Feb 2023',
-    },
-  ];
+  List<Map<String, dynamic>> _customers = [];
+  List<Map<String, dynamic>> _staff = [];
 
   @override
   void initState() {
@@ -86,8 +50,71 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
   }
 
   Future<void> _loadData() async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) setState(() => _isLoading = false);
+    setState(() => _isLoading = true);
+    try {
+      final results = await Future.wait([
+        api.fetchCustomers(),
+        api.fetchModerators(),
+        api.fetchAdministrators(),
+      ]);
+
+      final customersResult = results[0] as Map<String, dynamic>;
+      final moderatorsResult = results[1] as Map<String, dynamic>;
+      final adminsResult = results[2] as Map<String, dynamic>;
+
+      String _email(Map m) =>
+          (m['email'] ?? m['uemail'] ?? m['u_email'] ?? '').toString();
+
+      final customerList = (customersResult['customers'] as List?)?.map((e) {
+            final m = Map<String, dynamic>.from(e as Map);
+            return {
+              'name': m['username'] ?? m['name'] ?? '',
+              'email': _email(m),
+              'role': 'Customer',
+              'active': (m['uactivation'] ?? '').toString().toLowerCase() == 'active',
+              'phone': m['phone'],
+              'joinDate': m['created_at'],
+            };
+          }).toList() ?? [];
+
+      final modList = (moderatorsResult['moderators'] as List?)?.map((e) {
+            final m = Map<String, dynamic>.from(e as Map);
+            return {
+              'name': m['username'] ?? m['name'] ?? '',
+              'email': _email(m),
+              'role': 'Moderator',
+              'active': (m['uactivation'] ?? '').toString().toLowerCase() == 'active',
+              'phone': m['phone'],
+              'joinDate': m['created_at'],
+            };
+          }).toList() ?? [];
+
+      final adminList = (adminsResult['administrators'] as List?)?.map((e) {
+            final m = Map<String, dynamic>.from(e as Map);
+            return {
+              'name': m['username'] ?? m['name'] ?? '',
+              'email': _email(m),
+              'role': 'Admin',
+              'active': (m['uactivation'] ?? '').toString().toLowerCase() == 'active',
+              'phone': m['phone'],
+              'joinDate': m['created_at'],
+            };
+          }).toList() ?? [];
+
+      if (!mounted) return;
+      setState(() {
+        _customers = customerList;
+        _staff = [...modList, ...adminList];
+
+        const pageSize = 10;
+        final activeList = _tabIndex == 0 ? _customers : _staff;
+        _totalPages = (activeList.length / pageSize).ceil().clamp(1, 999);
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Users load error: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   void _onNavTap(int index) {
@@ -135,20 +162,15 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
               title: 'Users',
               subtitle: 'Manage all platform users',
               notifCount: 3,
-              bottomPadding: 40,
+              bottomPadding: 80,
             ),
           ),
           SafeArea(
             bottom: false,
             child: Column(
               children: [
-                SizedBox(height: OwnerHeader.spacerHeight()),
-                _buildSegmentedToggle(),
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: _buildSearchBar(),
-                ),
+                SizedBox(height: OwnerHeader.spacerHeight(bottomPadding: 80, context: context) - 45),
+                _buildCommandCenter(),
                 OwnerSectionHeader(
                   title: _tabIndex == 0 ? 'All Customers' : 'All Staff',
                   count: _visibleList.length,
@@ -158,11 +180,21 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
                       ? const OwnerLoading()
                       : ListView.builder(
                           physics: const BouncingScrollPhysics(),
-                          padding:
-                              const EdgeInsets.only(top: 4, bottom: 100),
-                          itemCount: _visibleList.length,
-                          itemBuilder: (_, i) =>
-                              _buildUserCard(_visibleList[i], i),
+                          padding: const EdgeInsets.only(top: 4, bottom: 40),
+                          itemCount: _visibleList.length + 1,
+                          itemBuilder: (_, i) {
+                            if (i == _visibleList.length) {
+                              return OwnerPagination(
+                                currentPage: _currentPage,
+                                totalPages: _totalPages,
+                                onPageChanged: (page) {
+                                  setState(() => _currentPage = page);
+                                  _loadData();
+                                },
+                              );
+                            }
+                            return _buildUserCard(_visibleList[i], i);
+                          },
                         ),
                 ),
               ],
@@ -178,15 +210,42 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Segmented toggle — solid pill on cream background
-  // ---------------------------------------------------------------------------
-  Widget _buildSegmentedToggle() {
+  Widget _buildCommandCenter() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: AdminColors.drawerBg.withOpacity(0.12),
+            blurRadius: 32,
+            offset: const Offset(0, 16),
+            spreadRadius: -4,
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          _buildSegmentedToggle(),
+          const SizedBox(height: 12),
+          _buildSearchBar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSegmentedToggle() {
+    return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AdminColors.border.withOpacity(0.55),
+        color: AdminColors.cream,
         borderRadius: BorderRadius.circular(22),
       ),
       child: Row(
@@ -201,7 +260,15 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
   Widget _buildTogglePill(String label, int index) {
     final isActive = _tabIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _tabIndex = index),
+      onTap: () {
+        setState(() {
+          _tabIndex = index;
+          _currentPage = 1;
+          const pageSize = 10;
+          final activeList = _tabIndex == 0 ? _customers : _staff;
+          _totalPages = (activeList.length / pageSize).ceil().clamp(1, 999);
+        });
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -233,21 +300,12 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Search bar
-  // ---------------------------------------------------------------------------
   Widget _buildSearchBar() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: AdminColors.textPrimary.withOpacity(0.04),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        color: const Color(0xFFF8F9FA),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AdminColors.border.withOpacity(0.4)),
       ),
       child: TextField(
         controller: _searchController,
@@ -258,11 +316,10 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
         ),
         decoration: InputDecoration(
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(20),
             borderSide: BorderSide.none,
           ),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           hintText: 'Search users…',
           hintStyle: GoogleFonts.plusJakartaSans(
             color: AdminColors.textMuted.withOpacity(0.55),
@@ -282,12 +339,8 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // User card
-  // ---------------------------------------------------------------------------
   Widget _buildUserCard(Map<String, dynamic> u, int index) {
     final role = u['role'].toString().toLowerCase();
-    // Role colours — no dependency on undefined AdminColors.accent
     final Color avatarColor = role == 'admin'
         ? AdminColors.success
         : role == 'moderator'
@@ -366,6 +419,8 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
               ),
               const SizedBox(width: 8),
               OwnerStatusBadge(active: u['active'] == true),
+              const SizedBox(width: 6),
+              _UserPopupMenu(user: u),
             ],
           ),
         ),
@@ -384,9 +439,6 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// User Detail Bottom Sheet
-// ---------------------------------------------------------------------------
 class _UserDetailSheet extends StatelessWidget {
   final Map<String, dynamic> user;
   final Color avatarColor;
@@ -415,7 +467,6 @@ class _UserDetailSheet extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Drag handle
             Container(
               width: 48,
               height: 5,
@@ -425,7 +476,6 @@ class _UserDetailSheet extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
-            // Avatar ring
             Container(
               padding: const EdgeInsets.all(5),
               decoration: BoxDecoration(
@@ -482,7 +532,6 @@ class _UserDetailSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 28),
-            // Detail rows card
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -554,9 +603,90 @@ class _UserDetailSheet extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Detail row helpers
-// ---------------------------------------------------------------------------
+// ─── Popup menu button shown on each user card ────────────────────────────────
+class _UserPopupMenu extends StatelessWidget {
+  final Map<String, dynamic> user;
+  const _UserPopupMenu({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: AdminColors.cream,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AdminColors.border.withOpacity(0.6)),
+      ),
+      child: PopupMenuButton<String>(
+        icon: Icon(
+          Icons.more_horiz_rounded,
+          size: 18,
+          color: AdminColors.textMuted,
+        ),
+        padding: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        elevation: 4,
+        offset: const Offset(0, 38),
+        onSelected: (value) {
+          switch (value) {
+            case 'view':
+              final role = user['role'].toString().toLowerCase();
+              final Color avatarColor = role == 'admin'
+                  ? AdminColors.success
+                  : role == 'moderator'
+                      ? AdminColors.secondary
+                      : AdminColors.primaryLight;
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) =>
+                    _UserDetailSheet(user: user, avatarColor: avatarColor),
+              );
+              break;
+            case 'copy_email':
+              final email = user['email']?.toString() ?? '';
+              if (email.isNotEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Email copied: $email'),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    margin: const EdgeInsets.all(16),
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+              break;
+          }
+        },
+        itemBuilder: (_) => [
+          PopupMenuItem(
+            value: 'view',
+            child: Row(children: [
+              Icon(Icons.person_outline_rounded,
+                  size: 16, color: AdminColors.textMuted),
+              const SizedBox(width: 10),
+              const Text('View Profile'),
+            ]),
+          ),
+          PopupMenuItem(
+            value: 'copy_email',
+            child: Row(children: [
+              Icon(Icons.email_outlined,
+                  size: 16, color: AdminColors.textMuted),
+              const SizedBox(width: 10),
+              const Text('Copy Email'),
+            ]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _DetailRow extends StatelessWidget {
   final IconData icon;
   final String label;

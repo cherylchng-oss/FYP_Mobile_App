@@ -1,5 +1,6 @@
 import 'dart:ui'; // For ImageFilter (blur)
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'services/session.dart';
 import 'services/rbac_service.dart' as rbac;
 import 'api.dart' as api;
@@ -11,7 +12,11 @@ import 'customer/customer_cart.dart';
 import 'customer/customer_bookings.dart';
 import 'customer/customer_notification.dart';
 import 'owner/owner_property_detail.dart';
-import 'shared_admin_moderator/user_management.dart';
+import 'owner/owner_users_page.dart';
+import 'owner/owner_cluster.dart';
+import 'owner/owner_logs_page.dart';
+// shared_admin_moderator/user_management.dart not yet merged —
+// MoreMenuDrawer stub defined below until that branch is integrated.
 
 enum _PasswordStrength { none, weak, medium, strong }
 
@@ -195,6 +200,8 @@ class _ProfilePageState extends State<ProfilePage>
           _userAddress = userData['ucountry'];
           _userRole = userGroup;
           _storedPassword = userData['password']?.toString();
+          // Owner's Profile tab is index 4; everyone else has it at index 3
+          _selectedIndex = (userGroup ?? '').toLowerCase() == 'owner' ? 4 : 3;
           _isLoading = false;
 
           // Prefill PayPal ID if backend sends it (check both paypalid and paypal_email)
@@ -217,27 +224,127 @@ class _ProfilePageState extends State<ProfilePage>
   Future<void> _handleLogout() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AdminColors.surface,
-        title: const Text('Logout', style: TextStyle(color: Colors.black)),
-        content: const Text(
-          'Are you sure you want to logout?',
-          style: TextStyle(color: Colors.black),
+      barrierColor: Colors.black.withOpacity(0.55),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 36, vertical: 24),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AdminColors.cream,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: AdminColors.drawerBg.withOpacity(0.22),
+                blurRadius: 40,
+                offset: const Offset(0, 16),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Icon badge ──────────────────────────────────────────────
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: AdminColors.primary.withOpacity(0.10),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.logout_rounded,
+                  color: AdminColors.primary,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 20),
+              // ── Title ────────────────────────────────────────────────────
+              Text(
+                'Log Out',
+                style: GoogleFonts.plusJakartaSans(
+                  color: AdminColors.textPrimary,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.4,
+                ),
+              ),
+              const SizedBox(height: 10),
+              // ── Body ─────────────────────────────────────────────────────
+              Text(
+                'Are you sure you want to\nlog out of your account?',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  color: AdminColors.textMuted,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 28),
+              // ── Buttons ──────────────────────────────────────────────────
+              Row(
+                children: [
+                  // Cancel
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(ctx, false),
+                      child: Container(
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: AdminColors.border,
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          'Cancel',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: AdminColors.textPrimary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Log Out
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(ctx, true),
+                      child: Container(
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: AdminColors.primary,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AdminColors.primary.withOpacity(0.30),
+                              blurRadius: 14,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          'Log Out',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.black)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _primaryBlue,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Logout'),
-          ),
-        ],
       ),
     );
 
@@ -515,132 +622,174 @@ class _ProfilePageState extends State<ProfilePage>
     final roleDisplay = _userRole != null
         ? rbac.RBACService.getRoleDisplayName(_userRole!)
         : roleLower;
-    final rawDate = _fullUserData?['created_at']?.toString() ??
-        _fullUserData?['createdat']?.toString() ?? '';
-    final joinedOn = rawDate.isNotEmpty ? rawDate.split('T').first : '—';
 
-    return Container(
-      width: double.infinity,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: Image.asset('assets/profile.png', fit: BoxFit.cover),
-          ),
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    const Color(0xFF3D1E0C).withOpacity(0.65),
-                    const Color(0xFF8B4A2F).withOpacity(0.58),
-                  ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Scale avatar and spacing for narrow/small screens
+        final isSmall = constraints.maxWidth < 360;
+        final avatarRadius = isSmall ? 28.0 : 32.0;
+        final innerPad = isSmall ? 12.0 : 16.0;
+        final vertGap = isSmall ? 10.0 : 14.0;
+
+        return Container(
+          width: double.infinity,
+          child: Stack(
+            children: [
+              // Background image with graceful fallback
+              Positioned.fill(
+                child: Image.asset(
+                  'assets/profile.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF3D1E0C), Color(0xFF8B4A2F)],
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.fromLTRB(20, topPad + 16, 20, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Text('My Profile',
-                      style: AppTextStyles.h3.copyWith(
-                          color: Colors.white, fontWeight: FontWeight.w600)),
-                ),
-                const SizedBox(height: 18),
-                Container(
-                  padding: const EdgeInsets.all(16),
+              // Tinted overlay
+              Positioned.fill(
+                child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.13),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withOpacity(0.22)),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        const Color(0xFF3D1E0C).withOpacity(0.65),
+                        const Color(0xFF8B4A2F).withOpacity(0.58),
+                      ],
+                    ),
                   ),
-                  child: Column(
-                    children: [
-                      Row(
+                ),
+              ),
+              // Content — top padding uses status-bar height, never hard-coded
+              Padding(
+                padding: EdgeInsets.fromLTRB(16, topPad + 12, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Text(
+                        'My Profile',
+                        style: AppTextStyles.h3.copyWith(
+                            color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    SizedBox(height: vertGap),
+                    Container(
+                      padding: EdgeInsets.all(innerPad),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.13),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: Colors.white.withOpacity(0.22)),
+                      ),
+                      child: Column(
                         children: [
-                          Stack(
+                          // Avatar row
+                          Row(
                             children: [
-                              CircleAvatar(
-                                radius: 36,
-                                backgroundColor: Colors.white.withOpacity(0.25),
-                                child: const Icon(Icons.person,
-                                    color: Colors.white, size: 40),
-                              ),
-                              Positioned(
-                                bottom: 0, right: 0,
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: AdminColors.primary,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 1.5),
+                              Stack(
+                                children: [
+                                  CircleAvatar(
+                                    radius: avatarRadius,
+                                    backgroundColor: Colors.white.withOpacity(0.25),
+                                    child: Icon(Icons.person,
+                                        color: Colors.white,
+                                        size: avatarRadius * 1.1),
                                   ),
-                                  child: const Icon(Icons.camera_alt,
-                                      color: Colors.white, size: 10),
+                                  Positioned(
+                                    bottom: 0, right: 0,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(3),
+                                      decoration: BoxDecoration(
+                                        color: AdminColors.primary,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                            color: Colors.white, width: 1.5),
+                                      ),
+                                      child: const Icon(Icons.camera_alt,
+                                          color: Colors.white, size: 9),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      userName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTextStyles.h3.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: isSmall ? 16 : null),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      userEmail,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTextStyles.bodySmall.copyWith(
+                                          color: Colors.white.withOpacity(0.75)),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                            color: Colors.white.withOpacity(0.3)),
+                                      ),
+                                      child: Text(
+                                        roleDisplay.toLowerCase(),
+                                        style: AppTextStyles.caption.copyWith(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w500),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(userName,
-                                    style: AppTextStyles.h3.copyWith(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w700)),
-                                const SizedBox(height: 3),
-                                Text(userEmail,
-                                    style: AppTextStyles.bodySmall.copyWith(
-                                        color: Colors.white.withOpacity(0.75))),
-                                const SizedBox(height: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                        color: Colors.white.withOpacity(0.3)),
-                                  ),
-                                  child: Text(roleDisplay.toLowerCase(),
-                                      style: AppTextStyles.caption.copyWith(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w500)),
-                                ),
-                              ],
-                            ),
+                          SizedBox(height: vertGap),
+                          Container(
+                              height: 1,
+                              color: Colors.white.withOpacity(0.15)),
+                          SizedBox(height: vertGap),
+                          // Status row
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _buildInfoCell(Icons.verified_user_outlined,
+                                  'Account Status', 'Active', Colors.white),
+                              Container(
+                                  width: 1,
+                                  height: 32,
+                                  color: Colors.white.withOpacity(0.2)),
+                              _buildInfoCell(Icons.shield_outlined,
+                                  'MFA Protected', 'Enabled', Colors.white),
+                            ],
                           ),
                         ],
                       ),
-                      const SizedBox(height: 14),
-                      Container(height: 1, color: Colors.white.withOpacity(0.15)),
-                      const SizedBox(height: 14),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _buildInfoCell(Icons.verified_user_outlined,
-                              'Account Status', 'Active', Colors.white),
-                          Container(
-                              width: 1, height: 36,
-                              color: Colors.white.withOpacity(0.2)),
-                          _buildInfoCell(Icons.shield_outlined,
-                              'MFA Protected', 'Enabled', Colors.white),
-                        ],
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1503,9 +1652,8 @@ class _ProfilePageState extends State<ProfilePage>
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: AdminColors.primary,
                                         foregroundColor: Colors.white,
-                                        padding:
-                                            const EdgeInsets.symmetric(
-                                                vertical: 10),
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 10),
                                         shape: RoundedRectangleBorder(
                                           borderRadius:
                                               BorderRadius.circular(999),
@@ -1515,8 +1663,7 @@ class _ProfilePageState extends State<ProfilePage>
                                           ? const SizedBox(
                                               height: 18,
                                               width: 18,
-                                              child:
-                                                  CircularProgressIndicator(
+                                              child: CircularProgressIndicator(
                                                 strokeWidth: 2.3,
                                                 color: Colors.white,
                                               ),
@@ -1546,43 +1693,27 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
-  // Handles validation + backend update when user taps "Save Changes" in dialog
   Future<void> _handleSaveFromDialog(
     BuildContext dialogCtx,
     void Function(void Function()) setStateDialog,
   ) async {
     final username = _editUsernameController.text.trim();
-    final email = _editEmailController.text.trim();
-    final phone = _editPhoneController.text.trim();
-    final dob = _editDobController.text.trim();
-    final country = _editCountryController.text.trim();
+    final email    = _editEmailController.text.trim();
+    final phone    = _editPhoneController.text.trim();
+    final dob      = _editDobController.text.trim();
+    final country  = _editCountryController.text.trim();
 
-    // Username validation: at least 6 characters
-    if (username.length < 6) {
+    if (username.length < 3) {
       _shakeController.forward(from: 0);
       ScaffoldMessenger.of(dialogCtx).showSnackBar(
         const SnackBar(
-          content: Text('Username must be at least 6 characters.'),
+          content: Text('Username must be at least 3 characters.'),
           backgroundColor: Colors.redAccent,
         ),
       );
       return;
     }
 
-    // Phone validation: digits only if not empty
-    final phoneRegex = RegExp(r'^\d+$');
-    if (phone.isNotEmpty && !phoneRegex.hasMatch(phone)) {
-      _shakeController.forward(from: 0);
-      ScaffoldMessenger.of(dialogCtx).showSnackBar(
-        const SnackBar(
-          content: Text('Phone number should only contain digits.'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-      return;
-    }
-
-    // Get user id
     final userid = await Session.getUserId();
     if (userid == null) {
       _shakeController.forward(from: 0);
@@ -1595,7 +1726,6 @@ class _ProfilePageState extends State<ProfilePage>
       return;
     }
 
-    // Ensure we have full user data
     if (_fullUserData == null) {
       await _loadUserData();
       if (_fullUserData == null) {
@@ -1610,33 +1740,29 @@ class _ProfilePageState extends State<ProfilePage>
       }
     }
 
-    // Build payload
     final updateData = _buildBaseUpdatePayload(userid);
     updateData['username'] = username;
-    if (email.isNotEmpty) updateData['uemail'] = email;
-    if (phone.isNotEmpty) updateData['uphoneno'] = phone;
-    if (dob.isNotEmpty) updateData['udob'] = dob;
-    if (_editGender != null) updateData['ugender'] = _editGender;
-    if (country.isNotEmpty) updateData['ucountry'] = country;
+    if (email.isNotEmpty)    updateData['uemail']   = email;
+    if (phone.isNotEmpty)    updateData['uphoneno'] = phone;
+    if (dob.isNotEmpty)      updateData['udob']     = dob;
+    if (country.isNotEmpty)  updateData['ucountry'] = country;
+    if (_editGender != null) updateData['ugender']  = _editGender;
 
-    setStateDialog(() {
-      _isSavingDialog = true;
-    });
+    setStateDialog(() => _isSavingDialog = true);
 
     try {
       await api.updateProfile(updateData);
 
       if (!mounted) return;
 
-      // Update local state to reflect immediately in UI
       setState(() {
         _userName = username;
-        if (email.isNotEmpty) _userEmail = email;
-        if (phone.isNotEmpty) _userPhone = phone;
-        if (country.isNotEmpty) _userAddress = country;
+        if (email.isNotEmpty)    _userEmail   = email;
+        if (phone.isNotEmpty)    _userPhone   = phone;
+        if (country.isNotEmpty)  _userAddress = country;
       });
 
-      Navigator.of(dialogCtx).pop(); // close dialog
+      Navigator.of(dialogCtx).pop();
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1646,9 +1772,7 @@ class _ProfilePageState extends State<ProfilePage>
       );
     } catch (e) {
       if (!mounted) return;
-      setStateDialog(() {
-        _isSavingDialog = false;
-      });
+      setStateDialog(() => _isSavingDialog = false);
       _shakeController.forward(from: 0);
       ScaffoldMessenger.of(dialogCtx).showSnackBar(
         SnackBar(
@@ -1659,48 +1783,28 @@ class _ProfilePageState extends State<ProfilePage>
     }
   }
 
-  void _handleBottomNavTap(int index) async {
+  void _handleBottomNavTap(int index) {
     final role = _userRoleEnum;
     if (role == null) return;
-
-    if (index == 4) {
-      // More button - handled by SharedBottomNavigationBar to open drawer
-      return;
-    }
+    if (index == 4) return; // More handled by SharedBottomNavigationBar
 
     if (index == 0) {
-      // Dashboard/Home
-      String route;
+      late String route;
       switch (role) {
-        case nav.UserRole.admin:
-          route = '/admin';
-          break;
-        case nav.UserRole.moderator:
-          route = '/moderator';
-          break;
-        case nav.UserRole.owner:
-          route = '/owner';
-          break;
-        case nav.UserRole.customer:
-          route = '/home';
-          break;
+        case nav.UserRole.admin:     route = '/admin'; break;
+        case nav.UserRole.moderator: route = '/moderator'; break;
+        case nav.UserRole.owner:     route = '/owner'; break;
+        case nav.UserRole.customer:  route = '/home'; break;
       }
-      final navigator = appNavigatorKey.currentState;
-      if (navigator != null) {
-        navigator.pushNamedAndRemoveUntil(route, (route) => false);
-      } else {
-        if (!mounted) return;
-        Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(route, (route) => false);
-      }
+      Navigator.of(context).pushReplacementNamed(route);
       return;
     }
 
     if (index == 1) {
-      // Properties/Cart
-      if (role == nav.UserRole.customer) {
+      if (role == nav.UserRole.owner) {
+        Navigator.of(context).pushReplacementNamed(OwnerUsersPage.routeName);
+      } else if (role == nav.UserRole.customer) {
         Navigator.of(context).pushReplacementNamed('/customer-cart');
-      } else if (role == nav.UserRole.owner) {
-        Navigator.of(context).pushReplacementNamed('/owner-property-listing');
       } else {
         Navigator.of(context).pushReplacementNamed('/manage-services');
       }
@@ -1708,203 +1812,137 @@ class _ProfilePageState extends State<ProfilePage>
     }
 
     if (index == 2) {
-      if (role == nav.UserRole.customer) {
+      if (role == nav.UserRole.owner) {
+        Navigator.of(context).pushReplacementNamed(OwnerClusterPage.routeName);
+      } else if (role == nav.UserRole.customer) {
         Navigator.of(context).pushReplacementNamed('/customer-bookings');
-      } else if (role == nav.UserRole.owner) {
-        Navigator.of(context).pushReplacementNamed('/owner-reservation');
-      } else if (role == nav.UserRole.admin) {
-        Navigator.of(context).pushReplacementNamed('/admin-stock-manager');
       } else {
-        Navigator.of(context).pushReplacementNamed('/moderator-stock-manager');
+        Navigator.of(context).pushReplacementNamed('/manage-booking');
       }
       return;
     }
 
     if (index == 3) {
-      // Profile - already on this page
-      if (_selectedIndex != 3) {
-        setState(() => _selectedIndex = 3);
+      if (role == nav.UserRole.owner) {
+        Navigator.of(context).pushReplacementNamed(OwnerLogsPage.routeName);
+      } else {
+        // Admin/Mod: index 3 is Profile (already here)
+        if (_selectedIndex != 3) setState(() => _selectedIndex = 3);
       }
     }
   }
 
   void _handleMenuSelection(String label) {
-    Navigator.pop(context); // Close drawer first
+    Navigator.pop(context);
     final role = _userRoleEnum;
     if (role == null) return;
 
     switch (label) {
       case 'Dashboard':
-        String route;
+        late String route;
         switch (role) {
-          case nav.UserRole.admin:
-            route = '/admin';
-            break;
-          case nav.UserRole.moderator:
-            route = '/moderator';
-            break;
-          case nav.UserRole.owner:
-            route = '/owner';
-            break;
-          case nav.UserRole.customer:
-            route = '/home';
-            break;
+          case nav.UserRole.admin:     route = '/admin'; break;
+          case nav.UserRole.moderator: route = '/moderator'; break;
+          case nav.UserRole.owner:     route = '/owner'; break;
+          case nav.UserRole.customer:  route = '/home'; break;
         }
-        final navigator = appNavigatorKey.currentState;
-        if (navigator != null) {
-          navigator.pushNamedAndRemoveUntil(route, (route) => false);
-        } else {
-          if (!mounted) return;
-          Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(route, (route) => false);
-        }
+        Navigator.of(context).pushReplacementNamed(route);
         break;
       case 'Profile':
-        // Already on profile page
         break;
       case 'Properties':
-    
-        if (role == nav.UserRole.owner) {
-          Navigator.of(context).pushReplacementNamed('/owner-property-listing');
-        } else {
-          Navigator.of(context).pushReplacementNamed('/manage-services');
-        }
+        Navigator.of(context).pushReplacementNamed(
+            role == nav.UserRole.owner ? '/owner-property-listing' : '/manage-services');
         break;
-      
       case 'Bookings':
-        if (role == nav.UserRole.owner) {
-          Navigator.of(context).pushReplacementNamed('/owner-reservation');
-        } else if (role == nav.UserRole.admin) {
-          Navigator.of(context).pushReplacementNamed('/admin-stock-manager');
-        } else {
-          Navigator.of(context).pushReplacementNamed('/moderator-stock-manager');
-        }
-        break;
-      case 'Rooms':
-        Navigator.of(context).pushReplacementNamed('/home');
-        break;
-      case 'Cart':
-        Navigator.of(context).pushReplacementNamed('/customer-cart');
-        break;
-      case 'Notifications':
-        Navigator.of(context).pushReplacementNamed('/customer-notifications');
+        Navigator.of(context).pushReplacementNamed(
+            role == nav.UserRole.owner ? '/owner-reservation' : '/manage-booking');
         break;
       case 'User Management':
-        // Navigate to user management page with appropriate role
-        final appRole = role == nav.UserRole.admin ? AppRole.admin : AppRole.moderator;
-        Navigator.of(context).pushReplacementNamed('/user-management', arguments: appRole);
-        break;
-      case 'Customer':
-        // Owner navigation to customer management
-        if (role == nav.UserRole.owner) {
-          Navigator.of(context).pushReplacementNamed('/owner-manage-customer');
-        }
-        break;
-      case 'Moderator/Admin':
-        // Owner navigation to moderator/admin management
-        if (role == nav.UserRole.owner) {
-          Navigator.of(context).pushReplacementNamed('/owner-manage-moderatoradmin');
-        }
+        Navigator.of(context).pushReplacementNamed('/user-management');
         break;
       case 'BooknPayLog':
-        if (role == nav.UserRole.owner) {
+        if (role == nav.UserRole.admin) {
+          Navigator.of(context).pushReplacementNamed('/admin-book-and-pay');
+        } else if (role == nav.UserRole.moderator) {
+          Navigator.of(context).pushReplacementNamed('/moderator-book-and-pay');
+        } else if (role == nav.UserRole.owner) {
           Navigator.of(context).pushReplacementNamed('/owner-book-and-pay');
         }
         break;
       case 'AuditTrails':
-        if (role == nav.UserRole.owner) {
+        if (role == nav.UserRole.admin) {
+          Navigator.of(context).pushReplacementNamed('/admin-audit-trails');
+        } else if (role == nav.UserRole.moderator) {
+          Navigator.of(context).pushReplacementNamed('/moderator-audit-trails');
+        } else if (role == nav.UserRole.owner) {
           Navigator.of(context).pushReplacementNamed('/owner-audit-trails');
         }
         break;
       case 'Cluster':
-        // Owner navigation to cluster management
         if (role == nav.UserRole.owner) {
           Navigator.of(context).pushReplacementNamed('/owner-cluster');
         }
         break;
-      case 'Activity Logs':
-        if (role == nav.UserRole.admin) {
-          Navigator.of(context).pushReplacementNamed('/admin-activity-logs');
-        } else if (role == nav.UserRole.moderator) {
-          Navigator.of(context).pushReplacementNamed('/moderator-activity-logs');
-        }
-        break;
-      case 'Ledger':
-        if (role == nav.UserRole.admin) {
-          Navigator.of(context).pushReplacementNamed('/admin-ledger');
-        } else if (role == nav.UserRole.moderator) {
-          Navigator.of(context).pushReplacementNamed('/moderator-ledger');
-        }
-        break;
-      case 'Stock Manager':
-        if (role == nav.UserRole.admin) {
-          Navigator.of(context).pushReplacementNamed('/admin-stock-manager');
-        } else if (role == nav.UserRole.moderator) {
-          Navigator.of(context).pushReplacementNamed('/moderator-stock-manager');
-        }
-        break;
-      case 'Customer Review':
-        Navigator.of(context).pushReplacementNamed('/admin-customer-reviews');
-        break;
-      case 'Customer Reviews':
-        Navigator.of(context).pushReplacementNamed('/moderator-customer-reviews');
-        break;
       default:
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Navigating to $label', style: const TextStyle(color: Colors.white)),
-            backgroundColor: _primaryBlue,
+            content: Text('Navigating to $label',
+                style: const TextStyle(color: Colors.black)),
+            backgroundColor: const Color(0xFF468FAF),
             duration: const Duration(seconds: 1),
           ),
         );
     }
   }
+}
 
-  // Small helper to keep account rows consistent & neat
-  Widget _infoRow({
-    required IconData icon,
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+// -----------------------------------------------------------------------
+// MoreMenuDrawer stub — real widget merges from admin/moderator branch.
+// -----------------------------------------------------------------------
+class MoreMenuDrawer extends StatelessWidget {
+  final nav.UserRole role;
+  final void Function(String label) onItemSelected;
+  final void Function() onLogout;
+  final String currentPageLabel;
+
+  const MoreMenuDrawer({
+    super.key,
+    required this.role,
+    required this.onItemSelected,
+    required this.onLogout,
+    required this.currentPageLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      backgroundColor: AdminColors.drawerBg,
+      child: SafeArea(
+        child: Column(
+          children: [
+            const SizedBox(height: 20),
+            Text(
+              currentPageLabel,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-            child: Icon(icon, color: color, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: _textMuted,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: _textDark,
-                  ),
-                ),
-              ],
+            const Spacer(),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.white70),
+              title: const Text('Logout',
+                  style: TextStyle(color: Colors.white70)),
+              onTap: () {
+                Navigator.pop(context);
+                onLogout();
+              },
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }

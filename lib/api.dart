@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'services/session.dart';
@@ -83,34 +84,24 @@ Future<http.Response> loginUser(Map<String, dynamic> userData) async {
   }
 }
 
-Future<Map<String, dynamic>> sendEmailOtp(String tempToken) async {
-  try {
-    final response = await http.post(
-      Uri.parse('$API_URL/mfa/send-email-otp'),
-      headers: _publicHeaders(),
-      body: jsonEncode({'tempToken': tempToken}),
-    );
-    return jsonDecode(response.body) as Map<String, dynamic>;
-  } catch (error) {
-    print('API error: $error');
-    rethrow;
-  }
-}
-
-Future<Map<String, dynamic>> verifyMfaLogin({
+// MFA Verification
+// POST /auth/verify-mfa  { tempToken, code }  → same shape as login success
+// TODO: update the endpoint path to match your actual backend route.
+Future<http.Response> verifyMfa({
   required String tempToken,
-  required String token,
-  required String method,
+  required String code,
 }) async {
   try {
     final response = await http.post(
-      Uri.parse('$API_URL/mfa/verify-login'),
+      Uri.parse('$API_URL/auth/verify-mfa'),
       headers: _publicHeaders(),
-      body: jsonEncode({'tempToken': tempToken, 'token': token, 'method': method}),
+      body: jsonEncode({'tempToken': tempToken, 'code': code}),
     );
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    print('API: verifyMfa status: ${response.statusCode}');
+    print('API: verifyMfa body: ${response.body}');
+    return response;
   } catch (error) {
-    print('API error: $error');
+    print('API: verifyMfa error: $error');
     rethrow;
   }
 }
@@ -188,6 +179,37 @@ Future<dynamic> fetchProduct() async {
     print('Error fetching properties: $error');
     rethrow;
   }
+}
+
+Future<Map<String, dynamic>> fetchPropertyAvailability({
+  required int propertyId,
+  required String checkIn,
+  required String checkOut,
+  String roomName = '',
+  String packageName = '',
+}) async {
+  final uri = Uri.parse('$API_URL/property-availability').replace(
+    queryParameters: {
+      'propertyid': propertyId.toString(),
+      'checkIn': checkIn,
+      'checkOut': checkOut,
+      if (roomName.trim().isNotEmpty) 'roomName': roomName.trim(),
+      if (packageName.trim().isNotEmpty) 'packageName': packageName.trim(),
+    },
+  );
+
+  final response = await http.get(
+    uri,
+    headers: await _authHeaders(),
+  );
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode != 200) {
+    throw Exception(data['message'] ?? 'Failed to check property availability');
+  }
+
+  return data;
 }
 
 // Fetch Properties (Dashboard)
@@ -478,23 +500,36 @@ Future<Map<String, dynamic>> updateProperty(dynamic propertyData, int propertyid
 }
 
 // Update property status
-Future<Map<String, dynamic>> updatePropertyStatus(int propertyid, String status) async {
+Future<Map<String, dynamic>> updatePropertyStatus(
+    int propertyid, String status) async {
+
   final creatorid = await Session.getUserId();
-  final username = 'user_${creatorid ?? 0}'; // TODO: Get actual username from session
-  final creatorUsername = username;
-  
+  final creatorUsername = await Session.getUsername();
+
+  if (creatorid == null || creatorUsername == null) {
+    throw Exception('User not logged in');
+  }
+
   try {
+    final uri = Uri.parse('$API_URL/updatePropertyStatus/$propertyid')
+        .replace(queryParameters: {
+      'creatorid': creatorid.toString(),
+      'creatorUsername': creatorUsername,
+    });
+
     final response = await http.patch(
-      Uri.parse('$API_URL/updatePropertyStatus/$propertyid?creatorid=$creatorid&creatorUsername=$creatorUsername'),
+      uri,
       headers: await _authHeaders(),
       body: jsonEncode({'propertyStatus': status}),
     );
 
-    if (response.statusCode != 200) {
-      throw Exception('Failed to update property status');
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(data['message'] ?? 'Failed to update property status');
     }
 
-    return jsonDecode(response.body);
+    return data;
   } catch (error) {
     print('API error: $error');
     rethrow;
@@ -1165,30 +1200,48 @@ Future<Map<String, dynamic>> createReservation(Map<String, dynamic> reservationD
   }
 }
 
-// Check date overlap for a property
-Future<bool> checkDateOverlap({
+Future<Map<String, dynamic>> checkDateOverlap({
   required int propertyId,
   required String checkIn,
+  required String checkOut,
 }) async {
+  final creatorid = (await Session.getUserId())?.toString() ?? '';
+  final creatorUsername = (await Session.getUsername())?.toString() ?? '';
+
   try {
-    print('API: Checking date overlap for property $propertyId on $checkIn');
     final response = await http.post(
-      Uri.parse('$API_URL/check-date-overlap/$propertyId'),
-      headers: await _authHeaders(),
-      body: jsonEncode({'checkIn': checkIn}),
+      Uri.parse(
+        '$API_URL/check-date-overlap/$propertyId'
+        '?creatorid=${Uri.encodeComponent(creatorid)}'
+        '&creatorUsername=${Uri.encodeComponent(creatorUsername)}',
+      ),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'propertyid': propertyId,
+        'checkIn': checkIn,
+        'checkOut': checkOut,
+      }),
     );
 
-    print('API: Date overlap response status: ${response.statusCode}');
-    print('API: Date overlap response body: ${response.body}');
-
-    if (response.statusCode != 200) {
-      throw Exception('Failed to check date overlap (${response.statusCode})');
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final errorData = jsonDecode(response.body);
+      throw Exception(errorData['message'] ?? 'Failed to check date overlap');
     }
 
-    final data = jsonDecode(response.body);
-    return data['overlap'] == true;
+    final data = Map<String, dynamic>.from(jsonDecode(response.body));
+
+    final overlap = data['overlap'] == true || data['isOverlap'] == true;
+
+    return {
+      ...data,
+      'overlap': overlap,
+      'isOverlap': overlap,
+      'isBlackout': data['isBlackout'] == true,
+    };
   } catch (error) {
-    print('API error checking date overlap: $error');
+    print('API error: $error');
     rethrow;
   }
 }
@@ -1344,105 +1397,102 @@ Future<List<dynamic>> fetchReservationsForAdminModerator() async {
 }
 
 // Update reservation status
-Future<Map<String, dynamic>> updateReservationStatus(int reservationid, String status) async {
+Future<Map<String, dynamic>> updateReservationStatus(
+  dynamic reservationid,
+  String status,
+) async {
   final userid = await Session.getUserId();
-  
+
   try {
     print('API: Updating reservation status - reservationId: $reservationid, status: $status');
+
     final response = await http.patch(
       Uri.parse('$API_URL/updateReservationStatus/$reservationid?userid=$userid'),
-      headers: await _authHeaders(),
-      body: jsonEncode({'reservationStatus': status}),
-    ).timeout(
-      const Duration(seconds: 15),
-      onTimeout: () {
-        print('API: updateReservationStatus timed out after 15 seconds');
-        throw TimeoutException('Request timed out after 15 seconds');
+      headers: {
+        ...await _authHeaders(),
+        'Content-Type': 'application/json',
       },
-    );
+      body: jsonEncode({
+        'reservationStatus': status,
+        'reservationstatus': status,
+      }),
+    ).timeout(const Duration(seconds: 30));
 
     print('API: updateReservationStatus response status: ${response.statusCode}');
-    if (response.statusCode != 200) {
-      print('API: updateReservationStatus failed with status ${response.statusCode}: ${response.body}');
-      throw Exception('Failed to update reservation status: ${response.statusCode}');
+    print('API: updateReservationStatus response body: ${response.body}');
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        response.body.isNotEmpty
+            ? response.body
+            : 'Failed to update reservation status: ${response.statusCode}',
+      );
     }
 
-    return jsonDecode(response.body);
+    if (response.body.trim().isEmpty) {
+      return {'success': true};
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
   } catch (error) {
     print('API error updating reservation status: $error');
     rethrow;
   }
 }
 
+// CALCULATE BOOKING PRICE
+Future<Map<String, dynamic>> calculateBookingPrice(
+  String checkInDate,
+  String checkOutDate,
+  double basePrice,
+  int propertyid,
+) async {
+  final response = await http.post(
+    Uri.parse('$API_URL/calculate-price'),
+    headers: {
+      ...await _authHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: jsonEncode({
+      'checkInDate': checkInDate,
+      'checkOutDate': checkOutDate,
+      'basePrice': basePrice,
+      'propertyid': propertyid,
+    }),
+  );
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode != 200) {
+    throw Exception(data['message'] ?? 'Failed to calculate dynamic price');
+  }
+
+  return data;
+}
+
 // Cart
 Future<List<dynamic>> fetchCart() async {
   final userid = await Session.getUserId();
-  
-  try {
-    if (userid == null) {
-      print('API: User ID not found in session, returning empty cart');
-      return [];
-    }
 
-    print('API: Fetching cart for userid: $userid');
-    final response = await http.get(
-      Uri.parse('$API_URL/cart?userid=$userid'),
-      headers: await _authHeaders(),
-    );
-
-    print('API: Cart response status: ${response.statusCode}');
-
-    // 404 means no cart items found - that's okay
-    if (response.statusCode == 404) {
-      print('API: No cart items found (404), returning empty list');
-      return [];
-    }
-
-    if (response.statusCode != 200) {
-      print('API: Unexpected status ${response.statusCode}, returning empty list');
-      return [];
-    }
-
-    final data = jsonDecode(response.body);
-    
-    // Try different possible keys
-    if (data['reservations'] != null && data['reservations'] is List) {
-      print('API: Found ${(data['reservations'] as List).length} cart items');
-      return data['reservations'];
-    } else if (data is List) {
-      print('API: Response is direct list with ${data.length} cart items');
-      return data;
-    }
-    
-    return [];
-  } catch (error) {
-    print('API error fetching cart: $error');
-    return [];
+  if (userid == null) {
+    throw Exception('User ID not found. Please login again.');
   }
-}
 
-// Get property owner's PayPal ID
-Future<Map<String, dynamic>> getPropertyOwnerPayPalId(int propertyId) async {
-  try {
-    final response = await http.get(
-      Uri.parse('$API_URL/property/owner-paypal/$propertyId'),
-      headers: await _authHeaders(),
+  final response = await http.get(
+    Uri.parse('$API_URL/cart?userid=${Uri.encodeComponent(userid.toString())}'),
+    headers: await _authHeaders(),
+  );
+
+  print('API: Cart response status: ${response.statusCode}');
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception(
+      'Failed to fetch reservations (${response.statusCode}): ${response.body}',
     );
-    
-    if (response.statusCode != 200) {
-      throw Exception('Failed to fetch property owner PayPal ID');
-    }
-    
-    final data = jsonDecode(response.body);
-
-    return {
-      'payPalId': data['payPalId'],
-      'ownerName': data['ownerName']
-    };
-  } catch (error) {
-    print('API error fetching PayPal ID: $error');
-    rethrow;
   }
+
+  final data = jsonDecode(response.body);
+  return data['reservations'] ?? [];
 }
 
 // Remove Reservation
@@ -1490,7 +1540,8 @@ Future<Map<String, dynamic>> fetchBookLog(int userid) async {
 }
 
 // Fetch Book and Pay Logs (for admin/moderator/owner)
-Future<List<dynamic>> fetchBookAndPayLogs(int userid, [String usergroup = '']) async {
+Future<List<dynamic>> fetchBookAndPayLogs(int userid) async {
+  // Try different possible endpoint paths
   final endpoints = [
     '/book-and-pay-log',
     '/users/book-and-pay-log',
@@ -1501,10 +1552,9 @@ Future<List<dynamic>> fetchBookAndPayLogs(int userid, [String usergroup = '']) a
 
   for (final endpoint in endpoints) {
     try {
-      final params = 'userid=${Uri.encodeComponent(userid.toString())}${usergroup.isNotEmpty ? '&usergroup=${Uri.encodeComponent(usergroup)}' : ''}';
-      print('API: Trying endpoint: $endpoint?$params');
+      print('API: Trying endpoint: $endpoint?userid=$userid');
       final response = await http.get(
-        Uri.parse('$API_URL$endpoint?$params'),
+        Uri.parse('$API_URL$endpoint?userid=$userid'),
         headers: await _authHeaders(),
       ).timeout(
         const Duration(seconds: 10),
@@ -1516,6 +1566,7 @@ Future<List<dynamic>> fetchBookAndPayLogs(int userid, [String usergroup = '']) a
       print('API: Response status: ${response.statusCode}');
       print('API: Response content-type: ${response.headers['content-type']}');
 
+      // Check if response is HTML (404 error page)
       final contentType = response.headers['content-type'] ?? '';
       final bodyStart = response.body.trim();
       if (contentType.contains('text/html') || bodyStart.startsWith('<!DOCTYPE') || bodyStart.startsWith('<html')) {
@@ -1524,24 +1575,31 @@ Future<List<dynamic>> fetchBookAndPayLogs(int userid, [String usergroup = '']) a
       }
 
       if (response.statusCode != 200) {
+        // Try to parse error message if it's JSON
         try {
           final errorData = jsonDecode(response.body);
           print('API: Error response from $endpoint: ${errorData['message'] ?? 'Unknown error'}');
+          // Don't throw yet, try next endpoint
+          continue;
         } catch (e) {
+          // If not JSON, it might be HTML or plain text
           print('API: Non-200 status (${response.statusCode}) with non-JSON response from $endpoint, trying next endpoint...');
+          continue;
         }
-        continue;
       }
 
+      // Try to parse JSON
       try {
+        // First, let's see what we're getting
         final responseBody = response.body;
         print('API: Response body length: ${responseBody.length}');
         print('API: Response body preview (first 500 chars): ${responseBody.length > 500 ? responseBody.substring(0, 500) : responseBody}');
-
+        
         final data = jsonDecode(responseBody);
         print('API: Successfully parsed JSON response from $endpoint');
         print('API: Response type: ${data.runtimeType}');
-
+        
+        // Handle different response formats - check List first to avoid index errors
         if (data is List) {
           print('API: Response is direct list with ${data.length} items');
           try {
@@ -1554,19 +1612,21 @@ Future<List<dynamic>> fetchBookAndPayLogs(int userid, [String usergroup = '']) a
             print('API: Error accessing first item: $e');
           }
           try {
-            return List<dynamic>.from(data);
+            return List<dynamic>.from(data); // Ensure it's a proper List
           } catch (e) {
             print('API: Error converting to List: $e');
-            if (data is List) return data;
+            // If conversion fails, try to return as-is if it's already a List
+            if (data is List) {
+              return data;
+            }
             rethrow;
           }
         } else if (data is Map) {
           print('API: Response is a Map with keys: ${data.keys.toList()}');
+          // If it's a Map, check for nested arrays
           if (data.containsKey('bookAndPayLogs') && data['bookAndPayLogs'] is List) {
             print('API: Found bookAndPayLogs with ${(data['bookAndPayLogs'] as List).length} items');
             return List<dynamic>.from(data['bookAndPayLogs'] as List);
-          } else if (data.containsKey('bookLogs') && data['bookLogs'] is List) {
-            return List<dynamic>.from(data['bookLogs'] as List);
           } else if (data.containsKey('logs') && data['logs'] is List) {
             print('API: Found logs with ${(data['logs'] as List).length} items');
             return List<dynamic>.from(data['logs'] as List);
@@ -1582,10 +1642,12 @@ Future<List<dynamic>> fetchBookAndPayLogs(int userid, [String usergroup = '']) a
       }
     } catch (error) {
       print('API: Error with endpoint $endpoint: $error');
+      // Continue to next endpoint
       continue;
     }
   }
 
+  // If all endpoints failed, throw an error with helpful message
   throw Exception(
     'Failed to fetch book and pay logs: All endpoints returned errors.\n'
     'Tried endpoints: ${endpoints.join(", ")}\n'
@@ -1594,122 +1656,7 @@ Future<List<dynamic>> fetchBookAndPayLogs(int userid, [String usergroup = '']) a
   );
 }
 
-// Fetch Ledger Records
-Future<Map<String, dynamic>> fetchLedger(int userid, {
-  int page = 1,
-  int limit = 10,
-  String search = '',
-  String status = '',
-  String selectedDate = '',
-  String sortOrder = 'reservation_latest',
-}) async {
-  try {
-    final uri = Uri.parse('$API_URL/ledger').replace(queryParameters: {
-      'userid': userid.toString(),
-      'page': page.toString(),
-      'limit': limit.toString(),
-      'search': search,
-      'status': status,
-      'selectedDate': selectedDate,
-      'sortOrder': sortOrder,
-    });
-    final response = await http.get(uri, headers: await _authHeaders());
-    if (response.statusCode != 200) {
-      throw Exception('Failed to fetch ledger (${response.statusCode})');
-    }
-    return jsonDecode(response.body) as Map<String, dynamic>;
-  } catch (error) {
-    print('API error fetching ledger: $error');
-    rethrow;
-  }
-}
-
-// Fetch Ledger Summary
-Future<Map<String, dynamic>> fetchLedgerSummary(int userid, {String selectedDate = ''}) async {
-  try {
-    final uri = Uri.parse('$API_URL/ledger/summary').replace(queryParameters: {
-      'userid': userid.toString(),
-      'selectedDate': selectedDate,
-    });
-    final response = await http.get(uri, headers: await _authHeaders());
-    if (response.statusCode != 200) {
-      throw Exception('Failed to fetch ledger summary (${response.statusCode})');
-    }
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    return data['summary'] as Map<String, dynamic>? ?? {};
-  } catch (error) {
-    print('API error fetching ledger summary: $error');
-    rethrow;
-  }
-}
-
-// Fetch Finance Ledger Card (summary + monthly breakdown)
-Future<Map<String, dynamic>> fetchFinanceLedgerCard(int userid) async {
-  try {
-    final uri = Uri.parse('$API_URL/finance/ledger-card').replace(queryParameters: {
-      'userid': userid.toString(),
-    });
-    final response = await http.get(uri, headers: await _authHeaders());
-    if (response.statusCode != 200) {
-      print('API: Finance ledger-card returned status ${response.statusCode}');
-      return {};
-    }
-    return jsonDecode(response.body) as Map<String, dynamic>;
-  } catch (error) {
-    print('API error fetching finance ledger card: $error');
-    return {};
-  }
-}
-
-// Fetch Finance Review Chart (summary + monthly breakdown)
-Future<Map<String, dynamic>> fetchFinanceReviewChart(int userid) async {
-  try {
-    final uri = Uri.parse('$API_URL/finance/review-chart').replace(queryParameters: {
-      'userid': userid.toString(),
-    });
-    final response = await http.get(uri, headers: await _authHeaders());
-    if (response.statusCode != 200) {
-      print('API: Finance review-chart returned status ${response.statusCode}');
-      return {};
-    }
-    return jsonDecode(response.body) as Map<String, dynamic>;
-  } catch (error) {
-    print('API error fetching finance review chart: $error');
-    return {};
-  }
-}
-
-// Fetch Finance Chart Data
-Future<List<dynamic>> fetchFinanceChart(int userid, {
-  String chartType = 'booking_revenue',
-  String year = '',
-  String month = '',
-}) async {
-  try {
-    final params = <String, String>{
-      'userid': userid.toString(),
-      'chartType': chartType,
-    };
-    if (year.isNotEmpty) params['year'] = year;
-    if (month.isNotEmpty) params['month'] = month;
-
-    final uri = Uri.parse('$API_URL/users/finance/chart').replace(queryParameters: params);
-    final response = await http.get(uri, headers: await _authHeaders());
-    if (response.statusCode != 200) return [];
-    final data = jsonDecode(response.body);
-    if (data is List) return data;
-    if (data is Map) {
-      if (data['data'] is List) return data['data'] as List;
-      if (data['chart'] is List) return data['chart'] as List;
-    }
-    return [];
-  } catch (error) {
-    print('API error fetching finance chart: $error');
-    return [];
-  }
-}
-
-// Fetch Finance
+// Fetch Finance 
 Future<Map<String, dynamic>> fetchFinance(int userid, {bool paidOnly = false}) async {
   try {
     print('API: Fetching finance for userid: $userid, paidOnly: $paidOnly');
@@ -2237,20 +2184,20 @@ Future<List<dynamic>> auditTrails(int userid) async {
 }
 
 // Submit a review for a property
-Future<Map<String, dynamic>> submitReview(Map<String, dynamic> reviewData) async {
-  final userid = await Session.getUserId();
-  final creatorUsername = 'user_${userid ?? 0}'; // TODO: Get actual username from session
-  
+Future<Map<String, dynamic>> submitReview(
+  Map<String, dynamic> reviewData,
+  String username,
+) async {
   try {
     final response = await http.post(
-      Uri.parse('$API_URL/reviews?creatorUsername=$creatorUsername'),
+      Uri.parse('$API_URL/reviews?creatorUsername=${Uri.encodeComponent(username)}'),
       headers: await _authHeaders(),
       body: jsonEncode(reviewData),
     );
 
     print('Response status: ${response.statusCode}');
-    
-    if (response.statusCode != 200) {
+
+    if (response.statusCode != 200 && response.statusCode != 201) {
       final errorData = jsonDecode(response.body);
       print('Server error response: $errorData');
       throw Exception(errorData['message'] ?? 'Failed to submit review');
@@ -2260,55 +2207,6 @@ Future<Map<String, dynamic>> submitReview(Map<String, dynamic> reviewData) async
   } catch (error) {
     print('API error: $error');
     rethrow;
-  }
-}
-
-// Fetch all reviews for a moderator/owner (by userid)
-Future<List<dynamic>> fetchOwnerReviews(int userid) async {
-  try {
-    final response = await http.get(
-      Uri.parse('$API_URL/owner-reviews/$userid'),
-      headers: await _authHeaders(),
-    );
-    if (response.statusCode != 200) {
-      print('API: owner-reviews returned ${response.statusCode}');
-      return [];
-    }
-    final data = jsonDecode(response.body);
-    if (data is List) return data;
-    return [];
-  } catch (error) {
-    print('API error fetching owner reviews: $error');
-    return [];
-  }
-}
-
-// Reply to a review (PUT with owner_reply text, or null to delete reply)
-Future<bool> replyToReview(int reviewId, String? reply) async {
-  try {
-    final response = await http.put(
-      Uri.parse('$API_URL/reviews/$reviewId/reply'),
-      headers: await _authHeaders(),
-      body: jsonEncode({'owner_reply': reply}),
-    );
-    return response.statusCode == 200;
-  } catch (error) {
-    print('API error replying to review: $error');
-    return false;
-  }
-}
-
-// Delete a review entirely
-Future<bool> deleteReview(int reviewId) async {
-  try {
-    final response = await http.delete(
-      Uri.parse('$API_URL/reviews/$reviewId'),
-      headers: await _authHeaders(),
-    );
-    return response.statusCode == 200;
-  } catch (error) {
-    print('API error deleting review: $error');
-    return false;
   }
 }
 
@@ -2330,28 +2228,62 @@ Future<Map<String, dynamic>> fetchReviews(int propertyid) async {
   }
 }
 
+// Delete a review
+Future<Map<String, dynamic>> deleteReview(dynamic reviewId, String username) async {
+  final response = await http.delete(
+    Uri.parse('$API_URL/reviews/$reviewId'),
+    headers: await _authHeaders(),
+  );
+
+  Map<String, dynamic> data = {};
+  try {
+    data = jsonDecode(response.body);
+  } catch (_) {
+    data = {};
+  }
+
+  if (response.statusCode != 200) {
+    throw Exception(data['message'] ?? 'Failed to delete review');
+  }
+
+  return data;
+}
+
+// Fetch all clusters
 Future<Map<String, dynamic>> fetchClusters() async {
   try {
     print('API: Fetching clusters... (timestamp: ${DateTime.now().millisecondsSinceEpoch})');
     final response = await http.get(
       Uri.parse('$API_URL/clusters?_t=${DateTime.now().millisecondsSinceEpoch}'),
-      headers: {
+      headers: await _authHeaders({
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0',
-      },
+      }),
     );
-    
+
     print('API: Clusters response status: ${response.statusCode}');
-    
+
     if (response.statusCode != 200) {
       print('API: Clusters returned status ${response.statusCode}, returning empty');
       return {'clusters': []};
     }
-    
+
     final data = jsonDecode(response.body);
     print('API: Clusters data keys: ${data is Map ? (data as Map).keys.toList() : "direct list"}');
-    return data is Map ? data as Map<String, dynamic> : {'clusters': data};
+    if (data is List) return {'clusters': data};
+    if (data is Map) {
+      final m = data as Map<String, dynamic>;
+      // Normalise any of the common key names → 'clusters'
+      if (m.containsKey('clusters')) return m;
+      if (m.containsKey('data')) return {'clusters': m['data']};
+      if (m.containsKey('result')) return {'clusters': m['result']};
+      if (m.containsKey('cluster')) return {'clusters': m['cluster']};
+      // If map contains a single list value, assume that is the list
+      final firstList = m.values.whereType<List>().toList();
+      if (firstList.isNotEmpty) return {'clusters': firstList.first};
+    }
+    return {'clusters': []};
   } catch (error) {
     print('Error fetching clusters: $error');
     return {'clusters': []};
@@ -2479,149 +2411,47 @@ Future<Map<String, dynamic>> fetchCategories() async {
   }
 }
 
-// Create PayPal Order
-Future<Map<String, dynamic>> createPayPalOrder({
-  required int reservationId,
-  required int propertyId,
-  required double amount,
-  required String currency,
-}) async {
-  final userid = await Session.getUserId();
-  
+// Fetch current commission rate
+Future<double> fetchCommissionRate() async {
   try {
-    final response = await http.post(
-      Uri.parse('$API_URL/paypal/create-order'),
-      headers: await _authHeaders(),
-      body: jsonEncode({
-        'reservationId': reservationId,
-        'propertyId': propertyId,
-        'amount': amount,
-        'currency': currency,
-        'userid': userid,
-      }),
+    final response = await http.get(
+      Uri.parse('$API_URL/api/commission'),
     );
 
-    print('═══════════════════════════════════════');
-    print('API: PayPal create-order request');
-    print('API: URL: $API_URL/paypal/create-order');
-    print('API: Response status: ${response.statusCode}');
-    print('API: Response headers: ${response.headers}');
-    final bodyPreview = response.body.length > 500 
-        ? '${response.body.substring(0, 500)}...' 
-        : response.body;
-    print('API: Response body: $bodyPreview');
-    print('═══════════════════════════════════════');
-
-    // Check for 404 or other error status codes first
-    if (response.statusCode == 404) {
-      print('API ERROR: PayPal endpoint returned 404 - endpoint does not exist');
-      throw Exception('PayPal integration not available: Backend endpoint /paypal/create-order not found (404). Please ensure the PayPal endpoint is implemented on the backend.');
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Failed to fetch commission');
     }
 
-    // Check if response is HTML (error page)
-    if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
-      print('API ERROR: PayPal endpoint returned HTML instead of JSON - endpoint may not exist or server error');
-      throw Exception('PayPal integration not available: Backend endpoint not found or returned HTML. Please check if /paypal/create-order endpoint exists.');
-    }
-
-    // Parse response
-    Map<String, dynamic> responseData;
-    try {
-      responseData = jsonDecode(response.body);
-      } catch (e) {
-      print('API: Failed to parse JSON response: $e');
-      throw Exception('Invalid JSON response from server');
-    }
-
-    // Check for success field (backend returns success: true/false)
-    if (responseData['success'] == false || response.statusCode != 200 && response.statusCode != 201) {
-      final errorMsg = responseData['message'] ?? 'Failed to create PayPal order';
-      final errorDetail = responseData['error'] ?? '';
-      
-      // Check for PayPal authentication/configuration errors
-      final combinedError = '$errorMsg $errorDetail'.toLowerCase();
-      
-      // Check if error might be about missing owner PayPal email
-      if (combinedError.contains('owner') && combinedError.contains('paypal')) {
-        throw Exception(
-          'PayPal payment unavailable: The property owner has not set up their PayPal email. '
-          'Please contact the property owner to add their PayPal email in their profile settings.'
-        );
-      }
-      
-      // Detect specific PayPal authentication errors
-      if (combinedError.contains('invalid_client') || 
-          combinedError.contains('client authentication failed') ||
-          combinedError.contains('401')) {
-        // Owner PayPal email is verified as set, so this is a backend PayPal OAuth configuration issue
-        throw Exception(
-          'PayPal payment error: Backend PayPal authentication failed. '
-          'The backend PayPal Client ID and Secret may be missing or incorrect for the payment endpoint. '
-          'Please contact support to verify the backend PayPal configuration.'
-        );
-      }
-      
-      // Check for other PayPal configuration errors
-      if (combinedError.contains('paypal') || 
-          combinedError.contains('client') ||
-          combinedError.contains('not configured') ||
-          combinedError.contains('oauth')) {
-        throw Exception('PayPal integration not available: $errorMsg${errorDetail.isNotEmpty ? ' - $errorDetail' : ''}');
-      }
-      
-      throw Exception(errorMsg);
-    }
-
-    // Return successful response (backend returns success: true with orderId, approvalUrl, etc.)
-    return responseData;
+    final data = jsonDecode(response.body);
+    return double.tryParse(data['commission_rate'].toString()) ?? 0.07;
   } catch (error) {
-    print('API error creating PayPal order: $error');
-    rethrow;
+    print("Error fetching commission rate: $error");
+    return 0.07; // Fallback to 7%
   }
 }
 
-// Capture PayPal Order
-Future<Map<String, dynamic>> capturePayPalOrder({
-  required String orderId,
-  required int reservationId,
-}) async {
-  final userid = await Session.getUserId();
-  
+// Update the commission rate
+Future<dynamic> updateCommissionRate(double newRateDecimal, dynamic userid) async {
   try {
     final response = await http.post(
-      Uri.parse('$API_URL/paypal/capture-order'),
-      headers: await _authHeaders(),
+      Uri.parse('$API_URL/api/commission'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: jsonEncode({
-        'orderId': orderId,
-        'reservationId': reservationId,
+        'newRate': newRateDecimal,
         'userid': userid,
       }),
     );
 
-    print('API: PayPal capture-order response status: ${response.statusCode}');
-    
-    // Check if response is HTML (error page)
-    if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
-      throw Exception('Backend endpoint not found or returned HTML. Please check if /paypal/capture-order endpoint exists.');
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final errorData = jsonDecode(response.body);
+      throw Exception(errorData['error'] ?? "Failed to update commission rate");
     }
 
-    // Parse response
-    Map<String, dynamic> responseData;
-      try {
-      responseData = jsonDecode(response.body);
-      } catch (e) {
-      throw Exception('Invalid JSON response from server');
-    }
-
-    // Check for success field (backend returns success: true/false)
-    if (responseData['success'] == false || response.statusCode != 200 && response.statusCode != 201) {
-      throw Exception(responseData['message'] ?? 'Failed to capture PayPal order');
-    }
-
-    // Return successful response
-    return responseData;
+    return jsonDecode(response.body);
   } catch (error) {
-    print('API error capturing PayPal order: $error');
+    print("Backend Error Details: $error");
     rethrow;
   }
 }
@@ -2770,7 +2600,7 @@ Future<bool> markAllNotificationsAsRead() async {
 // Delete Notification
 Future<bool> deleteNotification(int notificationId) async {
   final userid = await Session.getUserId();
-
+  
   try {
     if (userid == null) {
       throw Exception('User ID not found');
@@ -2793,62 +2623,641 @@ Future<bool> deleteNotification(int notificationId) async {
   }
 }
 
-// Fetch Blackout Dates (for moderator — filtered to own properties server-side)
-Future<List<dynamic>> fetchBlackouts(int userid, String usergroup) async {
+// Dynamic Pricing Settings
+Future<dynamic> fetchPricingSettings() async {
+  final response = await http.get(Uri.parse('$API_URL/pricing-settings'));
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception('Failed to fetch pricing settings');
+  }
+
+  return jsonDecode(response.body);
+}
+
+Future<dynamic> savePricingSettings(Map<String, dynamic> settings) async {
+  final response = await http.post(
+    Uri.parse('$API_URL/pricing-settings'),
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode(settings),
+  );
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception('Failed to save pricing settings');
+  }
+
+  return jsonDecode(response.body);
+}
+
+// Festive and holiday pricing
+// Fetch official Sarawak/Malaysia holidays from backend scraper
+Future<List<dynamic>> fetchHolidaysFromApi(int year) async {
+  final response = await http.get(
+    Uri.parse('$API_URL/fetch-holidays/$year'),
+    headers: await _authHeaders(),
+  );
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode != 200) {
+    throw Exception(data['message'] ?? 'Failed to fetch official holidays');
+  }
+
+  return data['holidays'] ?? [];
+}
+
+// Fetch saved Official Holidays from PostgreSQL database
+Future<dynamic> fetchHolidaysFromDb() async {
+  final response = await http.get(
+    Uri.parse('$API_URL/manage-holidays'),
+    headers: await _authHeaders(),
+  );
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode != 200) {
+    throw Exception(data['message'] ?? 'Failed to fetch saved holidays from database');
+  }
+
+  return data;
+}
+
+// Save Official Holidays & Rates to PostgreSQL database
+Future<Map<String, dynamic>> saveHolidaysToDb(List<dynamic> holidays) async {
+  final response = await http.post(
+    Uri.parse('$API_URL/manage-holidays'),
+    headers: {
+      ...await _authHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: jsonEncode({
+      'holidays': holidays,
+    }),
+  );
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode != 200 && response.statusCode != 201) {
+    throw Exception(data['message'] ?? 'Failed to save holidays to database');
+  }
+
+  return data;
+}
+
+// Fetch saved Custom Festive Periods from PostgreSQL database
+Future<dynamic> fetchFestiveFromDb() async {
+  final response = await http.get(
+    Uri.parse('$API_URL/manage-festive'),
+    headers: await _authHeaders(),
+  );
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode != 200) {
+    throw Exception(data['message'] ?? 'Failed to fetch festive periods from database');
+  }
+
+  return data;
+}
+
+// Save Custom Festive Periods & Rates to PostgreSQL database
+Future<Map<String, dynamic>> saveFestiveToDb(List<dynamic> festivePeriods) async {
+  final response = await http.post(
+    Uri.parse('$API_URL/manage-festive'),
+    headers: {
+      ...await _authHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: jsonEncode({
+      'festivePeriods': festivePeriods,
+    }),
+  );
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode != 200 && response.statusCode != 201) {
+    throw Exception(data['message'] ?? 'Failed to save festive periods to database');
+  }
+
+  return data;
+}
+
+// Soldout Dates
+Future<List<String>> fetchPropertySoldOutDates({
+  required int propertyId,
+  int days = 90,
+}) async {
+  final uri = Uri.parse('$API_URL/property-sold-out-dates').replace(
+    queryParameters: {
+      'propertyid': propertyId.toString(),
+      'days': days.toString(),
+    },
+  );
+
+  final response = await http.get(uri);
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode != 200) {
+    throw Exception(data['message'] ?? 'Failed to fetch sold-out dates');
+  }
+
+  final list = data['soldOutDates'] ?? [];
+  return List<String>.from(list.map((e) => '$e'));
+}
+
+// Blackout Dates
+Future<dynamic> fetchBlackoutDates() async {
+  final userid = await Session.getUserId();
+  final userGroup = await Session.getUserGroup();
+
+  final response = await http.get(
+    Uri.parse(
+      '$API_URL/blackouts'
+      '?userid=${Uri.encodeComponent(userid?.toString() ?? '')}'
+      '&usergroup=${Uri.encodeComponent(userGroup?.toString() ?? '')}',
+    ),
+  );
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception('Failed to fetch blackout dates');
+  }
+
+  return jsonDecode(response.body);
+}
+
+Future<dynamic> createBlackout(Map<String, dynamic> blackoutData) async {
+  final userid = await Session.getUserId() ?? '';
+  final username = await Session.getUsername() ?? '';
+  final userGroup = await Session.getUserGroup() ?? '';
+
+  final response = await http.post(
+    Uri.parse('$API_URL/blackouts'),
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode({
+      ...blackoutData,
+      'property_name': blackoutData['propertyName'] ?? blackoutData['property_name'],
+      'created_by_userid': userid,
+      'created_by_username': username,
+      'created_by_role': userGroup.toLowerCase().contains('admin') ? 'admin' : 'moderator',
+    }),
+  );
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode == 409) {
+    return {
+      'isConflict': true,
+      'conflicts': data['conflicts'] ?? [],
+      'message': data['message'] ?? 'Conflict detected',
+    };
+  }
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception(data['message'] ?? 'Failed to create blackout');
+  }
+
+  return data;
+}
+
+Future<dynamic> overrideBlackout(dynamic blackoutId, String overrideReason) async {
+  final userid = await Session.getUserId() ?? '';
+  final username = await Session.getUsername() ?? '';
+  final userGroup = await Session.getUserGroup() ?? '';
+
+  final response = await http.patch(
+    Uri.parse('$API_URL/blackouts/$blackoutId/override'),
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode({
+      'overrideReason': overrideReason,
+      'override_by_userid': userid,
+      'override_by_username': username,
+      'override_by_role': userGroup,
+    }),
+  );
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception(data['message'] ?? 'Failed to override blackout');
+  }
+
+  return data;
+}
+
+Future<dynamic> deleteBlackout(dynamic blackoutId) async {
+  final userid = (await Session.getUserId())?.toString() ?? '';
+  final userGroup = (await Session.getUserGroup())?.toString() ?? '';
+
+  final response = await http.delete(
+    Uri.parse(
+      '$API_URL/blackouts/$blackoutId'
+      '?userid=${Uri.encodeComponent(userid)}'
+      '&usergroup=${Uri.encodeComponent(userGroup)}',
+    ),
+  );
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception(data['message'] ?? 'Failed to delete blackout');
+  }
+
+  return data;
+}
+
+// Submit FAQ Question - Customer / Moderator
+Future<Map<String, dynamic>> submitSupportQuestion({
+  required String role,
+  required String name,
+  required String email,
+  required String category,
+  required String question,
+  int? userid,
+  File? attachment,
+}) async {
+  final uri = Uri.parse('$API_URL/support-question');
+
+  final request = http.MultipartRequest('POST', uri);
+
+  request.fields['role'] = role;
+  request.fields['name'] = name;
+  request.fields['email'] = email;
+  request.fields['category'] = category;
+  request.fields['question'] = question;
+
+  if (userid != null) {
+    request.fields['userid'] = userid.toString();
+  }
+
+  if (attachment != null) {
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'file',
+        attachment.path,
+      )
+    );
+  }
+
+  final streamedResponse = await request.send();
+  final response = await http.Response.fromStream(streamedResponse);
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode != 200 && response.statusCode != 201) { 
+    throw Exception(data['message'] ?? 'Failed to submit question');
+  }
+
+  return data;
+}
+
+// Admin - Fetch all submitted customer/moderator questions
+Future<Map<String, dynamic>> fetchSupportQuestions({
+  String role = 'all',
+  String status = 'all',
+  String search = '',
+}) async {
+  final params = {
+    'role': role,
+    'status': status,
+    'search': search,
+  };
+
+  final uri = Uri.parse('$API_URL/admin/faq/questions').replace(
+    queryParameters: params,
+  );
+
+  final response = await http.get(uri);
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode < 200 ||
+      response.statusCode >= 300 ||
+      data['success'] == false) {
+    throw Exception(data['message'] ?? 'Failed to fetch support questions');
+  }
+
+  return Map<String, dynamic>.from(data);
+}
+
+// Admin - Fetch FAQ stats
+Future<Map<String, dynamic>> fetchFaqStats() async {
+  final response = await http.get(
+    Uri.parse('$API_URL/admin/faq/stats'),
+  );
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode < 200 ||
+      response.statusCode >= 300 ||
+      data['success'] == false) {
+    throw Exception(data['message'] ?? 'Failed to fetch FAQ stats');
+  }
+
+  return Map<String, dynamic>.from(data);
+}
+
+// Public Customer FAQ - Fetch published FAQs
+Future<Map<String, dynamic>> fetchPublishedFaqs({
+  String category = 'all',
+  String search = '',
+}) async {
+  final params = {
+    'category': category,
+    'search': search,
+  };
+
+  final uri = Uri.parse('$API_URL/faqs').replace(
+    queryParameters: params,
+  );
+
+  final response = await http.get(uri);
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode < 200 ||
+      response.statusCode >= 300 ||
+      data['success'] == false) {
+    throw Exception(data['message'] ?? 'Failed to fetch published FAQs');
+  }
+
+  return Map<String, dynamic>.from(data);
+}
+
+// Admin - Fetch all published FAQs
+Future<Map<String, dynamic>> fetchAdminPublishedFaqs() async {
+  final response = await http.get(
+    Uri.parse('$API_URL/admin/faq/published'),
+  );
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode < 200 ||
+      response.statusCode >= 300 ||
+      data['success'] == false) {
+    throw Exception(data['message'] ?? 'Failed to fetch admin published FAQs');
+  }
+
+  return Map<String, dynamic>.from(data);
+}
+
+// Admin - Mark question as reviewed
+Future<Map<String, dynamic>> reviewFaqQuestion(
+  int questionid,
+  Map<String, dynamic> payload,
+) async {
+  final response = await http.patch(
+    Uri.parse('$API_URL/admin/faq/questions/$questionid/review'),
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode(payload),
+  );
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode < 200 ||
+      response.statusCode >= 300 ||
+      data['success'] == false) {
+    throw Exception(data['message'] ?? 'Failed to review FAQ question');
+  }
+
+  return Map<String, dynamic>.from(data);
+}
+
+// Admin - Publish question to FAQ
+Future<Map<String, dynamic>> publishFaqQuestion(
+  int questionid,
+  Map<String, dynamic> payload,
+) async {
+  final response = await http.post(
+    Uri.parse('$API_URL/admin/faq/questions/$questionid/publish'),
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode(payload),
+  );
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode < 200 ||
+      response.statusCode >= 300 ||
+      data['success'] == false) {
+    throw Exception(data['message'] ?? 'Failed to publish FAQ question');
+  }
+
+  return Map<String, dynamic>.from(data);
+}
+
+// Admin - Reject FAQ question
+Future<Map<String, dynamic>> rejectFaqQuestion(
+  int questionid,
+  Map<String, dynamic> payload,
+) async {
+  final response = await http.patch(
+    Uri.parse('$API_URL/admin/faq/questions/$questionid/reject'),
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode(payload),
+  );
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode < 200 ||
+      response.statusCode >= 300 ||
+      data['success'] == false) {
+    throw Exception(data['message'] ?? 'Failed to reject FAQ question');
+  }
+
+  return Map<String, dynamic>.from(data);
+}
+
+// Admin - Hide/Delete published FAQ
+Future<Map<String, dynamic>> deletePublishedFaq(int faqid) async {
+  final response = await http.delete(
+    Uri.parse('$API_URL/admin/faq/published/$faqid'),
+  );
+
+  final data = jsonDecode(response.body);
+
+  if (response.statusCode < 200 ||
+      response.statusCode >= 300 ||
+      data['success'] == false) {
+    throw Exception(data['message'] ?? 'Failed to delete published FAQ');
+  }
+
+  return Map<String, dynamic>.from(data);
+}
+
+// Get property owner's PayPal ID
+Future<Map<String, dynamic>> getPropertyOwnerPayPalId(int propertyId) async {
   try {
-    final url = '$API_URL/blackouts?userid=$userid&usergroup=${Uri.encodeComponent(usergroup)}';
-    print('API: Fetching blackouts from $url');
-    final response = await http.get(Uri.parse(url), headers: await _authHeaders());
-    print('API: fetchBlackouts status ${response.statusCode}');
-    if (response.statusCode == 404) return [];
-    if (response.statusCode != 200) {
-      print('API: fetchBlackouts unexpected status ${response.statusCode}');
-      return [];
-    }
+    final response = await http.get(
+      Uri.parse('$API_URL/property/owner-paypal/$propertyId'),
+      headers: await _authHeaders(),
+    );
+
     final data = jsonDecode(response.body);
-    if (data is List) return data;
-    if (data['blackouts'] is List) return data['blackouts'];
-    if (data['data'] is List) return data['data'];
-    return [];
+
+    if (response.statusCode != 200) {
+      throw Exception(data['message'] ?? 'Failed to fetch property owner PayPal ID');
+    }
+
+    return {
+      'payPalId': data['payPalId'],
+      'ownerName': data['ownerName'],
+    };
   } catch (error) {
-    print('API error fetching blackouts: $error');
-    return [];
+    print('API error fetching PayPal ID: $error');
+    rethrow;
   }
 }
 
-// Create a Blackout Date
-Future<Map<String, dynamic>> createBlackout(Map<String, dynamic> blackoutData) async {
+// Create PayPal Order
+Future<Map<String, dynamic>> createPayPalOrder({
+  required int reservationId,
+  required int propertyId,
+  required double amount,
+  String currency = 'MYR',
+}) async {
+  final userid = await Session.getUserId();
+
   try {
     final response = await http.post(
-      Uri.parse('$API_URL/blackouts'),
-      headers: await _authHeaders(),
-      body: jsonEncode(blackoutData),
+      Uri.parse('$API_URL/paypal/create-order'),
+      headers: {
+        ...await _authHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'reservationId': reservationId,
+        'propertyId': propertyId,
+        'amount': double.parse(amount.toStringAsFixed(2)),
+        'currency': currency,
+        'userid': userid,
+      }),
     );
-    if (response.statusCode != 200 && response.statusCode != 201) {
-      final errorData = jsonDecode(response.body);
-      throw Exception(errorData['message'] ?? errorData['error'] ?? 'Failed to create blackout');
+
+    if (response.body.trim().startsWith('<!DOCTYPE') ||
+        response.body.trim().startsWith('<html')) {
+      throw Exception(
+        'PayPal endpoint returned HTML instead of JSON. Please check backend /paypal/create-order.',
+      );
     }
-    return jsonDecode(response.body);
+
+    final Map<String, dynamic> data = jsonDecode(response.body);
+
+    if (response.statusCode == 404) {
+      throw Exception(
+        'PayPal endpoint /paypal/create-order not found on backend.',
+      );
+    }
+
+    if (data['success'] == false ||
+        (response.statusCode != 200 && response.statusCode != 201)) {
+      final errorMsg = data['message'] ?? 'Failed to create PayPal order';
+      final errorDetail = data['error'] ?? '';
+
+      throw Exception(
+        errorDetail.toString().isNotEmpty
+            ? '$errorMsg - $errorDetail'
+            : errorMsg,
+      );
+    }
+
+    if (data['orderId'] == null || data['approvalUrl'] == null) {
+      throw Exception(
+        'Invalid PayPal response. Missing orderId or approvalUrl.',
+      );
+    }
+
+    return data;
   } catch (error) {
-    print('API error creating blackout: $error');
+    print('API error creating PayPal order: $error');
     rethrow;
   }
 }
 
-// Delete a Blackout Date
-Future<bool> deleteBlackout(int blackoutId, int userid, String usergroup) async {
+// Capture PayPal Order
+Future<Map<String, dynamic>> capturePayPalOrder(String orderId) async {
   try {
-    final url = '$API_URL/blackouts/$blackoutId?userid=$userid&usergroup=${Uri.encodeComponent(usergroup)}';
-    print('API: Deleting blackout $blackoutId from $url');
-    final response = await http.delete(Uri.parse(url), headers: await _authHeaders());
-    if (response.statusCode != 200 && response.statusCode != 204) {
-      final errorData = jsonDecode(response.body);
-      throw Exception(errorData['message'] ?? 'Failed to delete blackout');
+    final response = await http.post(
+      Uri.parse('$API_URL/paypal/capture-order/$orderId'),
+      headers: {
+        ...await _authHeaders(),
+        'Content-Type': 'application/json',
+      },
+    );
+
+    if (response.body.trim().startsWith('<!DOCTYPE') ||
+        response.body.trim().startsWith('<html')) {
+      throw Exception(
+        'PayPal capture endpoint returned HTML instead of JSON. Please check backend /paypal/capture-order/$orderId.',
+      );
     }
-    return true;
+
+    final Map<String, dynamic> data = jsonDecode(response.body);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        data['message'] ?? data['error'] ?? 'Failed to capture PayPal order',
+      );
+    }
+
+    if (data['success'] == false) {
+      throw Exception(
+        data['message'] ?? data['error'] ?? 'PayPal capture failed',
+      );
+    }
+
+    return data;
   } catch (error) {
-    print('API error deleting blackout: $error');
+    print('API error capturing PayPal order: $error');
     rethrow;
   }
 }
 
+/// GET /finance/review-chart?userid=<id>
+/// Returns summary.overallRating (0–5) and per-month average ratings.
+Future<Map<String, dynamic>> fetchFinanceReviewChart(int userid) async {
+  try {
+    final uri = Uri.parse('$API_URL/finance/review-chart?userid=$userid');
+    final response = await http.get(uri, headers: await _authHeaders());
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      print('fetchFinanceReviewChart: HTTP ${response.statusCode}');
+      return {'success': false, 'summary': {}, 'monthlyData': []};
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  } catch (e) {
+    print('fetchFinanceReviewChart error: $e');
+    return {'success': false, 'summary': {}, 'monthlyData': []};
+  }
+}
+
+/// GET /finance/ledger-card?userid=<id>
+/// Returns overall summary + monthly breakdown used by the Owner dashboard.
+///
+/// Response shape:
+/// {
+///   success: true,
+///   summary: {
+///     totalRevenue, totalOperatorEarning, totalDepositPaid,
+///     totalExpectedBalance, totalCommission, totalTransactions,
+///     paidCount, partiallyPaidCount, cancelledCount, expiredCount
+///   },
+///   monthlyData: [
+///     { month, monthlyrevenue, monthlyearning, monthlydeposit,
+///       monthlyexpectedbalance, monthlycommission, monthlytransactions }
+///   ]
+/// }
+Future<Map<String, dynamic>> fetchFinanceLedgerCard(int userid) async {
+  try {
+    final uri = Uri.parse('$API_URL/finance/ledger-card?userid=$userid');
+    final response = await http.get(
+      uri,
+      headers: await _authHeaders(),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      print('fetchFinanceLedgerCard: HTTP ${response.statusCode}');
+      return {'success': false, 'summary': {}, 'monthlyData': []};
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return data;
+  } catch (e) {
+    print('fetchFinanceLedgerCard error: $e');
+    return {'success': false, 'summary': {}, 'monthlyData': []};
+  }
+}

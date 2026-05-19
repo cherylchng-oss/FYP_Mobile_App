@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../shared/colors.dart';
+import '../api.dart' as api;
 
 // ---------------------------------------------------------------------------
 // Status Bar — kept as no-op; header handles safe area internally
@@ -19,12 +20,13 @@ class OwnerStatusBar extends StatelessWidget {
 //   breaking the fixed-height Stack layout on any phone size
 // - notifCount → red badge on bell
 // ---------------------------------------------------------------------------
-class OwnerHeader extends StatelessWidget {
+class OwnerHeader extends StatefulWidget {
   final String title;
   final String? subtitle;
   final String? greeting;
   final bool showBack;
   final bool showBell;
+  // notifCount is kept for backward-compat but is ignored — live count is fetched.
   final int notifCount;
   final double bottomPadding;
 
@@ -40,21 +42,63 @@ class OwnerHeader extends StatelessWidget {
   });
 
   /// Returns the height of header content below the status bar.
-  /// Use inside a SafeArea-wrapped Stack to correctly space content:
-  ///   SizedBox(height: OwnerHeader.spacerHeight())
-  /// Formula: ~70px (16 top-pad + ~47 title+sub + 7 safety) + bottomPadding
-  static double spacerHeight({double bottomPadding = 40.0}) =>
-      70.0 + bottomPadding;
+  /// Pass [context] to get an orientation-aware value.
+  static double spacerHeight({
+    double bottomPadding = 40.0,
+    BuildContext? context,
+  }) {
+    if (context != null) {
+      final isLandscape =
+          MediaQuery.of(context).orientation == Orientation.landscape;
+      if (isLandscape) return 50.0 + (bottomPadding * 0.4);
+    }
+    return 70.0 + bottomPadding;
+  }
+
+  @override
+  State<OwnerHeader> createState() => _OwnerHeaderState();
+}
+
+class _OwnerHeaderState extends State<OwnerHeader> {
+  int _unreadCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUnreadCount();
+  }
+
+  Future<void> _fetchUnreadCount() async {
+    try {
+      final notifications = await api.fetchNotifications();
+      if (!mounted) return;
+      final unread = notifications.where((n) {
+        final m = n is Map ? n : {};
+        // treat as unread if 'is_read'/'read'/'isRead' is falsy
+        return !(m['is_read'] == true ||
+            m['read'] == true ||
+            m['isRead'] == true);
+      }).length;
+      setState(() => _unreadCount = unread);
+    } catch (_) {
+      // silently ignore — keep badge at 0
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final topPad = MediaQuery.of(context).padding.top;
-    // Lock text scale so system font-size changes don't expand the header
-    // and break the Stack spacer calculation in parent pages.
+    final mq = MediaQuery.of(context);
+    final topPad = mq.padding.top;
+    final isLandscape = mq.orientation == Orientation.landscape;
+    // In landscape, shrink vertical padding so the header doesn't eat the whole screen
+    final effectiveTopPad = isLandscape ? (topPad + 8) : (topPad + 16);
+    final effectiveBottomPad =
+        isLandscape ? (widget.bottomPadding * 0.4).clamp(8.0, 40.0) : widget.bottomPadding;
+
     return MediaQuery(
-      data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+      data: mq.copyWith(textScaler: TextScaler.noScaling),
       child: Container(
-        padding: EdgeInsets.fromLTRB(20, topPad + 16, 20, bottomPadding),
+        padding: EdgeInsets.fromLTRB(20, effectiveTopPad, 20, effectiveBottomPad),
         decoration: BoxDecoration(
           color: AdminColors.drawerBg,
           image: const DecorationImage(
@@ -63,7 +107,6 @@ class OwnerHeader extends StatelessWidget {
               '?q=80&w=1000&auto=format&fit=crop',
             ),
             fit: BoxFit.cover,
-            // 85% dark overlay preserves the photo texture while keeping text legible
             colorFilter: ColorFilter.mode(
               Color(0xD92C1A0E),
               BlendMode.srcOver,
@@ -73,9 +116,9 @@ class OwnerHeader extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (greeting != null) ...[
+            if (widget.greeting != null) ...[
               Text(
-                greeting!,
+                widget.greeting!,
                 style: GoogleFonts.plusJakartaSans(
                   color: Colors.white.withOpacity(0.55),
                   fontSize: 13,
@@ -88,7 +131,7 @@ class OwnerHeader extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (showBack) ...[
+                if (widget.showBack) ...[
                   GestureDetector(
                     onTap: () => Navigator.of(context).pop(),
                     child: Container(
@@ -120,7 +163,7 @@ class OwnerHeader extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        title,
+                        widget.title,
                         style: GoogleFonts.plusJakartaSans(
                           color: Colors.white,
                           fontSize: 26,
@@ -131,10 +174,10 @@ class OwnerHeader extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      if (subtitle != null) ...[
+                      if (widget.subtitle != null) ...[
                         const SizedBox(height: 5),
                         Text(
-                          subtitle!,
+                          widget.subtitle!,
                           style: GoogleFonts.plusJakartaSans(
                             color: Colors.white.withOpacity(0.55),
                             fontSize: 13,
@@ -147,65 +190,69 @@ class OwnerHeader extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (showBell)
+                if (widget.showBell)
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTap: () => _showOwnerNotifications(context),
+                    onTap: () async {
+                      await _showOwnerNotificationsAsync(context);
+                      // Refresh unread count after user dismisses sheet
+                      _fetchUnreadCount();
+                    },
                     child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(22),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.10),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.20),
+                      clipBehavior: Clip.none,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(22),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                            child: Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.10),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.20),
+                                ),
                               ),
-                            ),
-                            child: const Icon(
-                              Icons.notifications_outlined,
-                              color: Colors.white,
-                              size: 20,
+                              child: const Icon(
+                                Icons.notifications_outlined,
+                                color: Colors.white,
+                                size: 20,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      if (notifCount > 0)
-                        Positioned(
-                          top: -3,
-                          right: -3,
-                          child: Container(
-                            width: 19,
-                            height: 19,
-                            decoration: BoxDecoration(
-                              color: AdminColors.danger,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: AdminColors.drawerBg,
-                                width: 1.5,
+                        if (_unreadCount > 0)
+                          Positioned(
+                            top: -3,
+                            right: -3,
+                            child: Container(
+                              width: 19,
+                              height: 19,
+                              decoration: BoxDecoration(
+                                color: AdminColors.danger,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: AdminColors.drawerBg,
+                                  width: 1.5,
+                                ),
                               ),
-                            ),
-                            child: Center(
-                              child: Text(
-                                notifCount > 9 ? '9+' : '$notifCount',
-                                style: GoogleFonts.plusJakartaSans(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w800,
+                              child: Center(
+                                child: Text(
+                                  _unreadCount > 9 ? '9+' : '$_unreadCount',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
-                  ),  // GestureDetector
               ],
             ),
           ],
@@ -242,8 +289,7 @@ class OwnerSectionHeader extends StatelessWidget {
           if (count != null) ...[
             const SizedBox(width: 10),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: AdminColors.primary.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(20),
@@ -259,6 +305,131 @@ class OwnerSectionHeader extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pagination Widget — For List Heavy Pages
+// ---------------------------------------------------------------------------
+class OwnerPagination extends StatelessWidget {
+  final int currentPage;
+  final int totalPages;
+  final ValueChanged<int> onPageChanged;
+
+  const OwnerPagination({
+    super.key,
+    required this.currentPage,
+    required this.totalPages,
+    required this.onPageChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (totalPages <= 1) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _buildNavButton(
+            icon: Icons.chevron_left_rounded,
+            enabled: currentPage > 1,
+            onTap: () => onPageChanged(currentPage - 1),
+          ),
+          const SizedBox(width: 12),
+          ...List.generate(totalPages, (index) {
+            final page = index + 1;
+            // Simple logic to show surrounding pages or dots if many pages
+            if (page == 1 ||
+                page == totalPages ||
+                (page >= currentPage - 1 && page <= currentPage + 1)) {
+              return _buildPageNumber(page);
+            } else if (page == currentPage - 2 || page == currentPage + 2) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 6),
+                child: Text('...', style: TextStyle(color: AdminColors.textMuted)),
+              );
+            }
+            return const SizedBox.shrink();
+          }),
+          const SizedBox(width: 12),
+          _buildNavButton(
+            icon: Icons.chevron_right_rounded,
+            enabled: currentPage < totalPages,
+            onTap: () => onPageChanged(currentPage + 1),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPageNumber(int page) {
+    final isActive = page == currentPage;
+    return GestureDetector(
+      onTap: () => onPageChanged(page),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: isActive ? AdminColors.drawerBg : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: isActive
+              ? null
+              : Border.all(color: AdminColors.border, width: 1.5),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: AdminColors.drawerBg.withOpacity(0.2),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  )
+                ]
+              : [],
+        ),
+        child: Center(
+          child: Text(
+            '$page',
+            style: GoogleFonts.plusJakartaSans(
+              color: isActive ? Colors.white : AdminColors.textPrimary,
+              fontSize: 14,
+              fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavButton({
+    required IconData icon,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: enabled ? Colors.white : AdminColors.cream,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: enabled ? AdminColors.border : Colors.transparent,
+            width: 1.5,
+          ),
+        ),
+        child: Icon(
+          icon,
+          size: 20,
+          color: enabled
+              ? AdminColors.textPrimary
+              : AdminColors.textMuted.withOpacity(0.4),
+        ),
       ),
     );
   }
@@ -435,7 +606,7 @@ class OwnerEmptyState extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Notification Sheet — hardcoded until backend is connected
+// Notification Sheet
 // ---------------------------------------------------------------------------
 void _showOwnerNotifications(BuildContext context) {
   showModalBottomSheet(
@@ -446,43 +617,202 @@ void _showOwnerNotifications(BuildContext context) {
   );
 }
 
-class _OwnerNotificationSheet extends StatelessWidget {
+Future<void> _showOwnerNotificationsAsync(BuildContext context) {
+  return showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => const _OwnerNotificationSheet(),
+  );
+}
+
+class _OwnerNotificationSheet extends StatefulWidget {
   const _OwnerNotificationSheet();
 
-  static final _items = <Map<String, dynamic>>[
-    {
-      'title': 'New booking request',
-      'body': 'Alex Smith booked Riverside Majestic Suite for 3 nights',
-      'time': '5 min ago',
-      'read': false,
-      'icon': Icons.bookmark_added_rounded,
-      'color': AdminColors.success,
-    },
-    {
-      'title': 'Payment received',
-      'body': 'RM 480 payment confirmed from James Lau',
-      'time': '1 hour ago',
-      'read': false,
-      'icon': Icons.payments_rounded,
-      'color': AdminColors.warning,
-    },
-    {
-      'title': 'Booking cancelled',
-      'body': 'John Doe has cancelled their reservation',
-      'time': '3 hours ago',
-      'read': true,
-      'icon': Icons.cancel_rounded,
-      'color': AdminColors.danger,
-    },
-    {
-      'title': 'New user registered',
-      'body': 'Maria Garcia joined the platform',
-      'time': 'Yesterday, 4:30 PM',
-      'read': true,
-      'icon': Icons.person_add_rounded,
-      'color': AdminColors.primaryLight,
-    },
-  ];
+  @override
+  State<_OwnerNotificationSheet> createState() =>
+      _OwnerNotificationSheetState();
+}
+
+class _OwnerNotificationSheetState extends State<_OwnerNotificationSheet> {
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _items = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
+  }
+
+  Future<void> _loadNotifications() async {
+    try {
+      // Fetch backend notifications + owner reservations in parallel
+      final results = await Future.wait([
+        api.fetchNotifications(),
+        api.fetchReservation(),
+      ]);
+      if (!mounted) return;
+
+      final rawNotifs    = results[0] as List<dynamic>;
+      final reservations = results[1] as List<dynamic>;
+
+      // ── 1. Map backend notifications ──────────────────────────────────────
+      final notifItems = rawNotifs.map((n) {
+        final m = n is Map ? Map<String, dynamic>.from(n) : <String, dynamic>{};
+        final type = (m['type'] ?? m['notification_type'] ?? '').toString().toLowerCase();
+        IconData icon;
+        Color color;
+        if (type.contains('book') || type.contains('reserv')) {
+          icon = Icons.bookmark_added_rounded; color = AdminColors.success;
+        } else if (type.contains('pay')) {
+          icon = Icons.payments_rounded; color = AdminColors.warning;
+        } else if (type.contains('cancel') || type.contains('reject')) {
+          icon = Icons.cancel_rounded; color = AdminColors.danger;
+        } else if (type.contains('user') || type.contains('register')) {
+          icon = Icons.person_add_rounded; color = AdminColors.primaryLight;
+        } else {
+          icon = Icons.notifications_rounded; color = AdminColors.primary;
+        }
+        final isRead   = m['is_read'] == true || m['read'] == true || m['isRead'] == true;
+        final timeRaw  = (m['created_at'] ?? m['timestamp'] ?? '').toString();
+        return {
+          'title'  : m['title'] ?? m['notification_title'] ?? 'Notification',
+          'body'   : m['body'] ?? m['message'] ?? m['notification_body'] ?? '',
+          'time'   : _relativeTime(timeRaw),
+          'sortDt' : _parseDt(timeRaw),
+          'read'   : isRead,
+          'icon'   : icon,
+          'color'  : color,
+          'id'     : (m['id'] ?? m['notification_id'])?.toString() ?? '',
+          'source' : 'backend',
+        };
+      }).toList();
+
+      // ── 2. Synthesise owner-side events from reservation data ─────────────
+      // Only surface events from the last 30 days
+      final cutoff     = DateTime.now().subtract(const Duration(days: 30));
+      final ownerItems = <Map<String, dynamic>>[];
+
+      for (final r in reservations) {
+        final m = r is Map ? Map<String, dynamic>.from(r) : <String, dynamic>{};
+
+        // Customer full name
+        String customer = (m['rcfirstname'] ?? m['rcFirstName'] ??
+            m['customer'] ?? m['customername'] ?? '').toString().trim();
+        final lastName  = (m['rclastname'] ?? m['rcLastName'] ?? '').toString().trim();
+        if (lastName.isNotEmpty) customer = '$customer $lastName'.trim();
+        if (customer.isEmpty) customer = 'A customer';
+
+        // Property name
+        final property = (m['propertyname'] ?? m['propertyName'] ??
+            m['propertyaddress'] ?? m['propertyAddress'] ??
+            m['propertydescription'] ?? 'your property').toString().trim();
+
+        // Total price
+        double amount = 0.0;
+        final rawAmt = m['totalprice'] ?? m['totalPrice'] ?? m['total_price'];
+        if (rawAmt is num)    amount = rawAmt.toDouble();
+        else if (rawAmt is String) amount = double.tryParse(rawAmt) ?? 0.0;
+        final amtFmt = amount > 0 ? 'RM ${amount.toStringAsFixed(2)}' : '';
+
+        // Reservation status
+        final status = (m['reservationstatus'] ?? m['reservationStatus'] ??
+            m['status'] ?? '').toString().toLowerCase();
+
+        // Reservation ID (for de-dupe key)
+        final rid = (m['reservationid'] ?? m['reservationId'] ?? '').toString();
+
+        // Created-at datetime
+        final createdRaw = (m['created_at'] ?? m['createdat'] ??
+            m['createdAt'] ?? m['checkindatetime'] ?? '').toString();
+        final createdDt  = _parseDt(createdRaw);
+
+        if (createdDt == null || createdDt.isBefore(cutoff)) continue;
+
+        // New Booking event
+        ownerItems.add({
+          'title'  : 'New Booking',
+          'body'   : '$customer booked $property'
+              '${amtFmt.isNotEmpty ? ' · $amtFmt' : ''}',
+          'time'   : _relativeTime(createdRaw),
+          'sortDt' : createdDt,
+          'read'   : false,
+          'icon'   : Icons.bookmark_added_rounded,
+          'color'  : AdminColors.success,
+          'id'     : 'booking_$rid',
+          'source' : 'reservation',
+        });
+
+        // Payment event — only for paid/partially-paid reservations
+        final isPaid = status == 'paid' || status == 'partial' ||
+            status == 'confirmed' || status == 'full';
+        if (isPaid && amount > 0) {
+          ownerItems.add({
+            'title'  : status == 'partial'
+                ? 'Partial Payment Received'
+                : 'Payment Received',
+            'body'   : '$customer paid $amtFmt for $property',
+            'time'   : _relativeTime(createdRaw),
+            'sortDt' : createdDt,
+            'read'   : false,
+            'icon'   : Icons.payments_rounded,
+            'color'  : AdminColors.warning,
+            'id'     : 'payment_$rid',
+            'source' : 'reservation',
+          });
+        }
+      }
+
+      // ── 3. Merge, de-duplicate by id, sort newest-first ───────────────────
+      final seen = <String>{};
+      final all  = <Map<String, dynamic>>[];
+      for (final item in [...ownerItems, ...notifItems]) {
+        final key = item['id']?.toString() ?? '';
+        if (key.isEmpty || seen.add(key)) all.add(item);
+      }
+      all.sort((a, b) {
+        final dtA = a['sortDt'] as DateTime?;
+        final dtB = b['sortDt'] as DateTime?;
+        if (dtA == null && dtB == null) return 0;
+        if (dtA == null) return 1;
+        if (dtB == null) return -1;
+        return dtB.compareTo(dtA);
+      });
+
+      setState(() {
+        _items     = all;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  DateTime? _parseDt(String raw) {
+    if (raw.isEmpty) return null;
+    try { return DateTime.parse(raw).toLocal(); } catch (_) { return null; }
+  }
+
+  String _relativeTime(String raw) {
+    if (raw.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(raw).toLocal();
+      final diff = DateTime.now().difference(dt);
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+      if (diff.inHours < 24) return '${diff.inHours} hour${diff.inHours == 1 ? '' : 's'} ago';
+      if (diff.inDays == 1) return 'Yesterday';
+      if (diff.inDays < 7) return '${diff.inDays} days ago';
+      final months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return '${dt.day} ${months[dt.month - 1]}';
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  void _clearAll() {
+    setState(() => _items.clear());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -506,7 +836,7 @@ class _OwnerNotificationSheet extends StatelessWidget {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          // Header row
+          // Header row with Clear All
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 12, 12),
             child: Row(
@@ -524,7 +854,7 @@ class _OwnerNotificationSheet extends StatelessWidget {
                 ),
                 if (unreadCount > 0)
                   Container(
-                    margin: const EdgeInsets.only(right: 8),
+                    margin: const EdgeInsets.only(right: 12),
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
@@ -540,6 +870,24 @@ class _OwnerNotificationSheet extends StatelessWidget {
                       ),
                     ),
                   ),
+                if (_items.isNotEmpty)
+                  TextButton(
+                    onPressed: _clearAll,
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(
+                      'Clear All',
+                      style: GoogleFonts.plusJakartaSans(
+                        color: AdminColors.drawerBg,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 4),
                 IconButton(
                   onPressed: () => Navigator.pop(context),
                   icon: Icon(Icons.close_rounded,
@@ -551,13 +899,36 @@ class _OwnerNotificationSheet extends StatelessWidget {
               ],
             ),
           ),
-          Divider(
-              height: 1, color: AdminColors.border.withOpacity(0.6)),
-          // Items
-          ..._items.map((n) => _buildItem(n)),
+          Divider(height: 1, color: AdminColors.border.withOpacity(0.6)),
+          // Loading / Empty / Items
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 48),
+              child: CircularProgressIndicator(strokeWidth: 2, color: AdminColors.drawerBg),
+            )
+          else if (_items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 48),
+              child: Column(
+                children: [
+                  Icon(Icons.notifications_off_outlined,
+                      size: 48, color: AdminColors.textMuted.withOpacity(0.3)),
+                  const SizedBox(height: 16),
+                  Text(
+                    'You\'re all caught up!',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: AdminColors.textMuted,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ..._items.map((n) => _buildItem(n)),
           // Bottom safe-area padding
-          SizedBox(
-              height: MediaQuery.of(context).padding.bottom + 20),
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
         ],
       ),
     );
@@ -571,14 +942,11 @@ class _OwnerNotificationSheet extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(16, 6, 16, 0),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: isRead
-            ? Colors.white
-            : AdminColors.primary.withOpacity(0.04),
+        color: isRead ? Colors.white : AdminColors.primary.withOpacity(0.04),
         borderRadius: BorderRadius.circular(18),
         border: isRead
             ? Border.all(color: AdminColors.border.withOpacity(0.4))
-            : Border.all(
-                color: AdminColors.primary.withOpacity(0.12)),
+            : Border.all(color: AdminColors.primary.withOpacity(0.12)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.03),
@@ -596,8 +964,7 @@ class _OwnerNotificationSheet extends StatelessWidget {
               color: color.withOpacity(0.10),
               borderRadius: BorderRadius.circular(12),
             ),
-            child:
-                Icon(n['icon'] as IconData, size: 15, color: color),
+            child: Icon(n['icon'] as IconData, size: 15, color: color),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -641,13 +1008,189 @@ class _OwnerNotificationSheet extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 5),
-                Text(
-                  n['time'] as String,
-                  style: GoogleFonts.plusJakartaSans(
-                    color: AdminColors.textMuted.withOpacity(0.55),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
+                Row(
+                  children: [
+                    Text(
+                      n['time'] as String,
+                      style: GoogleFonts.plusJakartaSans(
+                        color: AdminColors.textMuted.withOpacity(0.55),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (n['source'] == 'reservation') ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Booking',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: color,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+                      const BoxConstraints(minWidth: 36, minHeight: 36),
+                ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: AdminColors.border.withOpacity(0.6)),
+          // Loading / Empty / Items
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 48),
+              child: CircularProgressIndicator(strokeWidth: 2, color: AdminColors.drawerBg),
+            )
+          else if (_items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 48),
+              child: Column(
+                children: [
+                  Icon(Icons.notifications_off_outlined,
+                      size: 48, color: AdminColors.textMuted.withOpacity(0.3)),
+                  const SizedBox(height: 16),
+                  Text(
+                    'You\'re all caught up!',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: AdminColors.textMuted,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
+                ],
+              ),
+            )
+          else
+            ..._items.map((n) => _buildItem(n)),
+          // Bottom safe-area padding
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItem(Map<String, dynamic> n) {
+    final isRead = n['read'] as bool;
+    final color  = n['color'] as Color;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isRead ? Colors.white : AdminColors.primary.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(18),
+        border: isRead
+            ? Border.all(color: AdminColors.border.withOpacity(0.4))
+            : Border.all(color: AdminColors.primary.withOpacity(0.12)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(n['icon'] as IconData, size: 15, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        n['title'] as String,
+                        style: GoogleFonts.plusJakartaSans(
+                          color: AdminColors.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    if (!isRead)
+                      Container(
+                        width: 7,
+                        height: 7,
+                        margin: const EdgeInsets.only(left: 6),
+                        decoration: const BoxDecoration(
+                          color: AdminColors.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  n['body'] as String,
+                  style: GoogleFonts.plusJakartaSans(
+                    color: AdminColors.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    Text(
+                      n['time'] as String,
+                      style: GoogleFonts.plusJakartaSans(
+                        color: AdminColors.textMuted.withOpacity(0.55),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (n['source'] == 'reservation') ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Booking',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: color,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),

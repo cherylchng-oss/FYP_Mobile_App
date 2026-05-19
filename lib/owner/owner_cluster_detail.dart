@@ -8,7 +8,6 @@ import '../shared/colors.dart';
 import 'owner_widgets.dart';
 import 'owner_property_detail.dart';
 
-// Warm-taupe fallback surface (does not depend on AdminColors.surface)
 const _kSurface = Color(0xFFF0EBE5);
 
 class OwnerClusterDetailPage extends StatefulWidget {
@@ -25,6 +24,9 @@ class _OwnerClusterDetailPageState extends State<OwnerClusterDetailPage> {
   List<Map<String, dynamic>> _properties = [];
   bool _isLoading = true;
 
+  int _currentPage = 1;
+  int _totalPages = 1;
+
   @override
   void initState() {
     super.initState();
@@ -33,49 +35,28 @@ class _OwnerClusterDetailPageState extends State<OwnerClusterDetailPage> {
 
   Future<void> _loadProperties() async {
     setState(() => _isLoading = true);
-    // ── Mock data (replace with api.fetchPropertiesListingTable() later) ──
-    await Future.delayed(const Duration(milliseconds: 600));
-    final mockProps = [
-      {
-        'id': 'p1',
-        'name': 'Riverside Majestic Suite',
-        'type': 'Suite',
-        'rooms': 4,
-        'active': true,
-        'rate': 120.0,
-        'images': [
-          'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267'
-              '?q=80&w=800&auto=format&fit=crop',
-        ],
-      },
-      {
-        'id': 'p2',
-        'name': 'Damai Lagoon Resort',
-        'type': 'Villa',
-        'rooms': 2,
-        'active': true,
-        'rate': 250.0,
-        'images': [
-          'https://images.unsplash.com/photo-1499793983690-e29da59ef1c2'
-              '?q=80&w=800&auto=format&fit=crop',
-        ],
-      },
-      {
-        'id': 'p3',
-        'name': 'City Hub Apartment',
-        'type': 'Apartment',
-        'rooms': 1,
-        'active': false,
-        'rate': 65.0,
-        'images': [],
-      },
-    ];
+    try {
+      final result = await api.fetchPropertiesListingTable();
+      final allProps = (result['properties'] as List?) ?? [];
+      final clusterId = widget.cluster['id']?.toString();
 
-    if (!mounted) return;
-    setState(() {
-      _properties = mockProps;
-      _isLoading = false;
-    });
+      final filtered = allProps
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .where((p) => p['clusterid']?.toString() == clusterId ||
+                        p['cluster_id']?.toString() == clusterId)
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        _properties = filtered;
+        const pageSize = 10;
+        _totalPages = (filtered.length / pageSize).ceil().clamp(1, 999);
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Properties load error: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -106,13 +87,14 @@ class _OwnerClusterDetailPageState extends State<OwnerClusterDetailPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Spacer: content height below status bar minus overlap
                 Builder(
                   builder: (ctx) => SizedBox(
-                    height: MediaQuery.of(ctx).size.height * 0.125,
+                    height: OwnerHeader.spacerHeight(
+                      bottomPadding: 90,
+                      context: ctx,
+                    ) - 45,
                   ),
                 ),
-                // Glass pills
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: SingleChildScrollView(
@@ -159,9 +141,20 @@ class _OwnerClusterDetailPageState extends State<OwnerClusterDetailPage> {
                                     top: 4,
                                     bottom: 40,
                                   ),
-                                  itemCount: _properties.length,
-                                  itemBuilder: (_, i) =>
-                                      _buildPropertyCard(_properties[i], i),
+                                  itemCount: _properties.length + 1,
+                                  itemBuilder: (_, i) {
+                                    if (i == _properties.length) {
+                                      return OwnerPagination(
+                                        currentPage: _currentPage,
+                                        totalPages: _totalPages,
+                                        onPageChanged: (page) {
+                                          setState(() => _currentPage = page);
+                                          _loadProperties();
+                                        },
+                                      );
+                                    }
+                                    return _buildPropertyCard(_properties[i], i);
+                                  },
                                 ),
                         ),
                 ),
@@ -173,9 +166,6 @@ class _OwnerClusterDetailPageState extends State<OwnerClusterDetailPage> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Property card — photo thumbnail on left (2025 real-estate app pattern)
-  // ---------------------------------------------------------------------------
   Widget _buildPropertyCard(Map<String, dynamic> p, int index) {
     final rooms = p['rooms'];
     final type = (p['type'] ?? '').toString();
@@ -213,7 +203,6 @@ class _OwnerClusterDetailPageState extends State<OwnerClusterDetailPage> {
           ),
           child: Row(
             children: [
-              // ── Photo thumbnail (or colour placeholder) ─────────────────
               Hero(
                 tag: 'prop-image-${p['id']}',
                 child: ClipRRect(
@@ -233,7 +222,6 @@ class _OwnerClusterDetailPageState extends State<OwnerClusterDetailPage> {
                 ),
               ),
               const SizedBox(width: 14),
-              // ── Property info ────────────────────────────────────────────
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -297,9 +285,6 @@ class _OwnerClusterDetailPageState extends State<OwnerClusterDetailPage> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Glass Pill — shown below the cluster name in the header area
-// ---------------------------------------------------------------------------
 class _GlassPill extends StatelessWidget {
   final IconData icon;
   final String label;
