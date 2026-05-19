@@ -89,7 +89,10 @@ class _OwnerClusterDetailPageState extends State<OwnerClusterDetailPage> {
               children: [
                 Builder(
                   builder: (ctx) => SizedBox(
-                    height: MediaQuery.of(ctx).size.height * 0.125,
+                    height: OwnerHeader.spacerHeight(
+                      bottomPadding: 90,
+                      context: ctx,
+                    ) - 45,
                   ),
                 ),
                 Padding(

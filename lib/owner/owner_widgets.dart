@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../shared/colors.dart';
+import '../api.dart' as api;
 
 // ---------------------------------------------------------------------------
 // Status Bar — kept as no-op; header handles safe area internally
@@ -19,12 +20,13 @@ class OwnerStatusBar extends StatelessWidget {
 //   breaking the fixed-height Stack layout on any phone size
 // - notifCount → red badge on bell
 // ---------------------------------------------------------------------------
-class OwnerHeader extends StatelessWidget {
+class OwnerHeader extends StatefulWidget {
   final String title;
   final String? subtitle;
   final String? greeting;
   final bool showBack;
   final bool showBell;
+  // notifCount is kept for backward-compat but is ignored — live count is fetched.
   final int notifCount;
   final double bottomPadding;
 
@@ -40,21 +42,63 @@ class OwnerHeader extends StatelessWidget {
   });
 
   /// Returns the height of header content below the status bar.
-  /// Use inside a SafeArea-wrapped Stack to correctly space content:
-  ///   SizedBox(height: OwnerHeader.spacerHeight())
-  /// Formula: ~70px (16 top-pad + ~47 title+sub + 7 safety) + bottomPadding
-  static double spacerHeight({double bottomPadding = 40.0}) =>
-      70.0 + bottomPadding;
+  /// Pass [context] to get an orientation-aware value.
+  static double spacerHeight({
+    double bottomPadding = 40.0,
+    BuildContext? context,
+  }) {
+    if (context != null) {
+      final isLandscape =
+          MediaQuery.of(context).orientation == Orientation.landscape;
+      if (isLandscape) return 50.0 + (bottomPadding * 0.4);
+    }
+    return 70.0 + bottomPadding;
+  }
+
+  @override
+  State<OwnerHeader> createState() => _OwnerHeaderState();
+}
+
+class _OwnerHeaderState extends State<OwnerHeader> {
+  int _unreadCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUnreadCount();
+  }
+
+  Future<void> _fetchUnreadCount() async {
+    try {
+      final notifications = await api.fetchNotifications();
+      if (!mounted) return;
+      final unread = notifications.where((n) {
+        final m = n is Map ? n : {};
+        // treat as unread if 'is_read'/'read'/'isRead' is falsy
+        return !(m['is_read'] == true ||
+            m['read'] == true ||
+            m['isRead'] == true);
+      }).length;
+      setState(() => _unreadCount = unread);
+    } catch (_) {
+      // silently ignore — keep badge at 0
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final topPad = MediaQuery.of(context).padding.top;
-    // Lock text scale so system font-size changes don't expand the header
-    // and break the Stack spacer calculation in parent pages.
+    final mq = MediaQuery.of(context);
+    final topPad = mq.padding.top;
+    final isLandscape = mq.orientation == Orientation.landscape;
+    // In landscape, shrink vertical padding so the header doesn't eat the whole screen
+    final effectiveTopPad = isLandscape ? (topPad + 8) : (topPad + 16);
+    final effectiveBottomPad =
+        isLandscape ? (widget.bottomPadding * 0.4).clamp(8.0, 40.0) : widget.bottomPadding;
+
     return MediaQuery(
-      data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+      data: mq.copyWith(textScaler: TextScaler.noScaling),
       child: Container(
-        padding: EdgeInsets.fromLTRB(20, topPad + 16, 20, bottomPadding),
+        padding: EdgeInsets.fromLTRB(20, effectiveTopPad, 20, effectiveBottomPad),
         decoration: BoxDecoration(
           color: AdminColors.drawerBg,
           image: const DecorationImage(
@@ -63,7 +107,6 @@ class OwnerHeader extends StatelessWidget {
               '?q=80&w=1000&auto=format&fit=crop',
             ),
             fit: BoxFit.cover,
-            // 85% dark overlay preserves the photo texture while keeping text legible
             colorFilter: ColorFilter.mode(
               Color(0xD92C1A0E),
               BlendMode.srcOver,
@@ -73,9 +116,9 @@ class OwnerHeader extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (greeting != null) ...[
+            if (widget.greeting != null) ...[
               Text(
-                greeting!,
+                widget.greeting!,
                 style: GoogleFonts.plusJakartaSans(
                   color: Colors.white.withOpacity(0.55),
                   fontSize: 13,
@@ -88,7 +131,7 @@ class OwnerHeader extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (showBack) ...[
+                if (widget.showBack) ...[
                   GestureDetector(
                     onTap: () => Navigator.of(context).pop(),
                     child: Container(
@@ -120,7 +163,7 @@ class OwnerHeader extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        title,
+                        widget.title,
                         style: GoogleFonts.plusJakartaSans(
                           color: Colors.white,
                           fontSize: 26,
@@ -131,10 +174,10 @@ class OwnerHeader extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      if (subtitle != null) ...[
+                      if (widget.subtitle != null) ...[
                         const SizedBox(height: 5),
                         Text(
-                          subtitle!,
+                          widget.subtitle!,
                           style: GoogleFonts.plusJakartaSans(
                             color: Colors.white.withOpacity(0.55),
                             fontSize: 13,
@@ -147,10 +190,14 @@ class OwnerHeader extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (showBell)
+                if (widget.showBell)
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTap: () => _showOwnerNotifications(context),
+                    onTap: () async {
+                      await _showOwnerNotificationsAsync(context);
+                      // Refresh unread count after user dismisses sheet
+                      _fetchUnreadCount();
+                    },
                     child: Stack(
                       clipBehavior: Clip.none,
                       children: [
@@ -176,7 +223,7 @@ class OwnerHeader extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (notifCount > 0)
+                        if (_unreadCount > 0)
                           Positioned(
                             top: -3,
                             right: -3,
@@ -193,7 +240,7 @@ class OwnerHeader extends StatelessWidget {
                               ),
                               child: Center(
                                 child: Text(
-                                  notifCount > 9 ? '9+' : '$notifCount',
+                                  _unreadCount > 9 ? '9+' : '$_unreadCount',
                                   style: GoogleFonts.plusJakartaSans(
                                     color: Colors.white,
                                     fontSize: 9,
@@ -205,7 +252,7 @@ class OwnerHeader extends StatelessWidget {
                           ),
                       ],
                     ),
-                  ), // GestureDetector
+                  ),
               ],
             ),
           ],
@@ -570,6 +617,15 @@ void _showOwnerNotifications(BuildContext context) {
   );
 }
 
+Future<void> _showOwnerNotificationsAsync(BuildContext context) {
+  return showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => const _OwnerNotificationSheet(),
+  );
+}
+
 class _OwnerNotificationSheet extends StatefulWidget {
   const _OwnerNotificationSheet();
 
@@ -579,46 +635,183 @@ class _OwnerNotificationSheet extends StatefulWidget {
 }
 
 class _OwnerNotificationSheetState extends State<_OwnerNotificationSheet> {
-  // Using a local state list so we can clear it dynamically
-  List<Map<String, dynamic>> _items = [
-    {
-      'title': 'New booking request',
-      'body': 'Alex Smith booked Riverside Majestic Suite for 3 nights',
-      'time': '5 min ago',
-      'read': false,
-      'icon': Icons.bookmark_added_rounded,
-      'color': AdminColors.success,
-    },
-    {
-      'title': 'Payment received',
-      'body': 'RM 480 payment confirmed from James Lau',
-      'time': '1 hour ago',
-      'read': false,
-      'icon': Icons.payments_rounded,
-      'color': AdminColors.warning,
-    },
-    {
-      'title': 'Booking cancelled',
-      'body': 'John Doe has cancelled their reservation',
-      'time': '3 hours ago',
-      'read': true,
-      'icon': Icons.cancel_rounded,
-      'color': AdminColors.danger,
-    },
-    {
-      'title': 'New user registered',
-      'body': 'Maria Garcia joined the platform',
-      'time': 'Yesterday, 4:30 PM',
-      'read': true,
-      'icon': Icons.person_add_rounded,
-      'color': AdminColors.primaryLight,
-    },
-  ];
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _items = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
+  }
+
+  Future<void> _loadNotifications() async {
+    try {
+      // Fetch backend notifications + owner reservations in parallel
+      final results = await Future.wait([
+        api.fetchNotifications(),
+        api.fetchReservation(),
+      ]);
+      if (!mounted) return;
+
+      final rawNotifs    = results[0] as List<dynamic>;
+      final reservations = results[1] as List<dynamic>;
+
+      // ── 1. Map backend notifications ──────────────────────────────────────
+      final notifItems = rawNotifs.map((n) {
+        final m = n is Map ? Map<String, dynamic>.from(n) : <String, dynamic>{};
+        final type = (m['type'] ?? m['notification_type'] ?? '').toString().toLowerCase();
+        IconData icon;
+        Color color;
+        if (type.contains('book') || type.contains('reserv')) {
+          icon = Icons.bookmark_added_rounded; color = AdminColors.success;
+        } else if (type.contains('pay')) {
+          icon = Icons.payments_rounded; color = AdminColors.warning;
+        } else if (type.contains('cancel') || type.contains('reject')) {
+          icon = Icons.cancel_rounded; color = AdminColors.danger;
+        } else if (type.contains('user') || type.contains('register')) {
+          icon = Icons.person_add_rounded; color = AdminColors.primaryLight;
+        } else {
+          icon = Icons.notifications_rounded; color = AdminColors.primary;
+        }
+        final isRead   = m['is_read'] == true || m['read'] == true || m['isRead'] == true;
+        final timeRaw  = (m['created_at'] ?? m['timestamp'] ?? '').toString();
+        return {
+          'title'  : m['title'] ?? m['notification_title'] ?? 'Notification',
+          'body'   : m['body'] ?? m['message'] ?? m['notification_body'] ?? '',
+          'time'   : _relativeTime(timeRaw),
+          'sortDt' : _parseDt(timeRaw),
+          'read'   : isRead,
+          'icon'   : icon,
+          'color'  : color,
+          'id'     : (m['id'] ?? m['notification_id'])?.toString() ?? '',
+          'source' : 'backend',
+        };
+      }).toList();
+
+      // ── 2. Synthesise owner-side events from reservation data ─────────────
+      // Only surface events from the last 30 days
+      final cutoff     = DateTime.now().subtract(const Duration(days: 30));
+      final ownerItems = <Map<String, dynamic>>[];
+
+      for (final r in reservations) {
+        final m = r is Map ? Map<String, dynamic>.from(r) : <String, dynamic>{};
+
+        // Customer full name
+        String customer = (m['rcfirstname'] ?? m['rcFirstName'] ??
+            m['customer'] ?? m['customername'] ?? '').toString().trim();
+        final lastName  = (m['rclastname'] ?? m['rcLastName'] ?? '').toString().trim();
+        if (lastName.isNotEmpty) customer = '$customer $lastName'.trim();
+        if (customer.isEmpty) customer = 'A customer';
+
+        // Property name
+        final property = (m['propertyname'] ?? m['propertyName'] ??
+            m['propertyaddress'] ?? m['propertyAddress'] ??
+            m['propertydescription'] ?? 'your property').toString().trim();
+
+        // Total price
+        double amount = 0.0;
+        final rawAmt = m['totalprice'] ?? m['totalPrice'] ?? m['total_price'];
+        if (rawAmt is num)    amount = rawAmt.toDouble();
+        else if (rawAmt is String) amount = double.tryParse(rawAmt) ?? 0.0;
+        final amtFmt = amount > 0 ? 'RM ${amount.toStringAsFixed(2)}' : '';
+
+        // Reservation status
+        final status = (m['reservationstatus'] ?? m['reservationStatus'] ??
+            m['status'] ?? '').toString().toLowerCase();
+
+        // Reservation ID (for de-dupe key)
+        final rid = (m['reservationid'] ?? m['reservationId'] ?? '').toString();
+
+        // Created-at datetime
+        final createdRaw = (m['created_at'] ?? m['createdat'] ??
+            m['createdAt'] ?? m['checkindatetime'] ?? '').toString();
+        final createdDt  = _parseDt(createdRaw);
+
+        if (createdDt == null || createdDt.isBefore(cutoff)) continue;
+
+        // New Booking event
+        ownerItems.add({
+          'title'  : 'New Booking',
+          'body'   : '$customer booked $property'
+              '${amtFmt.isNotEmpty ? ' · $amtFmt' : ''}',
+          'time'   : _relativeTime(createdRaw),
+          'sortDt' : createdDt,
+          'read'   : false,
+          'icon'   : Icons.bookmark_added_rounded,
+          'color'  : AdminColors.success,
+          'id'     : 'booking_$rid',
+          'source' : 'reservation',
+        });
+
+        // Payment event — only for paid/partially-paid reservations
+        final isPaid = status == 'paid' || status == 'partial' ||
+            status == 'confirmed' || status == 'full';
+        if (isPaid && amount > 0) {
+          ownerItems.add({
+            'title'  : status == 'partial'
+                ? 'Partial Payment Received'
+                : 'Payment Received',
+            'body'   : '$customer paid $amtFmt for $property',
+            'time'   : _relativeTime(createdRaw),
+            'sortDt' : createdDt,
+            'read'   : false,
+            'icon'   : Icons.payments_rounded,
+            'color'  : AdminColors.warning,
+            'id'     : 'payment_$rid',
+            'source' : 'reservation',
+          });
+        }
+      }
+
+      // ── 3. Merge, de-duplicate by id, sort newest-first ───────────────────
+      final seen = <String>{};
+      final all  = <Map<String, dynamic>>[];
+      for (final item in [...ownerItems, ...notifItems]) {
+        final key = item['id']?.toString() ?? '';
+        if (key.isEmpty || seen.add(key)) all.add(item);
+      }
+      all.sort((a, b) {
+        final dtA = a['sortDt'] as DateTime?;
+        final dtB = b['sortDt'] as DateTime?;
+        if (dtA == null && dtB == null) return 0;
+        if (dtA == null) return 1;
+        if (dtB == null) return -1;
+        return dtB.compareTo(dtA);
+      });
+
+      setState(() {
+        _items     = all;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  DateTime? _parseDt(String raw) {
+    if (raw.isEmpty) return null;
+    try { return DateTime.parse(raw).toLocal(); } catch (_) { return null; }
+  }
+
+  String _relativeTime(String raw) {
+    if (raw.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(raw).toLocal();
+      final diff = DateTime.now().difference(dt);
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+      if (diff.inHours < 24) return '${diff.inHours} hour${diff.inHours == 1 ? '' : 's'} ago';
+      if (diff.inDays == 1) return 'Yesterday';
+      if (diff.inDays < 7) return '${diff.inDays} days ago';
+      final months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return '${dt.day} ${months[dt.month - 1]}';
+    } catch (_) {
+      return raw;
+    }
+  }
 
   void _clearAll() {
-    setState(() {
-      _items.clear();
-    });
+    setState(() => _items.clear());
   }
 
   @override
@@ -707,8 +900,13 @@ class _OwnerNotificationSheetState extends State<_OwnerNotificationSheet> {
             ),
           ),
           Divider(height: 1, color: AdminColors.border.withOpacity(0.6)),
-          // Items or Empty State
-          if (_items.isEmpty)
+          // Loading / Empty / Items
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 48),
+              child: CircularProgressIndicator(strokeWidth: 2, color: AdminColors.drawerBg),
+            )
+          else if (_items.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 48),
               child: Column(
@@ -810,13 +1008,189 @@ class _OwnerNotificationSheetState extends State<_OwnerNotificationSheet> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 5),
-                Text(
-                  n['time'] as String,
-                  style: GoogleFonts.plusJakartaSans(
-                    color: AdminColors.textMuted.withOpacity(0.55),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
+                Row(
+                  children: [
+                    Text(
+                      n['time'] as String,
+                      style: GoogleFonts.plusJakartaSans(
+                        color: AdminColors.textMuted.withOpacity(0.55),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (n['source'] == 'reservation') ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Booking',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: color,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+                      const BoxConstraints(minWidth: 36, minHeight: 36),
+                ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: AdminColors.border.withOpacity(0.6)),
+          // Loading / Empty / Items
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 48),
+              child: CircularProgressIndicator(strokeWidth: 2, color: AdminColors.drawerBg),
+            )
+          else if (_items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 48),
+              child: Column(
+                children: [
+                  Icon(Icons.notifications_off_outlined,
+                      size: 48, color: AdminColors.textMuted.withOpacity(0.3)),
+                  const SizedBox(height: 16),
+                  Text(
+                    'You\'re all caught up!',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: AdminColors.textMuted,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
+                ],
+              ),
+            )
+          else
+            ..._items.map((n) => _buildItem(n)),
+          // Bottom safe-area padding
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItem(Map<String, dynamic> n) {
+    final isRead = n['read'] as bool;
+    final color  = n['color'] as Color;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isRead ? Colors.white : AdminColors.primary.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(18),
+        border: isRead
+            ? Border.all(color: AdminColors.border.withOpacity(0.4))
+            : Border.all(color: AdminColors.primary.withOpacity(0.12)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(n['icon'] as IconData, size: 15, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        n['title'] as String,
+                        style: GoogleFonts.plusJakartaSans(
+                          color: AdminColors.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    if (!isRead)
+                      Container(
+                        width: 7,
+                        height: 7,
+                        margin: const EdgeInsets.only(left: 6),
+                        decoration: const BoxDecoration(
+                          color: AdminColors.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  n['body'] as String,
+                  style: GoogleFonts.plusJakartaSans(
+                    color: AdminColors.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    Text(
+                      n['time'] as String,
+                      style: GoogleFonts.plusJakartaSans(
+                        color: AdminColors.textMuted.withOpacity(0.55),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (n['source'] == 'reservation') ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Booking',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: color,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),

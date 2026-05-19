@@ -62,11 +62,14 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
       final moderatorsResult = results[1] as Map<String, dynamic>;
       final adminsResult = results[2] as Map<String, dynamic>;
 
+      String _email(Map m) =>
+          (m['email'] ?? m['uemail'] ?? m['u_email'] ?? '').toString();
+
       final customerList = (customersResult['customers'] as List?)?.map((e) {
             final m = Map<String, dynamic>.from(e as Map);
             return {
               'name': m['username'] ?? m['name'] ?? '',
-              'email': m['email'] ?? '',
+              'email': _email(m),
               'role': 'Customer',
               'active': (m['uactivation'] ?? '').toString().toLowerCase() == 'active',
               'phone': m['phone'],
@@ -78,7 +81,7 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
             final m = Map<String, dynamic>.from(e as Map);
             return {
               'name': m['username'] ?? m['name'] ?? '',
-              'email': m['email'] ?? '',
+              'email': _email(m),
               'role': 'Moderator',
               'active': (m['uactivation'] ?? '').toString().toLowerCase() == 'active',
               'phone': m['phone'],
@@ -90,7 +93,7 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
             final m = Map<String, dynamic>.from(e as Map);
             return {
               'name': m['username'] ?? m['name'] ?? '',
-              'email': m['email'] ?? '',
+              'email': _email(m),
               'role': 'Admin',
               'active': (m['uactivation'] ?? '').toString().toLowerCase() == 'active',
               'phone': m['phone'],
@@ -166,7 +169,7 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
             bottom: false,
             child: Column(
               children: [
-                SizedBox(height: OwnerHeader.spacerHeight(bottomPadding: 80) - 45),
+                SizedBox(height: OwnerHeader.spacerHeight(bottomPadding: 80, context: context) - 45),
                 _buildCommandCenter(),
                 OwnerSectionHeader(
                   title: _tabIndex == 0 ? 'All Customers' : 'All Staff',
@@ -416,6 +419,8 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
               ),
               const SizedBox(width: 8),
               OwnerStatusBadge(active: u['active'] == true),
+              const SizedBox(width: 6),
+              _UserPopupMenu(user: u),
             ],
           ),
         ),
@@ -593,6 +598,90 @@ class _UserDetailSheet extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── Popup menu button shown on each user card ────────────────────────────────
+class _UserPopupMenu extends StatelessWidget {
+  final Map<String, dynamic> user;
+  const _UserPopupMenu({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: AdminColors.cream,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AdminColors.border.withOpacity(0.6)),
+      ),
+      child: PopupMenuButton<String>(
+        icon: Icon(
+          Icons.more_horiz_rounded,
+          size: 18,
+          color: AdminColors.textMuted,
+        ),
+        padding: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        elevation: 4,
+        offset: const Offset(0, 38),
+        onSelected: (value) {
+          switch (value) {
+            case 'view':
+              final role = user['role'].toString().toLowerCase();
+              final Color avatarColor = role == 'admin'
+                  ? AdminColors.success
+                  : role == 'moderator'
+                      ? AdminColors.secondary
+                      : AdminColors.primaryLight;
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) =>
+                    _UserDetailSheet(user: user, avatarColor: avatarColor),
+              );
+              break;
+            case 'copy_email':
+              final email = user['email']?.toString() ?? '';
+              if (email.isNotEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Email copied: $email'),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    margin: const EdgeInsets.all(16),
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+              break;
+          }
+        },
+        itemBuilder: (_) => [
+          PopupMenuItem(
+            value: 'view',
+            child: Row(children: [
+              Icon(Icons.person_outline_rounded,
+                  size: 16, color: AdminColors.textMuted),
+              const SizedBox(width: 10),
+              const Text('View Profile'),
+            ]),
+          ),
+          PopupMenuItem(
+            value: 'copy_email',
+            child: Row(children: [
+              Icon(Icons.email_outlined,
+                  size: 16, color: AdminColors.textMuted),
+              const SizedBox(width: 10),
+              const Text('Copy Email'),
+            ]),
+          ),
+        ],
       ),
     );
   }

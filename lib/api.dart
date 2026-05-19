@@ -84,6 +84,28 @@ Future<http.Response> loginUser(Map<String, dynamic> userData) async {
   }
 }
 
+// MFA Verification
+// POST /auth/verify-mfa  { tempToken, code }  → same shape as login success
+// TODO: update the endpoint path to match your actual backend route.
+Future<http.Response> verifyMfa({
+  required String tempToken,
+  required String code,
+}) async {
+  try {
+    final response = await http.post(
+      Uri.parse('$API_URL/auth/verify-mfa'),
+      headers: _publicHeaders(),
+      body: jsonEncode({'tempToken': tempToken, 'code': code}),
+    );
+    print('API: verifyMfa status: ${response.statusCode}');
+    print('API: verifyMfa body: ${response.body}');
+    return response;
+  } catch (error) {
+    print('API: verifyMfa error: $error');
+    rethrow;
+  }
+}
+
 Future<http.Response> checkstatus(int userid) async {
   try {
     final response = await http.get(
@@ -2233,23 +2255,35 @@ Future<Map<String, dynamic>> fetchClusters() async {
     print('API: Fetching clusters... (timestamp: ${DateTime.now().millisecondsSinceEpoch})');
     final response = await http.get(
       Uri.parse('$API_URL/clusters?_t=${DateTime.now().millisecondsSinceEpoch}'),
-      headers: {
+      headers: await _authHeaders({
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0',
-      },
+      }),
     );
-    
+
     print('API: Clusters response status: ${response.statusCode}');
-    
+
     if (response.statusCode != 200) {
       print('API: Clusters returned status ${response.statusCode}, returning empty');
       return {'clusters': []};
     }
-    
+
     final data = jsonDecode(response.body);
     print('API: Clusters data keys: ${data is Map ? (data as Map).keys.toList() : "direct list"}');
-    return data is Map ? data as Map<String, dynamic> : {'clusters': data};
+    if (data is List) return {'clusters': data};
+    if (data is Map) {
+      final m = data as Map<String, dynamic>;
+      // Normalise any of the common key names → 'clusters'
+      if (m.containsKey('clusters')) return m;
+      if (m.containsKey('data')) return {'clusters': m['data']};
+      if (m.containsKey('result')) return {'clusters': m['result']};
+      if (m.containsKey('cluster')) return {'clusters': m['cluster']};
+      // If map contains a single list value, assume that is the list
+      final firstList = m.values.whereType<List>().toList();
+      if (firstList.isNotEmpty) return {'clusters': firstList.first};
+    }
+    return {'clusters': []};
   } catch (error) {
     print('Error fetching clusters: $error');
     return {'clusters': []};
@@ -3171,5 +3205,59 @@ Future<Map<String, dynamic>> capturePayPalOrder(String orderId) async {
   } catch (error) {
     print('API error capturing PayPal order: $error');
     rethrow;
+  }
+}
+
+/// GET /finance/review-chart?userid=<id>
+/// Returns summary.overallRating (0–5) and per-month average ratings.
+Future<Map<String, dynamic>> fetchFinanceReviewChart(int userid) async {
+  try {
+    final uri = Uri.parse('$API_URL/finance/review-chart?userid=$userid');
+    final response = await http.get(uri, headers: await _authHeaders());
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      print('fetchFinanceReviewChart: HTTP ${response.statusCode}');
+      return {'success': false, 'summary': {}, 'monthlyData': []};
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  } catch (e) {
+    print('fetchFinanceReviewChart error: $e');
+    return {'success': false, 'summary': {}, 'monthlyData': []};
+  }
+}
+
+/// GET /finance/ledger-card?userid=<id>
+/// Returns overall summary + monthly breakdown used by the Owner dashboard.
+///
+/// Response shape:
+/// {
+///   success: true,
+///   summary: {
+///     totalRevenue, totalOperatorEarning, totalDepositPaid,
+///     totalExpectedBalance, totalCommission, totalTransactions,
+///     paidCount, partiallyPaidCount, cancelledCount, expiredCount
+///   },
+///   monthlyData: [
+///     { month, monthlyrevenue, monthlyearning, monthlydeposit,
+///       monthlyexpectedbalance, monthlycommission, monthlytransactions }
+///   ]
+/// }
+Future<Map<String, dynamic>> fetchFinanceLedgerCard(int userid) async {
+  try {
+    final uri = Uri.parse('$API_URL/finance/ledger-card?userid=$userid');
+    final response = await http.get(
+      uri,
+      headers: await _authHeaders(),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      print('fetchFinanceLedgerCard: HTTP ${response.statusCode}');
+      return {'success': false, 'summary': {}, 'monthlyData': []};
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return data;
+  } catch (e) {
+    print('fetchFinanceLedgerCard error: $e');
+    return {'success': false, 'summary': {}, 'monthlyData': []};
   }
 }

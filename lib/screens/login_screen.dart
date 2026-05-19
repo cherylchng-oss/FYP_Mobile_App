@@ -146,14 +146,16 @@ class _LoginScreenState extends State<LoginScreen>
       final accessToken = auth.accessToken;
       if (accessToken == null) throw Exception('No access token');
 
+      // googleLogin returns Map<String, dynamic> directly
       final response = await api.googleLogin(accessToken);
       if (!mounted) return;
 
       if (response['success'] == true || response['userid'] != null) {
         await Session.saveLogin(
-          userId: response['userid']?.toString() ?? '',
-          username: response['username']?.toString() ?? '',
-          userGroup: response['usergroup']?.toString() ?? '',
+          userid: (response['userid'] as num?)?.toInt() ?? 0,
+          usergroup: response['usergroup']?.toString() ?? '',
+          uactivation: response['uactivation']?.toString() ?? 'active',
+          username: response['username']?.toString(),
         );
         if (response['accessToken'] != null) {
           await Session.saveTokens(

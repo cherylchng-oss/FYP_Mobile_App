@@ -3,21 +3,22 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../api.dart' as api;
-import '../app.dart';
 import '../services/session.dart';
 import '../shared/colors.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Firebase Storage URL for WaterFront.jpeg
-// If the token ever expires: Firebase Console → Storage → WaterFront.jpeg
-// → click the three-dot menu → "Get download URL" and paste the new URL here.
+// Background image — Firebase Storage path: gs://fypcams2026.firebasestorage.app/images/WaterFront.jpeg
+//
+// The HTTPS URL uses %2F to encode the "/" in the "images/" subfolder.
+// If the image stops loading, refresh the token:
+//   Firebase Console → Storage → images/WaterFront.jpeg
+//   → three-dot menu → "Get download URL" → paste the new token value below.
 // ─────────────────────────────────────────────────────────────────────────────
 const _kBgUrl =
     'https://firebasestorage.googleapis.com/v0/b/fypcams2026.firebasestorage.app'
-    '/o/WaterFront.jpeg?alt=media&token=0b18d4a9-94cc-4c61-83af-b2e8e0df434f';
+    '/o/images%2FWaterFront.jpeg?alt=media&token=0b18d4a9-94cc-4c61-83af-b2e8e0df434f';
 
-// Overlay: ~80 % opaque espresso brown — matches the OwnerHeader overlay
-const _kOverlay = Color(0xCC2C1A0E);
+// No flat overlay — gradient is applied inline in the build method.
 
 // "Sign Up with Email" warm amber — AdminColors.accent shade
 const _kBtnEmail = Color(0xFFB88746);
@@ -161,10 +162,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       setState(() => _googleLoading = false);
       FocusScope.of(context).unfocus();
 
-      final nav = appNavigatorKey.currentState!;
-      nav.popUntil((r) => r.isFirst);
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      await nav.pushReplacementNamed('/after-login');
+      if (!mounted) return;
+      Navigator.of(context).pushReplacementNamed('/after-login');
     } catch (e) {
       if (mounted) {
         setState(() => _googleLoading = false);
@@ -190,6 +189,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         body: Stack(
           children: [
             // ── Hero background photo ──────────────────────────────────────
+            // Loaded from Firebase Storage (images/WaterFront.jpeg).
             Positioned.fill(
               child: Image.network(
                 _kBgUrl,
@@ -203,8 +203,26 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
             ),
 
-            // ── Dark overlay ───────────────────────────────────────────────
-            Positioned.fill(child: Container(color: _kOverlay)),
+            // ── Gradient overlay ───────────────────────────────────────────
+            // Transparent at top so the sky shows through; darkens toward the
+            // bottom to keep text legible — matching the website's look.
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: [0.0, 0.35, 0.65, 1.0],
+                    colors: [
+                      Color(0x1A2C1A0E), // ~10 % — sky stays vivid
+                      Color(0x552C1A0E), // ~33 % — soft mid-tone
+                      Color(0x992C1A0E), // ~60 % — readable text zone
+                      Color(0xCC2C1A0E), // ~80 % — bottom anchors buttons
+                    ],
+                  ),
+                ),
+              ),
+            ),
 
             // ── Content ───────────────────────────────────────────────────
             SafeArea(
@@ -591,3 +609,4 @@ class _PillButtonState extends State<_PillButton> {
     );
   }
 }
+

@@ -15,7 +15,7 @@ import 'owner/owner_dashboard.dart';
 import 'owner/owner_cluster.dart';
 import 'owner/owner_users_page.dart';
 import 'owner/owner_logs_page.dart';
-import 'owner/owner_profile.dart';
+import 'profile_page.dart';
 
 // ── Customer Pages (Cheryl branch) ───────────────────────────────────────────
 // Uncomment when merged:
@@ -27,15 +27,20 @@ import 'owner/owner_profile.dart';
 // import 'admin/admin_dashboard.dart';
 // import 'moderator/mod_dashboard.dart';
 
+// Global navigator key — used by admin/moderator pages (profile_page.dart etc.)
+// to navigate without a BuildContext.
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
 // =============================================================================
-//  MyApp — root widget
+//  CamsApp — root widget
 // =============================================================================
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class CamsApp extends StatelessWidget {
+  const CamsApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: appNavigatorKey,
       title: 'Hello Sarawak',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -65,7 +70,7 @@ class MyApp extends StatelessWidget {
       // ── Named Routes ──────────────────────────────────────────────────────
       routes: {
         // Auth flow
-        OnboardingScreen.routeName:   (_) => const OnboardingScreen(),
+        '/before-login':              (_) => const OnboardingScreen(),
         LoginScreen.routeName:        (_) => const LoginScreen(),
         SignupScreen.routeName:        (_) => const SignupScreen(),
 
@@ -77,7 +82,7 @@ class MyApp extends StatelessWidget {
         OwnerUsersPage.routeName:     (_) => const OwnerUsersPage(),
         OwnerClusterPage.routeName:   (_) => const OwnerClusterPage(),
         OwnerLogsPage.routeName:      (_) => const OwnerLogsPage(),
-        OwnerProfilePage.routeName:   (_) => const OwnerProfilePage(),
+        '/profile':                    (_) => const ProfilePage(),
 
         // Customer section — uncomment when Cheryl's branch merges
         // '/home': (_) => const HomePage(),
@@ -122,9 +127,9 @@ class _LaunchRouterState extends State<_LaunchRouter> {
     final userId = await Session.getUserId();
     final hasSeenOnboarding = await Session.hasSeenOnboarding();
 
-    if (userId == null || userId.isEmpty) {
+    if (userId == null) {
       // Not logged in
-      _push(hasSeenOnboarding ? LoginScreen.routeName : OnboardingScreen.routeName);
+      _push(hasSeenOnboarding ? LoginScreen.routeName : '/before-login');
       return;
     }
 
