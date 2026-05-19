@@ -1166,15 +1166,19 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
     // Format check-in date string as used in reservation API
     final checkInDateStr =
         '${checkInDate!.year}-${checkInDate!.month.toString().padLeft(2, '0')}-${checkInDate!.day.toString().padLeft(2, '0')} 00:00:00';
+    final checkOutDateStr = checkOutDate != null
+        ? '${checkOutDate!.year}-${checkOutDate!.month.toString().padLeft(2, '0')}-${checkOutDate!.day.toString().padLeft(2, '0')} 00:00:00'
+        : '${checkInDate!.year}-${checkInDate!.month.toString().padLeft(2, '0')}-${(checkInDate!.day + 1).toString().padLeft(2, '0')} 00:00:00';
 
     try {
       final hasOverlap = await api.checkDateOverlap(
         propertyId: int.parse(widget.property.id),
         checkIn: checkInDateStr,
+        checkOut: checkOutDateStr,
       );
       if (mounted) {
         setState(() {
-          _isDateUnavailable = hasOverlap;
+          _isDateUnavailable = (hasOverlap['overlap'] == true || hasOverlap['isOverlap'] == true);
           _isCheckingAvailability = false;
         });
       }
@@ -1917,15 +1921,18 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
     // Format check-in date string as used in reservation API
     final checkInDateStr =
         '${_editableCheckIn.year}-${_editableCheckIn.month.toString().padLeft(2, '0')}-${_editableCheckIn.day.toString().padLeft(2, '0')} 00:00:00';
+    final checkOutDateStr =
+        '${_editableCheckOut.year}-${_editableCheckOut.month.toString().padLeft(2, '0')}-${_editableCheckOut.day.toString().padLeft(2, '0')} 00:00:00';
 
     try {
       final hasOverlap = await api.checkDateOverlap(
         propertyId: int.parse(widget.property.id),
         checkIn: checkInDateStr,
+        checkOut: checkOutDateStr,
       );
       if (mounted) {
         setState(() {
-          _isDateUnavailable = hasOverlap;
+          _isDateUnavailable = (hasOverlap['overlap'] == true || hasOverlap['isOverlap'] == true);
         });
       }
     } catch (e) {
@@ -2439,6 +2446,7 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                               final hasOverlap = await api.checkDateOverlap(
                                 propertyId: int.parse(widget.property.id),
                                 checkIn: checkInDateStr,
+                                checkOut: checkOutDateStr,
                               );
 
                               // Validate dates are reasonable
@@ -2448,7 +2456,8 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                               }
                               
                               // Determine reservation status based on date availability
-                              final reservationStatus = hasOverlap ? 'Enquiry' : 'Pending';
+                              final overlapBool = hasOverlap['overlap'] == true || hasOverlap['isOverlap'] == true;
+                              final reservationStatus = overlapBool ? 'Enquiry' : 'Pending';
                               
                               final reservationData = {
                                 'propertyid': int.parse(widget.property.id),
@@ -2472,7 +2481,7 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                               final reservationResult = await api.createReservation(reservationData);
                               
                               // If it's an enquiry, send notifications to moderator, admin, and owner
-                              if (hasOverlap && reservationResult['reservationid'] != null) {
+                              if (overlapBool && reservationResult['reservationid'] != null) {
                                 try {
                                   final reservationId = reservationResult['reservationid'] is int 
                                       ? reservationResult['reservationid'] 
@@ -2488,7 +2497,7 @@ class _BookingInformationDialogState extends State<BookingInformationDialog> {
                               }
                               
                               // Store hasOverlap for use in success message
-                              isEnquiryResult = hasOverlap;
+                              isEnquiryResult = overlapBool;
                               
                               // Close loading dialog on success
                               if (mounted) Navigator.pop(context);

@@ -49,7 +49,7 @@ class _OwnerPropertyDetailPageState
           .map((r) => {
                 'guest': r['username'] ?? r['guest'] ?? r['customer_name'] ?? 'Guest',
                 'status': r['status'] ?? r['reservation_status'] ?? 'Pending',
-                'price': (r['total_price'] ?? r['price'] ?? r['amount'] as num?)?.toDouble(),
+                'price': ((r['total_price'] ?? r['price'] ?? r['amount']) as num?)?.toDouble(),
               })
           .toList();
 
