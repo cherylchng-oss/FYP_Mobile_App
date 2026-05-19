@@ -26,4 +26,8 @@ doc/api/
 .flutter-plugins
 .flutter-plugins-dependencies
 
-.log
+#logs
+*.log
+
+.claude.md
+.claude

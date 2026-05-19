@@ -16,7 +16,7 @@ class ModeratorNotifications extends StatefulWidget {
 }
 
 class _ModeratorNotificationsState extends State<ModeratorNotifications> {
-  String _selectedFilter = 'Unread';
+  String _selectedFilter = 'All';
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   late Future<void> _notificationInit;
   bool _isLoading = true;
@@ -49,9 +49,18 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
       if (!mounted) return;
 
       setState(() {
-        allNotifications = notifications
-            .map((n) => Map<String, dynamic>.from(n as Map))
-            .toList();
+        allNotifications = notifications.map((n) {
+          final raw = Map<String, dynamic>.from(n as Map);
+          return <String, dynamic>{
+            'id': raw['notificationid'],
+            'title': raw['notificationtitle'] ?? '',
+            'message': raw['notificationmessage'] ?? '',
+            'type': raw['notificationtype'] ?? '',
+            'time': raw['timestamp'] ?? '',
+            'isRead': raw['isread'] ?? false,
+            'isread': raw['isread'] ?? false,
+          };
+        }).toList();
         _isLoading = false;
       });
     } catch (_) {
@@ -366,6 +375,7 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
+                  _buildFilterChip('All', 'All'),
                   _buildFilterChip('Unread', 'Unread'),
                   _buildFilterChip('Bookings', 'Bookings'),
                   _buildFilterChip('Payment', 'Payment'),
@@ -512,11 +522,11 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
     );
   }
 
-  Widget _buildNotificationIcon(String type, bool isRead) {
+  Widget _buildNotificationIcon(String? type, bool isRead) {
     IconData icon;
     Color color;
     Color bgColor;
-    switch (type) {
+    switch (type ?? '') {
       case 'payment_received':
         icon = Icons.payment; color = AdminColors.success;
         bgColor = AdminColors.success.withOpacity(0.12); break;
