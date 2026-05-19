@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../services/notification_service.dart';
 import '../services/session.dart';
 import '../shared/bottom_navigation_bar.dart';
 import '../shared/navigation_menu.dart' as nav;
+import '../shared/colors.dart';
 import '../app.dart';
 import '../api.dart' as api;
-import 'admin_dashboard.dart';
 
 class AdminNotifications extends StatefulWidget {
   const AdminNotifications({super.key});
@@ -15,8 +16,7 @@ class AdminNotifications extends StatefulWidget {
 }
 
 class _AdminNotificationsState extends State<AdminNotifications> {
-  int _selectedIndex = -1;
-  String _selectedFilter = 'All';
+  String _selectedFilter = 'Unread';
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   late Future<void> _notificationInit;
   bool _isLoading = true;
@@ -30,374 +30,249 @@ class _AdminNotificationsState extends State<AdminNotifications> {
   }
 
   Future<void> _loadNotifications() async {
-    setState(() {
-      _isLoading = true;
-    });
-
+    setState(() => _isLoading = true);
     try {
       final notifications = await api.fetchNotifications();
       setState(() {
         allNotifications = notifications.map((n) => n as Map<String, dynamic>).toList();
         _isLoading = false;
       });
-    } catch (error) {
-      print('Error loading notifications: $error');
-      setState(() {
-        _isLoading = false;
-        allNotifications = [];
-      });
+    } catch (_) {
+      setState(() { _isLoading = false; allNotifications = []; });
     }
   }
 
   List<Map<String, dynamic>> get filteredNotifications {
-    if (_selectedFilter == 'All') {
-      return allNotifications;
-    } else if (_selectedFilter == 'Unread') {
-      return allNotifications.where((n) => !(n['isRead'] ?? false)).toList();
-    }
+    if (_selectedFilter == 'All') return allNotifications;
+    if (_selectedFilter == 'Unread') return allNotifications.where((n) => !(n['isRead'] ?? false)).toList();
     return allNotifications.where((n) => n['type'] == _selectedFilter).toList();
   }
 
-  int get unreadCount {
-    return allNotifications.where((n) => !(n['isRead'] ?? false)).length;
-  }
+  int get unreadCount => allNotifications.where((n) => !(n['isRead'] ?? false)).length;
 
   Future<void> _markAsRead(int id) async {
     try {
-      final success = await api.markNotificationAsRead(id);
-      if (success) {
-        setState(() {
-          final notification = allNotifications.firstWhere((n) => n['id'] == id);
-          notification['isRead'] = true;
-        });
-      }
-    } catch (error) {
-      print('Error marking notification as read: $error');
-      setState(() {
-        final notification = allNotifications.firstWhere((n) => n['id'] == id);
-        notification['isRead'] = true;
-      });
-    }
+      await api.markNotificationAsRead(id);
+    } catch (_) {}
+    setState(() {
+      final n = allNotifications.firstWhere((n) => n['id'] == id, orElse: () => {});
+      if (n.isNotEmpty) n['isRead'] = true;
+    });
   }
 
   Future<void> _markAllAsRead() async {
-    try {
-      final success = await api.markAllNotificationsAsRead();
-      if (success) {
-        setState(() {
-          for (var notification in allNotifications) {
-            notification['isRead'] = true;
-          }
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('All notifications marked as read'),
-              backgroundColor: Color(0xFF468FAF),
-            ),
-          );
-        }
-      }
-    } catch (error) {
-      print('Error marking all notifications as read: $error');
-      setState(() {
-        for (var notification in allNotifications) {
-          notification['isRead'] = true;
-        }
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('All notifications marked as read'),
-            backgroundColor: Color(0xFF468FAF),
-          ),
-        );
-      }
+    try { await api.markAllNotificationsAsRead(); } catch (_) {}
+    setState(() {
+      for (final n in allNotifications) n['isRead'] = true;
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: const Text('All notifications marked as read'),
+            backgroundColor: AdminColors.success),
+      );
     }
   }
 
   Future<void> _deleteNotification(int id) async {
-    try {
-      final success = await api.deleteNotification(id);
-      if (success) {
-        setState(() {
-          allNotifications.removeWhere((n) => n['id'] == id);
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Notification deleted'),
-              backgroundColor: Color(0xFF468FAF),
-            ),
-          );
-        }
-      }
-    } catch (error) {
-      print('Error deleting notification: $error');
-      setState(() {
-        allNotifications.removeWhere((n) => n['id'] == id);
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Notification deleted'),
-            backgroundColor: Color(0xFF468FAF),
-          ),
-        );
-      }
+    try { await api.deleteNotification(id); } catch (_) {}
+    setState(() => allNotifications.removeWhere((n) => n['id'] == id));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: const Text('Notification deleted'),
+            backgroundColor: AdminColors.danger),
+      );
     }
   }
 
   void _pickupSuggestion(Map<String, dynamic> notification) {
     showDialog(
       context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      builder: (ctx) => AlertDialog(
         backgroundColor: Colors.white,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF2FF),
-                  borderRadius: BorderRadius.circular(50),
-                ),
-                child: const Icon(
-                  Icons.check_circle,
-                  color: Color(0xFF0077B6),
-                  size: 40,
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Pick Up Suggestion?',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Are you sure you want to handle this customer request for ${notification['propertyName']}?',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: Color(0xFF64748B),
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF64748B),
-                        side: const BorderSide(color: Color(0xFFE2E8F0)),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Text(
-                        'Cancel',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        setState(() {
-                          notification['canPickup'] = false;
-                        });
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content:
-                                Text('Suggestion picked up successfully!'),
-                            backgroundColor: Color(0xFF10B981),
-                          ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0077B6),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Text(
-                        'Confirm',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Pick Up Suggestion?',
+            style: TextStyle(fontWeight: FontWeight.bold, color: AdminColors.textPrimary)),
+        content: Text(
+          'Are you sure you want to handle this customer request for ${notification['propertyName']}?',
+          style: const TextStyle(color: AdminColors.textSecond, height: 1.5),
         ),
-      ),
-    );
-  }
-
-  void _handleBottomNavTap(int index) {
-    if (index == 4) {
-      // More button - handled by SharedBottomNavigationBar to open drawer
-      return;
-    }
-    if (index == 3) {
-      Navigator.of(context).pushNamed('/profile');
-      return;
-    }
-    if (index == 1) {
-      Navigator.of(context).pushReplacementNamed('/manage-services');
-      return;
-    }
-    if (index == 2) {
-      Navigator.of(context).pushReplacementNamed('/manage-booking');
-      return;
-    }
-    if (index == 0) {
-      Navigator.of(context).pushNamedAndRemoveUntil('/admin', (route) => false);
-      return;
-    }
-    setState(() => _selectedIndex = index);
-  }
-
-  void _handleMenuSelection(String label) {
-    Navigator.pop(context);
-    if (label == 'Dashboard') {
-      Navigator.of(context).pushNamedAndRemoveUntil('/admin', (route) => false);
-      return;
-    }
-    if (label == 'Profile') {
-      Navigator.of(context).pushReplacementNamed('/profile');
-      return;
-    }
-    if (label == 'User Management') {
-      // Navigate to user management page with admin role
-      Navigator.of(context).pushReplacementNamed('/user-management', arguments: AppRole.admin);
-      return;
-    }
-    if (label == 'Properties') {
-      Navigator.of(context).pushReplacementNamed('/manage-services');
-      return;
-    }
-    if (label == 'Bookings') {
-      Navigator.of(context).pushReplacementNamed('/manage-booking');
-      return;
-    }
-    if (label == 'AuditTrails') {
-      Navigator.of(context).pushNamed('/admin-audit-trails');
-      return;
-    }
-    if (label == 'BooknPayLog') {
-      Navigator.of(context).pushNamed('/admin-book-and-pay');
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Navigating to $label', style: const TextStyle(color: Colors.black)),
-        backgroundColor: const Color(0xFF468FAF),
-        duration: const Duration(seconds: 1),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: AdminColors.textMuted)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() => notification['canPickup'] = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: const Text('Suggestion picked up successfully!'),
+                    backgroundColor: AdminColors.success),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AdminColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Confirm'),
+          ),
+        ],
       ),
     );
   }
 
   Future<void> _handleLogout() async {
-    // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFFE7F0FF),
-        title: const Text('Logout', style: TextStyle(color: Colors.black)),
-        content: const Text('Are you sure you want to logout?', style: TextStyle(color: Colors.black)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.black)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0077B6),
-              foregroundColor: Colors.white,
+    await Session.clear();
+    if (!mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+  }
+
+  void _handleBottomNavTap(int index) {
+    if (index == 0) { Navigator.of(context).pushNamedAndRemoveUntil('/admin', (route) => false); return; }
+    if (index == 1) { Navigator.of(context).pushNamed('/manage-services'); return; }
+    if (index == 2) { Navigator.of(context).pushNamed('/admin-stock-manager'); return; }
+    if (index == 3) { Navigator.of(context).pushNamed('/profile'); return; }
+  }
+
+  void _handleMenuSelection(String label) {
+    Navigator.pop(context);
+    switch (label) {
+      case 'Dashboard': Navigator.of(context).pushNamedAndRemoveUntil('/admin', (route) => false); break;
+      case 'User Management': Navigator.of(context).pushNamed('/user-management', arguments: AppRole.admin); break;
+      case 'Properties': Navigator.of(context).pushNamed('/manage-services'); break;
+      case 'Stock Manager': Navigator.of(context).pushNamed('/admin-stock-manager'); break;
+      case 'Activity Logs': Navigator.of(context).pushNamed('/admin-activity-logs'); break;
+      case 'Ledger': Navigator.of(context).pushNamed('/admin-ledger'); break;
+      case 'Customer Review': Navigator.of(context).pushNamed('/admin-customer-reviews'); break;
+      case 'Profile': Navigator.of(context).pushNamed('/profile'); break;
+    }
+  }
+
+  // ===== Stock Manager style header =====
+  Widget _buildHeader(double topPad) {
+    return Container(
+      width: double.infinity,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.asset(
+              'assets/notification.png',
+              fit: BoxFit.cover,
             ),
-            child: const Text('Logout'),
+          ),
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF3D1E0C).withOpacity(0.62),
+                    const Color(0xFF8B4A2F).withOpacity(0.55),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(20, topPad + 24, 20, 36),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white.withOpacity(0.25)),
+                  ),
+                  child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 26),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Notifications',
+                        style: GoogleFonts.outfit(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        unreadCount > 0
+                            ? '$unreadCount unread message${unreadCount == 1 ? '' : 's'}.\nStay on top of your alerts.'
+                            : 'All caught up!\nNo new notifications.',
+                        style: GoogleFonts.outfit(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                          color: Colors.white.withOpacity(0.72),
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
-
-    if (confirmed == true) {
-      // Clear the session data
-      await Session.clear();
-      if (mounted) {
-        // Navigate back to the before-login screen
-        Navigator.pushNamedAndRemoveUntil(context, '/before-login', (route) => false);
-      }
-    }
   }
-
 
   @override
   Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top;
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: const Color(0xFFE7F0FF),
-      appBar: _buildAppBar(),
+      backgroundColor: AdminColors.cream,
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.admin,
         onItemSelected: _handleMenuSelection,
         onLogout: _handleLogout,
       ),
-      body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: _loadNotifications,
-                color: const Color(0xFF649EFF),
-                backgroundColor: Colors.white,
-                strokeWidth: 3.0,
-                child: Column(
-                  children: [
-                    _buildFilterSection(),
-                    Expanded(
-                      child: filteredNotifications.isEmpty
-                          ? SingleChildScrollView(
-                              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                              child: SizedBox(
-                                height: MediaQuery.of(context).size.height * 0.6,
-                                child: _buildEmptyState(),
-                              ),
-                            )
-                          : ListView.builder(
-                              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                              padding: const EdgeInsets.all(16),
-                              itemCount: filteredNotifications.length,
-                              itemBuilder: (context, index) {
-                                return _buildNotificationCard(
-                                    filteredNotifications[index]);
-                              },
-                            ),
+      body: Column(
+        children: [
+          _buildHeader(topPad),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadNotifications,
+              color: AdminColors.primary,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverToBoxAdapter(child: _buildFilterSection()),
+                  if (_isLoading)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(child: CircularProgressIndicator(color: AdminColors.primary)),
+                    )
+                  else if (filteredNotifications.isEmpty)
+                    SliverFillRemaining(child: _buildEmptyState())
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (ctx, i) => _buildNotificationCard(filteredNotifications[i]),
+                          childCount: filteredNotifications.length,
+                        ),
+                      ),
                     ),
-                  ],
-                ),
+                ],
               ),
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: SharedBottomNavigationBar(
-        selectedIndex: _selectedIndex,
+        selectedIndex: -1,
         onTap: _handleBottomNavTap,
         scaffoldKey: _scaffoldKey,
         role: nav.UserRole.admin,
@@ -405,118 +280,53 @@ class _AdminNotificationsState extends State<AdminNotifications> {
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      automaticallyImplyLeading: false,
-      backgroundColor: Colors.white,
-      elevation: 0,
-      title: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF0077B6), Color(0xFF649EFF)],
-              ),
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'Notifications',
-                  style: TextStyle(
-                    color: Color(0xFF1E293B),
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+  Widget _buildFilterSection() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AdminColors.cardBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AdminColors.border),
+          boxShadow: [
+            BoxShadow(
+                color: AdminColors.primary.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 3)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('$unreadCount Unread',
+                    style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
+                if (unreadCount > 0)
+                  TextButton.icon(
+                    onPressed: _markAllAsRead,
+                    icon: const Icon(Icons.done_all, size: 16),
+                    label: Text('Mark all read', style: AppTextStyles.bodySmall),
+                    style: TextButton.styleFrom(foregroundColor: AdminColors.primary),
                   ),
-                ),
-                Text(
-                  'Stay updated with customer requests and bookings',
-                  style: TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 12,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
               ],
             ),
-          ),
-        ],
-      ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.refresh, color: Color(0xFF64748B)),
-          onPressed: _loadNotifications,
-          tooltip: 'Refresh notifications',
-        ),
-        IconButton(
-          icon: const Icon(Icons.logout, color: Color(0xFF64748B)),
-          onPressed: _handleLogout,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFilterSection() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      color: Colors.white,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(height: 10),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
                 children: [
-                  Text(
-                    '$unreadCount Unread',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E293B),
-                    ),
-                  ),
-                  if (allNotifications.isNotEmpty)
-                    Text(
-                      '${allNotifications.length} Total',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
+                  _buildFilterChip('Unread', 'Unread'),
+                  _buildFilterChip('Bookings', 'Bookings'),
+                  _buildFilterChip('Payment', 'Payment'),
+                  _buildFilterChip('Cancellation', 'Cancellation'),
                 ],
               ),
-              if (unreadCount > 0)
-                TextButton.icon(
-                  onPressed: _markAllAsRead,
-                  icon: const Icon(Icons.done_all, size: 18),
-                  label: const Text('Mark all read'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF649EFF),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildFilterChip('All', 'All'),
-                _buildFilterChip('Unread', 'Unread'),
-                _buildFilterChip('payment_received', 'Payments'),
-                _buildFilterChip('room_enquiry', 'Enquiries'),
-                _buildFilterChip('broadcast_suggestion', 'Broadcasts'),
-              ],
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -528,82 +338,66 @@ class _AdminNotificationsState extends State<AdminNotifications> {
       child: FilterChip(
         label: Text(label),
         selected: isSelected,
-        onSelected: (selected) {
-          setState(() {
-            _selectedFilter = value;
-          });
-        },
-        backgroundColor: Colors.white,
-        selectedColor: const Color(0xFF649EFF),
-        labelStyle: TextStyle(
-          color: isSelected ? Colors.white : const Color(0xFF64748B),
+        onSelected: (_) => setState(() => _selectedFilter = value),
+        backgroundColor: AdminColors.surface,
+        selectedColor: AdminColors.primary,
+        labelStyle: AppTextStyles.bodySmall.copyWith(
+          color: isSelected ? Colors.white : AdminColors.textSecond,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
         ),
-        side: BorderSide(
-          color: isSelected
-              ? const Color(0xFF649EFF)
-              : const Color(0xFFE2E8F0),
-        ),
+        side: BorderSide(color: isSelected ? AdminColors.secondary : AdminColors.border),
       ),
     );
   }
 
   Widget _buildNotificationCard(Map<String, dynamic> notification) {
+    final isRead = notification['isRead'] ?? false;
     return Dismissible(
       key: Key(notification['id'].toString()),
       direction: DismissDirection.endToStart,
       background: Container(
-        margin: const EdgeInsets.only(bottom: 16),
+        margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFEF4444),
+          color: AdminColors.danger,
           borderRadius: BorderRadius.circular(16),
         ),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
-        child: const Icon(Icons.delete, color: Colors.white, size: 28),
+        child: const Icon(Icons.delete, color: Colors.white, size: 26),
       ),
-      onDismissed: (direction) {
-        _deleteNotification(notification['id']);
-      },
+      onDismissed: (_) => _deleteNotification(notification['id']),
       child: InkWell(
         onTap: () {
-          if (!notification['isRead']) {
-            _markAsRead(notification['id']);
-          }
+          if (!isRead) _markAsRead(notification['id']);
           _showNotificationDetails(notification);
         },
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          margin: const EdgeInsets.only(bottom: 16),
+          margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
-            color: notification['isRead']
-                ? Colors.white
-                : const Color(0xFFE7F0FF),
+            color: isRead ? AdminColors.cardBg : AdminColors.primary.withOpacity(0.05),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: notification['isRead']
-                  ? const Color(0xFFE2E8F0)
-                  : const Color(0xFF649EFF),
-              width: notification['isRead'] ? 1 : 2,
+              color: isRead ? AdminColors.border : AdminColors.primary,
+              width: isRead ? 1 : 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
+                  color: AdminColors.primary.withOpacity(0.06),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3)),
             ],
           ),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildNotificationIcon(
-                        notification['type'], notification['isRead']),
-                    const SizedBox(width: 16),
+                    _buildNotificationIcon(notification['type'], isRead),
+                    const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -612,54 +406,33 @@ class _AdminNotificationsState extends State<AdminNotifications> {
                             children: [
                               Expanded(
                                 child: Text(
-                                  notification['title'],
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1E293B),
-                                  ),
+                                  notification['title'] ?? '',
+                                  style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary),
                                 ),
                               ),
-                              if (!notification['isRead'])
+                              if (!isRead)
                                 Container(
-                                  width: 10,
-                                  height: 10,
+                                  width: 9,
+                                  height: 9,
                                   decoration: const BoxDecoration(
-                                    color: Color(0xFF649EFF),
-                                    shape: BoxShape.circle,
-                                  ),
+                                      color: AdminColors.primary, shape: BoxShape.circle),
                                 ),
                             ],
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            notification['message'],
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Color(0xFF64748B),
-                              height: 1.5,
-                            ),
+                            notification['message'] ?? '',
+                            style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textSecond, height: 1.5),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.access_time,
-                                size: 14,
-                                color: Color(0xFF94A3B8),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                notification['time'],
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF94A3B8),
-                                ),
-                              ),
-                            ],
-                          ),
+                          const SizedBox(height: 6),
+                          Row(children: [
+                            const Icon(Icons.access_time, size: 13, color: AdminColors.textMuted),
+                            const SizedBox(width: 4),
+                            Text(notification['time'] ?? '',
+                                style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted)),
+                          ]),
                         ],
                       ),
                     ),
@@ -667,21 +440,18 @@ class _AdminNotificationsState extends State<AdminNotifications> {
                 ),
                 if (notification['type'] == 'broadcast_suggestion' &&
                     notification['canPickup'] == true) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       onPressed: () => _pickupSuggestion(notification),
-                      icon: const Icon(Icons.check_circle, size: 18),
+                      icon: const Icon(Icons.check_circle, size: 16),
                       label: const Text('Pick Up Suggestion'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0077B6),
+                        backgroundColor: AdminColors.primary,
                         foregroundColor: Colors.white,
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
                     ),
                   ),
@@ -698,36 +468,27 @@ class _AdminNotificationsState extends State<AdminNotifications> {
     IconData icon;
     Color color;
     Color bgColor;
-
     switch (type) {
       case 'payment_received':
-        icon = Icons.payment;
-        color = const Color(0xFF10B981);
-        bgColor = const Color(0xFFD1FAE5);
-        break;
+        icon = Icons.payment; color = AdminColors.success;
+        bgColor = AdminColors.success.withOpacity(0.12); break;
       case 'room_enquiry':
-        icon = Icons.help_outline;
-        color = const Color(0xFFF59E0B);
-        bgColor = const Color(0xFFFEF3C7);
-        break;
+        icon = Icons.help_outline; color = AdminColors.accent;
+        bgColor = AdminColors.accent.withOpacity(0.12); break;
       case 'broadcast_suggestion':
-        icon = Icons.campaign;
-        color = const Color(0xFF8B5CF6);
-        bgColor = const Color(0xFFEDE9FE);
-        break;
+        icon = Icons.campaign; color = const Color(0xFF7C3AED);
+        bgColor = const Color(0xFFEDE9FE); break;
       default:
-        icon = Icons.notifications;
-        color = const Color(0xFF64748B);
-        bgColor = const Color(0xFFF1F5F9);
+        icon = Icons.notifications; color = AdminColors.textMuted;
+        bgColor = AdminColors.surface;
     }
-
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: bgColor.withValues(alpha: isRead ? 0.5 : 1.0),
+        color: bgColor.withOpacity(isRead ? 0.6 : 1.0),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Icon(icon, color: color, size: 24),
+      child: Icon(icon, color: color, size: 22),
     );
   }
 
@@ -739,36 +500,22 @@ class _AdminNotificationsState extends State<AdminNotifications> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 120,
-              height: 120,
+              width: 100,
+              height: 100,
               decoration: BoxDecoration(
-                color: const Color(0xFFF5F3FF),
-                borderRadius: BorderRadius.circular(60),
+                color: AdminColors.primary.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(50),
               ),
-              child: const Icon(
-                Icons.notifications_none,
-                size: 60,
-                color: Color(0xFF8B5CF6),
-              ),
+              child: const Icon(Icons.notifications_none, size: 52, color: AdminColors.primary),
             ),
             const SizedBox(height: 24),
-            const Text(
-              'No Notifications',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1E293B),
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text(
+            Text('No Notifications',
+                style: AppTextStyles.h2.copyWith(color: AdminColors.textPrimary)),
+            const SizedBox(height: 10),
+            Text(
               'All caught up!\nWe\'ll notify you of new customer activities.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Color(0xFF64748B),
-                height: 1.5,
-              ),
+              style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textMuted, height: 1.6),
             ),
           ],
         ),
@@ -781,7 +528,7 @@ class _AdminNotificationsState extends State<AdminNotifications> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
+      builder: (ctx) => Container(
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -794,174 +541,120 @@ class _AdminNotificationsState extends State<AdminNotifications> {
             Row(
               children: [
                 _buildNotificationIcon(notification['type'], false),
-                const SizedBox(width: 16),
+                const SizedBox(width: 14),
                 Expanded(
-                  child: Text(
-                    notification['title'],
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E293B),
-                    ),
-                  ),
+                  child: Text(notification['title'] ?? '',
+                      style: AppTextStyles.h3.copyWith(color: AdminColors.textPrimary)),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close, color: AdminColors.textMuted),
+                  onPressed: () => Navigator.pop(ctx),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              notification['message'],
-              style: const TextStyle(
-                fontSize: 16,
-                color: Color(0xFF64748B),
-                height: 1.6,
-              ),
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
+            Text(notification['message'] ?? '',
+                style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textSecond, height: 1.6)),
+            const SizedBox(height: 14),
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFFE7F0FF),
+                color: AdminColors.surface,
                 borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AdminColors.border),
               ),
               child: Column(
                 children: [
                   if (notification['customerName'] != null)
-                    _buildDetailItem(
-                        Icons.person, 'Customer', notification['customerName']),
+                    _buildDetailItem(Icons.person, 'Customer', notification['customerName']),
                   if (notification['propertyName'] != null) ...[
-                    const SizedBox(height: 12),
-                    _buildDetailItem(Icons.home, 'Property',
-                        notification['propertyName']),
+                    const SizedBox(height: 10),
+                    _buildDetailItem(Icons.home, 'Property', notification['propertyName']),
                   ],
                   if (notification['amount'] != null) ...[
-                    const SizedBox(height: 12),
-                    _buildDetailItem(
-                      Icons.attach_money,
-                      'Amount',
-                      'RM ${notification['amount'].toStringAsFixed(2)}',
-                    ),
+                    const SizedBox(height: 10),
+                    _buildDetailItem(Icons.attach_money, 'Amount',
+                        'RM ${notification['amount'].toStringAsFixed(2)}'),
                   ],
                   if (notification['dates'] != null) ...[
-                    const SizedBox(height: 12),
-                    _buildDetailItem(
-                        Icons.calendar_today, 'Dates', notification['dates']),
+                    const SizedBox(height: 10),
+                    _buildDetailItem(Icons.calendar_today, 'Dates', notification['dates']),
                   ],
                   if (notification['broadcastBy'] != null) ...[
-                    const SizedBox(height: 12),
-                    _buildDetailItem(Icons.person_outline, 'Broadcast By',
-                        notification['broadcastBy']),
+                    const SizedBox(height: 10),
+                    _buildDetailItem(
+                        Icons.person_outline, 'Broadcast By', notification['broadcastBy']),
                   ],
                   if (notification['details'] != null) ...[
-                    const SizedBox(height: 12),
-                    _buildDetailItem(
-                        Icons.info_outline, 'Details', notification['details']),
+                    const SizedBox(height: 10),
+                    _buildDetailItem(Icons.info_outline, 'Details', notification['details']),
                   ],
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                const Icon(Icons.access_time,
-                    size: 16, color: Color(0xFF94A3B8)),
-                const SizedBox(width: 4),
-                Text(
-                  notification['time'],
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF94A3B8),
+            const SizedBox(height: 12),
+            Row(children: [
+              const Icon(Icons.access_time, size: 14, color: AdminColors.textMuted),
+              const SizedBox(width: 4),
+              Text(notification['time'] ?? '',
+                  style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted)),
+            ]),
+            const SizedBox(height: 20),
+            if (notification['type'] == 'broadcast_suggestion' &&
+                notification['canPickup'] == true) ...[
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _pickupSuggestion(notification);
+                  },
+                  icon: const Icon(Icons.check_circle, size: 18),
+                  label: Text('Pick Up Suggestion',
+                      style: AppTextStyles.label.copyWith(color: Colors.white, fontWeight: FontWeight.w600)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AdminColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            if (notification['type'] == 'broadcast_suggestion' &&
-                notification['canPickup'] == true)
-              Column(
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _pickupSuggestion(notification);
-                      },
-                      icon: const Icon(Icons.check_circle, size: 20),
-                      label: const Text(
-                        'Pick Up Suggestion',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0077B6),
-                        foregroundColor: Colors.white,
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
               ),
+              const SizedBox(height: 10),
+            ],
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () {
-                      Navigator.pop(context);
+                      Navigator.pop(ctx);
                       _deleteNotification(notification['id']);
                     },
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFEF4444),
-                      side: const BorderSide(color: Color(0xFFEF4444)),
-                      padding:
-                          const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      foregroundColor: AdminColors.danger,
+                      side: const BorderSide(color: AdminColors.danger),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: const Text(
-                      'Delete',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
+                    child: Text('Delete', style: AppTextStyles.label.copyWith(color: AdminColors.danger, fontWeight: FontWeight.w600)),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Opening details...'),
-                          backgroundColor: Color(0xFF468FAF),
-                        ),
-                      );
-                    },
+                    onPressed: () => Navigator.pop(ctx),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0077B6),
+                      backgroundColor: AdminColors.primary,
                       foregroundColor: Colors.white,
-                      padding:
-                          const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: const Text(
-                      'View Details',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
+                    child: Text('Close', style: AppTextStyles.label.copyWith(color: Colors.white, fontWeight: FontWeight.w600)),
                   ),
                 ),
               ],
             ),
-            SizedBox(height: MediaQuery.of(context).padding.bottom),
+            SizedBox(height: MediaQuery.of(ctx).padding.bottom),
           ],
         ),
       ),
@@ -971,28 +664,15 @@ class _AdminNotificationsState extends State<AdminNotifications> {
   Widget _buildDetailItem(IconData icon, String label, String value) {
     return Row(
       children: [
-        Icon(icon, size: 18, color: const Color(0xFF649EFF)),
+        Icon(icon, size: 16, color: AdminColors.accent),
         const SizedBox(width: 8),
-        Text(
-          '$label: ',
-          style: const TextStyle(
-            fontSize: 14,
-            color: Color(0xFF64748B),
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        Text('$label: ',
+            style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textSecond, fontWeight: FontWeight.w600)),
         Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(
-              fontSize: 14,
-              color: Color(0xFF1E293B),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          child: Text(value,
+              style: AppTextStyles.bodySmall.copyWith(color: AdminColors.textPrimary, fontWeight: FontWeight.w600)),
         ),
       ],
     );
   }
-
 }

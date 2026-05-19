@@ -14,8 +14,7 @@ class CustomerBookings extends StatefulWidget {
 }
 
 class _CustomerBookingsState extends State<CustomerBookings> {
-  int _selectedIndex = 3;
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  int _selectedIndex = 2;
 
   List<Map<String, dynamic>> upcomingBookings = [];
   bool _isLoading = true;
@@ -201,18 +200,17 @@ class _CustomerBookingsState extends State<CustomerBookings> {
   }
 
   void _navigateToPage(int index) {
-    setState(() => _selectedIndex = index);
+    setState(() {
+      _selectedIndex = index;
+    });
 
     if (index == 0) {
-      Navigator.of(context).pushReplacementNamed('/home');
+      // Navigate to dashboard and clear stack so no back button appears
+      Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
     } else if (index == 1) {
-      Navigator.of(context).pushReplacementNamed('/customer-rooms');
-    } else if (index == 2) {
       Navigator.of(context).pushReplacementNamed('/customer-cart');
     } else if (index == 3) {
-      return; // already on Bookings
-    } else if (index == 4) {
-      _scaffoldKey.currentState?.openEndDrawer();
+      Navigator.of(context).pushReplacementNamed('/profile');
     }
   }
 
@@ -260,10 +258,7 @@ class _CustomerBookingsState extends State<CustomerBookings> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      key: _scaffoldKey,
       backgroundColor: const Color(0xFFE7F0FF),
-      endDrawer: _buildMoreDrawer(),
-      drawerScrimColor: Colors.black.withOpacity(0.90),
       appBar: _buildAppBar(),
       body: SafeArea(
         child: _isLoading
@@ -757,135 +752,6 @@ class _CustomerBookingsState extends State<CustomerBookings> {
     );
   }
 
-  Widget _buildMoreDrawer() {
-    final screenWidth = MediaQuery.of(context).size.width;
-
-    return Drawer(
-      width: screenWidth < 480
-          ? screenWidth * 0.78
-          : screenWidth < 768
-              ? screenWidth * 0.65
-              : 300,
-      backgroundColor: const Color(0xFF493829),
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(22, 20, 14, 18),
-              child: Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Hello Sarawak',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
-            Divider(color: Colors.white.withOpacity(0.1)),
-            const SizedBox(height: 20),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 22),
-                children: [
-                  _drawerItem(
-                    label: 'Notifications',
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.pushNamed(context, '/customer-notifications');
-                    },
-                  ),
-                  _drawerItem(
-                    label: 'About Us',
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.pushNamed(context, '/about-us');
-                    },
-                  ),
-                  _drawerItem(
-                    label: 'About Sarawak',
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.pushNamed(context, '/about-sarawak');
-                    },
-                  ),
-                  _drawerItem(
-                    label: 'FAQ',
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.pushNamed(context, '/customer-faq');
-                    },
-                  ),
-                  _drawerItem(
-                    label: 'My Profile',
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.pushNamed(context, '/profile');
-                    },
-                  ),
-                  _drawerItem(
-                    label: 'Logout',
-                    onTap: () {
-                      Navigator.pop(context);
-                      _handleLogout();
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _drawerItem({
-    required String label,
-    required VoidCallback onTap,
-    bool isActive = false,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 15),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 6),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              height: 2,
-              width: isActive ? 52 : 0,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildBottomNavigationBar() {
     return Container(
       decoration: BoxDecoration(
@@ -904,11 +770,10 @@ class _CustomerBookingsState extends State<CustomerBookings> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildBottomNavItem(Icons.home, 'Home', 0),
-              _buildBottomNavItem(Icons.hotel, 'Rooms', 1),
-              _buildBottomNavItem(Icons.shopping_cart, 'Cart', 2),
-              _buildBottomNavItem(Icons.calendar_today, 'Bookings', 3),
-              _buildBottomNavItem(Icons.more_horiz, 'More', 4),
+              _buildBottomNavItem(Icons.home, 'Rooms', 0),
+              _buildBottomNavItem(Icons.shopping_cart, 'Cart', 1),
+              _buildBottomNavItem(Icons.calendar_today, 'Bookings', 2),
+              _buildBottomNavItem(Icons.person, 'Profile', 3),
             ],
           ),
         ),

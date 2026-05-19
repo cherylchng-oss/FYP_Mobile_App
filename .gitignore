@@ -25,3 +25,26 @@ doc/api/
 
 .flutter-plugins
 .flutter-plugins-dependencies
+
+# Claude Code 
+.claude/worktrees/
+.claude/claude.md
+
+# Logs
+*.log
+
+# Kotlin compiler cache
+.kotlin/
+*.kotlin_module
+# Logs
+*.log
+
+# Claude memory/context
+.claude/claude.md
+
+# Claude Code worktrees
+.claude/worktrees/
+
+# Kotlin compiler errors
+android/.kotlin/
+*.log
