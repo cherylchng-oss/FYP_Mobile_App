@@ -64,6 +64,28 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
     'additionalRequests': '',
   };
 
+  final List<String> _titleOptions = const [
+    'Mr.',
+    'Mrs.',
+    'Ms.',
+    'Miss',
+    'Madam',
+  ];
+
+  String? _safeBookingTitleValue(dynamic value) {
+    final title = value?.toString().trim();
+
+    if (title == null || title.isEmpty || title == 'null') {
+      return null;
+    }
+
+    if (_titleOptions.contains(title)) {
+      return title;
+    }
+
+    return null;
+  }
+
   String paymentFormError = '';
   bool showBookingBlockedModal = false;
   String blockedBookingTitle = 'Booking Window Closed';
@@ -3887,12 +3909,12 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                         const SizedBox(height: 12),
 
                         DropdownButtonFormField<String>(
-                          value: '${bookingForm['title']}',
-                          items: const ['Mr.', 'Mrs.', 'Ms.']
+                          value: _safeBookingTitleValue(bookingForm['title']),
+                          items: _titleOptions
                               .map(
-                                (e) => DropdownMenuItem(
-                                  value: e,
-                                  child: Text(e),
+                                (title) => DropdownMenuItem<String>(
+                                  value: title,
+                                  child: Text(title),
                                 ),
                               )
                               .toList(),

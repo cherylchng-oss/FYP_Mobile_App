@@ -417,8 +417,8 @@ class _CustomerLayoutState extends State<CustomerLayout> {
                     _drawerItem(
                       context,
                       Icons.person_rounded,
-                      'My Profile',
-                      '/profile',
+                      'Profile',
+                      '/customer-profile',
                     ),
                   ],
                 ),

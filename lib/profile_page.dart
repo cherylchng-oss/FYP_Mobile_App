@@ -490,12 +490,21 @@ class _ProfilePageState extends State<ProfilePage>
       ],
     );
 
-    // CUSTOMER ONLY: use customer_layout.dart bottom nav + drawer
+    // CUSTOMER ONLY: redirect to the new customer profile page
     if (navRole == nav.UserRole.customer) {
-      return CustomerLayout(
-        selectedIndex: 3,
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed('/customer-profile');
+        }
+      });
+
+      return Scaffold(
         backgroundColor: AdminColors.cream,
-        body: profileBody,
+        body: Center(
+          child: CircularProgressIndicator(
+            color: AdminColors.primary,
+          ),
+        ),
       );
     }
 
