@@ -1,9 +1,10 @@
-import 'dart:ui'; // For ImageFilter (blur)
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'services/session.dart';
 import 'services/rbac_service.dart' as rbac;
 import 'api.dart' as api;
 import 'app.dart';
+import 'shared/customer_layout.dart';
 import 'shared/navigation_menu.dart' as nav;
 import 'shared/bottom_navigation_bar.dart';
 import 'shared/colors.dart';
@@ -463,11 +464,47 @@ class _ProfilePageState extends State<ProfilePage>
     final bool canEditPaypal = roleLower == 'owner';
     final navRole = _userRoleEnum;
 
+    final profileBody = Column(
+      children: [
+        _buildProfileHeader(topPad, userName, userEmail, roleLower),
+        Expanded(
+          child: _isLoading
+              ? Center(child: CircularProgressIndicator(color: _primaryBlue))
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_errorMessage != null) _buildErrorBanner(),
+                      _buildMenuSection(),
+                      if (canEditPaypal) ...[
+                        const SizedBox(height: 16),
+                        _buildPaypalSection(),
+                      ],
+                      const SizedBox(height: 24),
+                      _buildLogoutBtn(),
+                    ],
+                  ),
+                ),
+        ),
+      ],
+    );
+
+    // CUSTOMER ONLY: use customer_layout.dart bottom nav + drawer
+    if (navRole == nav.UserRole.customer) {
+      return CustomerLayout(
+        selectedIndex: 3,
+        backgroundColor: AdminColors.cream,
+        body: profileBody,
+      );
+    }
+
+    // ADMIN / MODERATOR / OWNER: keep existing shared nav + drawer
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: AdminColors.cream,
       drawerEnableOpenDragGesture: false,
-      endDrawer: (navRole != null && navRole != nav.UserRole.customer)
+      endDrawer: navRole != null
           ? MoreMenuDrawer(
               role: navRole,
               onItemSelected: _handleMenuSelection,
@@ -475,31 +512,7 @@ class _ProfilePageState extends State<ProfilePage>
               currentPageLabel: 'Profile',
             )
           : null,
-      body: Column(
-        children: [
-          _buildProfileHeader(topPad, userName, userEmail, roleLower),
-          Expanded(
-            child: _isLoading
-                ? Center(child: CircularProgressIndicator(color: _primaryBlue))
-                : SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (_errorMessage != null) _buildErrorBanner(),
-                        _buildMenuSection(),
-                        if (canEditPaypal) ...[
-                          const SizedBox(height: 16),
-                          _buildPaypalSection(),
-                        ],
-                        const SizedBox(height: 24),
-                        _buildLogoutBtn(),
-                      ],
-                    ),
-                  ),
-          ),
-        ],
-      ),
+      body: profileBody,
       bottomNavigationBar: navRole != null
           ? SharedBottomNavigationBar(
               selectedIndex: _selectedIndex,

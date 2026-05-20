@@ -684,6 +684,9 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
   }
 
   Widget _propertiesGrid() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 520;
+
     return SliverGrid(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
@@ -695,25 +698,28 @@ class _CustomerRoomsNotLoginState extends State<CustomerRoomsNotLogin> {
         childCount: currentProperties.length,
       ),
       gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: MediaQuery.of(context).size.width < 520 ? 520 : 360,
+        maxCrossAxisExtent: isMobile ? 520 : 360,
         mainAxisSpacing: 16,
         crossAxisSpacing: 16,
-        childAspectRatio: MediaQuery.of(context).size.width < 520 ? 0.92 : 0.86,
+        childAspectRatio: isMobile ? 0.86 : 0.82,
       ),
     );
   }
 
   SliverGrid _skeletonGrid() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 520;
+
     return SliverGrid(
       delegate: SliverChildBuilderDelegate(
         (context, index) => const SkeletonPropertyCard(),
         childCount: 6,
       ),
       gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: MediaQuery.of(context).size.width < 520 ? 520 : 360,
+        maxCrossAxisExtent: isMobile ? 520 : 360,
         mainAxisSpacing: 16,
         crossAxisSpacing: 16,
-        childAspectRatio: MediaQuery.of(context).size.width < 520 ? 0.82 : 0.78,
+        childAspectRatio: isMobile ? 0.86 : 0.82,
       ),
     );
   }
@@ -949,26 +955,31 @@ class _PropertyCardNotLoginState extends State<PropertyCardNotLogin> {
                     ],
                   ),
 
-                  const Spacer(),
+                  const SizedBox(height: 10),
 
                   SizedBox(
                     width: double.infinity,
+                    height: 48,
                     child: ElevatedButton(
                       onPressed: widget.onBookNow,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,
                         elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
                       ),
-                      child: const Text(
-                        'Book Now',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
+                      child: const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Book Now',
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
                       ),
                     ),

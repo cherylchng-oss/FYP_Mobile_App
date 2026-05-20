@@ -162,7 +162,7 @@ class _HeroSection extends StatelessWidget {
       width: double.infinity,
       child: Stack(fit: StackFit.expand, children: [
         // Background
-        Image.asset('assets/WaterFront.jpeg', fit: BoxFit.cover,
+        Image.asset('assets/home.png', fit: BoxFit.cover,
           color: Colors.black.withOpacity(0.28), colorBlendMode: BlendMode.darken,
           errorBuilder: (_, __, ___) => Container(color: HSColors.dark)),
         // Bottom gradient
@@ -325,99 +325,6 @@ class _ScrollArrowState extends State<_ScrollArrow> with SingleTickerProviderSta
     animation: _a,
     builder: (_, __) => Transform.translate(offset: Offset(0, _a.value),
       child: Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white.withOpacity(0.45), size: 26)),
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FEATURED DESTINATIONS
-// ─────────────────────────────────────────────────────────────────────────────
-class _FeaturedDestinationsSection extends StatelessWidget {
-  const _FeaturedDestinationsSection();
-
-  static const destinations = [
-    {'name': 'Kuching City', 'tag': 'Cultural Capital', 'img': 'assets/Sarawak.png', 'props': '42 stays'},
-    {'name': 'Gunung Mulu',  'tag': 'UNESCO Heritage',  'img': 'assets/Mulu.jpg',    'props': '18 stays'},
-    {'name': 'Damai Beach',  'tag': 'Coastal Escape',   'img': 'assets/Damai.jpg',   'props': '27 stays'},
-    {'name': 'Bako Park',    'tag': 'Nature & Wildlife','img': 'assets/Bako.jpg',    'props': '11 stays'},
-    {'name': 'Semenggoh',    'tag': 'Orangutan Trail',  'img': 'assets/Semenggoh.jpg','props': '9 stays'},
-    {'name': 'Sibu City',    'tag': 'Riverside Charm',  'img': 'assets/WaterFront.jpeg','props': '33 stays'},
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final w = MediaQuery.of(context).size.width;
-    final isWide = w > 860;
-    int cols = w > 1000 ? 3 : w > 600 ? 2 : 1;
-
-    return Container(
-      color: Colors.white,
-      padding: EdgeInsets.fromLTRB(isWide ? 40 : 16, 72, isWide ? 40 : 16, 72),
-      child: Center(child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1100),
-        child: Column(children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Expanded(child: _SectionHeading(
-              eyebrow: 'Explore by Destination',
-              title: 'Top Places\nto Stay',
-              sub: 'Handpicked destinations across the Land of Hornbills.',
-            )),
-            if (w > 600)
-              InkWell(
-                onTap: () {},
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(border: Border.all(color: HSColors.border), borderRadius: BorderRadius.circular(12)),
-                  child: const Text('View all →', style: TextStyle(color: HSColors.textSecond, fontWeight: FontWeight.w700)),
-                ),
-              ),
-          ]),
-          const SizedBox(height: 36),
-          GridView.builder(
-            shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-            itemCount: destinations.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: cols, crossAxisSpacing: 18, mainAxisSpacing: 18,
-              mainAxisExtent: cols == 1 ? 220 : 260,
-            ),
-            itemBuilder: (_, i) => _DestCard(data: destinations[i]),
-          ),
-        ]),
-      )),
-    );
-  }
-}
-
-class _DestCard extends StatelessWidget {
-  const _DestCard({required this.data});
-  final Map<String, String> data;
-
-  @override
-  Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(20),
-    child: Stack(fit: StackFit.expand, children: [
-      Image.asset(data['img']!, fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(color: HSColors.darkSurface)),
-      // Gradient
-      DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
-        begin: Alignment.bottomCenter, end: Alignment.topCenter,
-        colors: [HSColors.dark.withOpacity(0.85), Colors.transparent, Colors.black.withOpacity(0.12)]))),
-      // Content
-      Positioned(left: 16, right: 16, bottom: 16, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-          decoration: BoxDecoration(color: HSColors.accent.withOpacity(0.25), borderRadius: BorderRadius.circular(20)),
-          child: Text(data['tag']!.toUpperCase(), style: const TextStyle(color: HSColors.accentLight, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1.4)),
-        ),
-        const SizedBox(height: 6),
-        Text(data['name']!, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 3),
-        Row(children: [
-          const Icon(Icons.home_rounded, color: Colors.white60, size: 13), const SizedBox(width: 4),
-          Text(data['props']!, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
-        ]),
-      ])),
-    ]),
   );
 }
 
@@ -658,63 +565,6 @@ class _WhyChooseUsSection extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// AD BANNER
-// ─────────────────────────────────────────────────────────────────────────────
-class _AdBannerSection extends StatelessWidget {
-  const _AdBannerSection();
-
-  @override
-  Widget build(BuildContext context) {
-    final w = MediaQuery.of(context).size.width;
-    return SizedBox(
-      height: 480,
-      width: double.infinity,
-      child: Stack(fit: StackFit.expand, children: [
-        Image.asset('assets/AdBanner.jpg', fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: HSColors.dark)),
-        // Overlays
-        const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
-          colors: [Color(0xCC000000), Color(0x55000000), Colors.transparent]))),
-        DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
-          begin: Alignment.bottomCenter, end: Alignment.topCenter,
-          colors: [Colors.black.withOpacity(0.45), Colors.transparent]))),
-        // Content
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: w > 768 ? 56 : 22),
-          child: Align(alignment: Alignment.centerLeft, child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 680),
-            child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(border: Border.all(color: HSColors.accent), borderRadius: BorderRadius.circular(30), color: Colors.black.withOpacity(0.25)),
-                child: const Text('FEATURED EVENT', style: TextStyle(color: HSColors.accentLight, fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 1.6)),
-              ),
-              const SizedBox(height: 18),
-              Text('Sarawak Rainforest\nWorld Music Festival',
-                style: TextStyle(color: Colors.white, fontSize: w < 480 ? 30 : w < 768 ? 40 : 52, fontWeight: FontWeight.w900, height: 1.05)),
-              const SizedBox(height: 14),
-              Text('Experience the rhythm of the jungle. Get your early bird tickets now.',
-                style: TextStyle(color: Colors.white.withOpacity(0.80), fontSize: w < 480 ? 14 : 17, height: 1.6)),
-              const SizedBox(height: 28),
-              ElevatedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.confirmation_number_rounded, size: 17),
-                label: const Text('Book Tickets', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: HSColors.accent, foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  elevation: 0,
-                ),
-              ),
-            ]),
-          )),
-        ),
-      ]),
     );
   }
 }

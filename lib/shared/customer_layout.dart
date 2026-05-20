@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/session.dart';
 import 'colors.dart';
 
-class CustomerLayout extends StatelessWidget {
+class CustomerLayout extends StatefulWidget {
   const CustomerLayout({
     super.key,
     required this.body,
@@ -15,6 +15,13 @@ class CustomerLayout extends StatelessWidget {
   final int selectedIndex;
   final Color backgroundColor;
   final PreferredSizeWidget? appBar;
+
+  @override
+  State<CustomerLayout> createState() => _CustomerLayoutState();
+}
+
+class _CustomerLayoutState extends State<CustomerLayout> {
+  final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
 
   static const primary = AdminColors.primary;
   static const primaryLight = AdminColors.primaryLight;
@@ -30,15 +37,13 @@ class CustomerLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scaffoldKey = GlobalKey<ScaffoldState>();
-
     return Scaffold(
       key: scaffoldKey,
-      backgroundColor: backgroundColor,
-      appBar: appBar,
+      backgroundColor: widget.backgroundColor,
+      appBar: widget.appBar,
       endDrawer: _buildMoreDrawer(context),
       drawerScrimColor: Colors.black.withOpacity(0.55),
-      body: body,
+      body: widget.body,
       bottomNavigationBar: _buildBottomNav(context, scaffoldKey),
     );
   }
@@ -114,7 +119,7 @@ class CustomerLayout extends StatelessWidget {
     IconData inactiveIcon,
     String label,
   ) {
-    final selected = selectedIndex == index;
+    final selected = widget.selectedIndex == index;
     final isMore = index == 3;
 
     return Expanded(
@@ -181,7 +186,7 @@ class CustomerLayout extends StatelessWidget {
       return;
     }
 
-    if (index == selectedIndex) return;
+    if (index == widget.selectedIndex) return;
 
     if (index == 0) {
       Navigator.of(context).pushReplacementNamed('/customer-home');

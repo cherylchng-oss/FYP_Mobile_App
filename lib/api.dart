@@ -1493,7 +1493,26 @@ Future<Map<String, dynamic>> updateReservationStatus(
       );
     }
 
-    return jsonDecode(response.body);
+    if (response.body.trim().isEmpty) {
+      return {
+        'message': 'success',
+      };
+    }
+
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+
+    if (decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+
+    return {
+      'message': 'success',
+      'data': decoded,
+    };
   } catch (error) {
     print('API error: $error');
     rethrow;

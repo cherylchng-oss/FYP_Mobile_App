@@ -136,6 +136,7 @@ flutter:
     - assets/culturevil.png
     - assets/foodfes.png
     - assets/fam.png
+    - assets/home.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
