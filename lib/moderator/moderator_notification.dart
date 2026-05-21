@@ -16,7 +16,7 @@ class ModeratorNotifications extends StatefulWidget {
 }
 
 class _ModeratorNotificationsState extends State<ModeratorNotifications> {
-  String _selectedFilter = 'Unread';
+  String _selectedFilter = 'All';
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   late Future<void> _notificationInit;
   bool _isLoading = true;
@@ -31,24 +31,70 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
 
   Future<void> _loadNotifications() async {
     setState(() => _isLoading = true);
+
     try {
-      final notifications = await api.fetchNotifications();
+      final userid = await Session.getUserId();
+
+      if (userid == null) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          allNotifications = [];
+        });
+        return;
+      }
+
+      final notifications = await api.fetchNotifications(userid);
+
+      if (!mounted) return;
+
       setState(() {
-        allNotifications = notifications.map((n) => n as Map<String, dynamic>).toList();
+        allNotifications = notifications.map((n) {
+          final raw = Map<String, dynamic>.from(n as Map);
+          return <String, dynamic>{
+            'id': raw['notificationid'],
+            'title': raw['notificationtitle'] ?? '',
+            'message': raw['notificationmessage'] ?? '',
+            'type': raw['notificationtype'] ?? '',
+            'time': raw['timestamp'] ?? '',
+            'isRead': raw['isread'] ?? false,
+            'isread': raw['isread'] ?? false,
+          };
+        }).toList();
         _isLoading = false;
       });
     } catch (_) {
-      setState(() { _isLoading = false; allNotifications = []; });
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        allNotifications = [];
+      });
     }
   }
 
   List<Map<String, dynamic>> get filteredNotifications {
     if (_selectedFilter == 'All') return allNotifications;
-    if (_selectedFilter == 'Unread') return allNotifications.where((n) => !(n['isRead'] ?? false)).toList();
-    return allNotifications.where((n) => n['type'] == _selectedFilter).toList();
+
+    if (_selectedFilter == 'Unread') {
+      return allNotifications.where((n) {
+        final isRead = n['isread'] ?? n['isRead'] ?? false;
+        return isRead == false;
+      }).toList();
+    }
+
+    return allNotifications.where((n) {
+      final type = n['notificationtype'] ?? n['type'] ?? '';
+      return type == _selectedFilter;
+    }).toList();
   }
 
-  int get unreadCount => allNotifications.where((n) => !(n['isRead'] ?? false)).length;
+  int get unreadCount {
+    return allNotifications.where((n) {
+      final isRead = n['isread'] ?? n['isRead'] ?? false;
+      return isRead == false;
+    }).length;
+  }
 
   Future<void> _markAsRead(int id) async {
     try { await api.markNotificationAsRead(id); } catch (_) {}
@@ -59,16 +105,29 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
   }
 
   Future<void> _markAllAsRead() async {
-    try { await api.markAllNotificationsAsRead(); } catch (_) {}
+    try {
+      final userid = await Session.getUserId();
+
+      if (userid == null) return;
+
+      await api.markAllNotificationsAsRead(userid);
+    } catch (_) {}
+
+    if (!mounted) return;
+
     setState(() {
-      for (final n in allNotifications) n['isRead'] = true;
+      for (final n in allNotifications) {
+        n['isread'] = true;
+        n['isRead'] = true;
+      }
     });
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: const Text('All notifications marked as read'),
-            backgroundColor: AdminColors.success),
-      );
-    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('All notifications marked as read'),
+        backgroundColor: AdminColors.success,
+      ),
+    );
   }
 
   Future<void> _deleteNotification(int id) async {
@@ -316,6 +375,7 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
+                  _buildFilterChip('All', 'All'),
                   _buildFilterChip('Unread', 'Unread'),
                   _buildFilterChip('Bookings', 'Bookings'),
                   _buildFilterChip('Payment', 'Payment'),
@@ -462,11 +522,11 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
     );
   }
 
-  Widget _buildNotificationIcon(String type, bool isRead) {
+  Widget _buildNotificationIcon(String? type, bool isRead) {
     IconData icon;
     Color color;
     Color bgColor;
-    switch (type) {
+    switch (type ?? '') {
       case 'payment_received':
         icon = Icons.payment; color = AdminColors.success;
         bgColor = AdminColors.success.withOpacity(0.12); break;

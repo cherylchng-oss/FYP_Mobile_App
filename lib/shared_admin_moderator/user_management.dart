@@ -64,12 +64,20 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
 
   Future<void> _loadUnreadCount() async {
     try {
-      final notifications = await api.fetchNotifications();
-      final list = notifications is List
-          ? notifications
-          : (notifications as Map<String, dynamic>)['data'] as List? ?? [];
-      final count = list.where((n) => !(n['isRead'] ?? false)).length;
-      if (mounted) setState(() => _unreadCount = count);
+      final userid = await Session.getUserId();
+
+      if (userid == null) return;
+
+      final notifications = await api.fetchNotifications(userid);
+
+      if (!mounted) return;
+
+      setState(() {
+        _unreadCount = notifications.where((n) {
+          final isRead = n['isread'] ?? n['isRead'] ?? false;
+          return isRead == false;
+        }).length;
+      });
     } catch (_) {}
   }
 

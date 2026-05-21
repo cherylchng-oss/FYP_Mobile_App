@@ -127,10 +127,19 @@ class _AdminStockManagerPageState extends State<AdminStockManagerPage> {
 
   Future<void> _loadUnreadCount() async {
     try {
-      final notifications = await api.fetchNotifications();
+      final userid = await Session.getUserId();
+
+      if (userid == null) return;
+
+      final notifications = await api.fetchNotifications(userid);
+
       if (!mounted) return;
+
       setState(() {
-        _unreadCount = notifications.where((n) => !(n['isRead'] ?? false)).length;
+        _unreadCount = notifications.where((n) {
+          final isRead = n['isread'] ?? n['isRead'] ?? false;
+          return isRead == false;
+        }).length;
       });
     } catch (_) {}
   }
@@ -303,23 +312,33 @@ class _AdminStockManagerPageState extends State<AdminStockManagerPage> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text('Delete Blackout', style: _ts(16, FontWeight.w600, _C.textPrimary)),
-        content: Text('Are you sure you want to delete this blackout date?',
-            style: _ts(14, FontWeight.w400, _C.textSecond)),
+        content: Text(
+          'Are you sure you want to delete this blackout date?',
+          style: _ts(14, FontWeight.w400, _C.textSecond),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Cancel', style: _ts(13, FontWeight.w500, _C.textMuted))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Delete', style: _ts(13, FontWeight.w600, _C.error))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: _ts(13, FontWeight.w500, _C.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Delete', style: _ts(13, FontWeight.w600, _C.error)),
+          ),
         ],
       ),
     );
+
     if (confirm != true) return;
+
     try {
-      await api.deleteBlackout(id, _userid!, _usergroup ?? 'admin');
+      await api.deleteBlackout(id);
       _loadBlackouts();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to delete: $e')),
+      );
     }
   }
 

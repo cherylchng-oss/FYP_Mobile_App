@@ -46,22 +46,44 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
 
   Future<void> _loadClusters() async {
     setState(() => _isLoading = true);
+
     try {
       final result = await api.fetchClusters();
-      // Normalise field names — backend uses 'clustername', 'clusterstate', 'clusterprovince'
+
+      if (result['error'] == 'Not authenticated') {
+        if (!mounted) return;
+
+        setState(() {
+          _clusters = [];
+          _isLoading = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Session expired. Please log in again.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+
+        return;
+      }
+
       final raw = (result['clusters'] as List?) ?? [];
+
       final list = raw.map((e) {
         final m = Map<String, dynamic>.from(e as Map);
+
         return <String, dynamic>{
-          'id':           m['clusterid']      ?? m['clusterId']      ?? m['id']       ?? '',
-          'name':         m['clustername']    ?? m['clusterName']    ?? m['name']     ?? '',
-          'state':        m['clusterstate']   ?? m['clusterState']   ?? m['state']    ?? '',
-          'province':     m['clusterprovince']?? m['clusterProvince']?? m['province'] ?? '',
-          'propertyCount':m['propertyCount']  ?? m['property_count'] ?? m['count']    ?? 0,
+          'id': m['clusterid'] ?? m['clusterId'] ?? m['id'] ?? '',
+          'name': m['clustername'] ?? m['clusterName'] ?? m['name'] ?? '',
+          'state': m['clusterstate'] ?? m['clusterState'] ?? m['state'] ?? '',
+          'province': m['clusterprovince'] ?? m['clusterProvince'] ?? m['province'] ?? '',
+          'propertyCount': m['propertyCount'] ?? m['property_count'] ?? m['count'] ?? 0,
         };
       }).toList();
 
       if (!mounted) return;
+
       setState(() {
         _clusters = list;
         const pageSize = 10;

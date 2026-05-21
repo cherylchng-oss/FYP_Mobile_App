@@ -84,9 +84,20 @@ Future<http.Response> loginUser(Map<String, dynamic> userData) async {
   }
 }
 
-// MFA Verification
-// POST /auth/verify-mfa  { tempToken, code }  → same shape as login success
-// TODO: update the endpoint path to match your actual backend route.
+Future<Map<String, dynamic>> sendEmailOtp(String tempToken) async {
+  try {
+    final response = await http.post(
+      Uri.parse('$API_URL/mfa/send-email-otp'),
+      headers: _publicHeaders(),
+      body: jsonEncode({'tempToken': tempToken}),
+    );
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  } catch (error) {
+    print('API error: $error');
+    rethrow;
+  }
+}
+
 Future<http.Response> verifyMfa({
   required String tempToken,
   required String code,
@@ -102,6 +113,24 @@ Future<http.Response> verifyMfa({
     return response;
   } catch (error) {
     print('API: verifyMfa error: $error');
+    rethrow;
+  }
+}
+
+Future<Map<String, dynamic>> verifyMfaLogin({
+  required String tempToken,
+  required String token,
+  required String method,
+}) async {
+  try {
+    final response = await http.post(
+      Uri.parse('$API_URL/mfa/verify-login'),
+      headers: _publicHeaders(),
+      body: jsonEncode({'tempToken': tempToken, 'token': token, 'method': method}),
+    );
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  } catch (error) {
+    print('API error: $error');
     rethrow;
   }
 }
@@ -179,6 +208,33 @@ Future<dynamic> fetchProduct() async {
     print('Error fetching properties: $error');
     rethrow;
   }
+}
+
+// Fetch single property details with ALL images
+Future<Map<String, dynamic>> fetchSinglePropertyDetails(int propertyId) async {
+  final uri = Uri.parse('$API_URL/property/$propertyId');
+
+  print('API: Fetch single property details URL: $uri');
+
+  final response = await http.get(
+    uri,
+    headers: await _authHeaders(),
+  );
+
+  print('API: Fetch single property details status: ${response.statusCode}');
+  print('API: Fetch single property details body: ${response.body}');
+
+  if (response.statusCode != 200) {
+    throw Exception('Failed to fetch property details');
+  }
+
+  final data = jsonDecode(response.body);
+
+  if (data is Map && data['property'] is Map) {
+    return Map<String, dynamic>.from(data['property']);
+  }
+
+  throw Exception('Invalid property details response');
 }
 
 Future<Map<String, dynamic>> fetchPropertyAvailability({
@@ -1398,44 +1454,86 @@ Future<List<dynamic>> fetchReservationsForAdminModerator() async {
 
 // Update reservation status
 Future<Map<String, dynamic>> updateReservationStatus(
-  dynamic reservationid,
-  String status,
-) async {
-  final userid = await Session.getUserId();
+  int reservationid,
+  String status, {
+  String creatorid = '',
+  String creatorUsername = '',
+}) async {
+  final userid =
+      await Session.getUserId();
+
+  final storedUsername =
+      await Session.getUsername();
+
+  final isExpiredStatus =
+      status.trim().toLowerCase() == 'expired';
+
+  final finalCreatorId = isExpiredStatus
+      ? ''
+      : (creatorid.isNotEmpty ? creatorid : (userid?.toString() ?? ''));
+
+  final finalCreatorUsername = isExpiredStatus
+      ? ''
+      : (creatorUsername.isNotEmpty ? creatorUsername : (storedUsername ?? ''));
+
+  final queryParams = <String, String>{
+    'userid': userid?.toString() ?? '',
+  };
+
+  if (finalCreatorId.isNotEmpty) {
+    queryParams['creatorid'] = finalCreatorId;
+  }
+
+  if (finalCreatorUsername.isNotEmpty) {
+    queryParams['creatorUsername'] = finalCreatorUsername;
+  }
+
+  final uri = Uri.parse(
+    '$API_URL/updateReservationStatus/$reservationid',
+  ).replace(
+    queryParameters: queryParams,
+  );
 
   try {
-    print('API: Updating reservation status - reservationId: $reservationid, status: $status');
-
     final response = await http.patch(
-      Uri.parse('$API_URL/updateReservationStatus/$reservationid?userid=$userid'),
+      uri,
       headers: {
         ...await _authHeaders(),
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
         'reservationStatus': status,
-        'reservationstatus': status,
       }),
-    ).timeout(const Duration(seconds: 30));
-
-    print('API: updateReservationStatus response status: ${response.statusCode}');
-    print('API: updateReservationStatus response body: ${response.body}');
+    );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
-        response.body.isNotEmpty
-            ? response.body
-            : 'Failed to update reservation status: ${response.statusCode}',
+        'Failed to update reservation status (${response.statusCode}): ${response.body}',
       );
     }
 
     if (response.body.trim().isEmpty) {
-      return {'success': true};
+      return {
+        'message': 'success',
+      };
     }
 
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+
+    if (decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+
+    return {
+      'message': 'success',
+      'data': decoded,
+    };
   } catch (error) {
-    print('API error updating reservation status: $error');
+    print('API error: $error');
     rethrow;
   }
 }
@@ -1473,26 +1571,48 @@ Future<Map<String, dynamic>> calculateBookingPrice(
 // Cart
 Future<List<dynamic>> fetchCart() async {
   final userid = await Session.getUserId();
+  
+  try {
+    if (userid == null) {
+      print('API: User ID not found in session, returning empty cart');
+      return [];
+    }
 
-  if (userid == null) {
-    throw Exception('User ID not found. Please login again.');
-  }
-
-  final response = await http.get(
-    Uri.parse('$API_URL/cart?userid=${Uri.encodeComponent(userid.toString())}'),
-    headers: await _authHeaders(),
-  );
-
-  print('API: Cart response status: ${response.statusCode}');
-
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw Exception(
-      'Failed to fetch reservations (${response.statusCode}): ${response.body}',
+    print('API: Fetching cart for userid: $userid');
+    final response = await http.get(
+      Uri.parse('$API_URL/cart?userid=$userid'),
+      headers: await _authHeaders(),
     );
-  }
 
-  final data = jsonDecode(response.body);
-  return data['reservations'] ?? [];
+    print('API: Cart response status: ${response.statusCode}');
+
+    // 404 means no cart items found - that's okay
+    if (response.statusCode == 404) {
+      print('API: No cart items found (404), returning empty list');
+      return [];
+    }
+
+    if (response.statusCode != 200) {
+      print('API: Unexpected status ${response.statusCode}, returning empty list');
+      return [];
+    }
+
+    final data = jsonDecode(response.body);
+    
+    // Try different possible keys
+    if (data['reservations'] != null && data['reservations'] is List) {
+      print('API: Found ${(data['reservations'] as List).length} cart items');
+      return data['reservations'];
+    } else if (data is List) {
+      print('API: Response is direct list with ${data.length} cart items');
+      return data;
+    }
+    
+    return [];
+  } catch (error) {
+    print('API error fetching cart: $error');
+    return [];
+  }
 }
 
 // Remove Reservation
@@ -1540,8 +1660,7 @@ Future<Map<String, dynamic>> fetchBookLog(int userid) async {
 }
 
 // Fetch Book and Pay Logs (for admin/moderator/owner)
-Future<List<dynamic>> fetchBookAndPayLogs(int userid) async {
-  // Try different possible endpoint paths
+Future<List<dynamic>> fetchBookAndPayLogs(int userid, [String usergroup = '']) async {
   final endpoints = [
     '/book-and-pay-log',
     '/users/book-and-pay-log',
@@ -1552,9 +1671,10 @@ Future<List<dynamic>> fetchBookAndPayLogs(int userid) async {
 
   for (final endpoint in endpoints) {
     try {
-      print('API: Trying endpoint: $endpoint?userid=$userid');
+      final params = 'userid=${Uri.encodeComponent(userid.toString())}${usergroup.isNotEmpty ? '&usergroup=${Uri.encodeComponent(usergroup)}' : ''}';
+      print('API: Trying endpoint: $endpoint?$params');
       final response = await http.get(
-        Uri.parse('$API_URL$endpoint?userid=$userid'),
+        Uri.parse('$API_URL$endpoint?$params'),
         headers: await _authHeaders(),
       ).timeout(
         const Duration(seconds: 10),
@@ -1566,7 +1686,6 @@ Future<List<dynamic>> fetchBookAndPayLogs(int userid) async {
       print('API: Response status: ${response.statusCode}');
       print('API: Response content-type: ${response.headers['content-type']}');
 
-      // Check if response is HTML (404 error page)
       final contentType = response.headers['content-type'] ?? '';
       final bodyStart = response.body.trim();
       if (contentType.contains('text/html') || bodyStart.startsWith('<!DOCTYPE') || bodyStart.startsWith('<html')) {
@@ -1575,31 +1694,24 @@ Future<List<dynamic>> fetchBookAndPayLogs(int userid) async {
       }
 
       if (response.statusCode != 200) {
-        // Try to parse error message if it's JSON
         try {
           final errorData = jsonDecode(response.body);
           print('API: Error response from $endpoint: ${errorData['message'] ?? 'Unknown error'}');
-          // Don't throw yet, try next endpoint
-          continue;
         } catch (e) {
-          // If not JSON, it might be HTML or plain text
           print('API: Non-200 status (${response.statusCode}) with non-JSON response from $endpoint, trying next endpoint...');
-          continue;
         }
+        continue;
       }
 
-      // Try to parse JSON
       try {
-        // First, let's see what we're getting
         final responseBody = response.body;
         print('API: Response body length: ${responseBody.length}');
         print('API: Response body preview (first 500 chars): ${responseBody.length > 500 ? responseBody.substring(0, 500) : responseBody}');
-        
+
         final data = jsonDecode(responseBody);
         print('API: Successfully parsed JSON response from $endpoint');
         print('API: Response type: ${data.runtimeType}');
-        
-        // Handle different response formats - check List first to avoid index errors
+
         if (data is List) {
           print('API: Response is direct list with ${data.length} items');
           try {
@@ -1612,21 +1724,19 @@ Future<List<dynamic>> fetchBookAndPayLogs(int userid) async {
             print('API: Error accessing first item: $e');
           }
           try {
-            return List<dynamic>.from(data); // Ensure it's a proper List
+            return List<dynamic>.from(data);
           } catch (e) {
             print('API: Error converting to List: $e');
-            // If conversion fails, try to return as-is if it's already a List
-            if (data is List) {
-              return data;
-            }
+            if (data is List) return data;
             rethrow;
           }
         } else if (data is Map) {
           print('API: Response is a Map with keys: ${data.keys.toList()}');
-          // If it's a Map, check for nested arrays
           if (data.containsKey('bookAndPayLogs') && data['bookAndPayLogs'] is List) {
             print('API: Found bookAndPayLogs with ${(data['bookAndPayLogs'] as List).length} items');
             return List<dynamic>.from(data['bookAndPayLogs'] as List);
+          } else if (data.containsKey('bookLogs') && data['bookLogs'] is List) {
+            return List<dynamic>.from(data['bookLogs'] as List);
           } else if (data.containsKey('logs') && data['logs'] is List) {
             print('API: Found logs with ${(data['logs'] as List).length} items');
             return List<dynamic>.from(data['logs'] as List);
@@ -1642,18 +1752,132 @@ Future<List<dynamic>> fetchBookAndPayLogs(int userid) async {
       }
     } catch (error) {
       print('API: Error with endpoint $endpoint: $error');
-      // Continue to next endpoint
       continue;
     }
   }
 
-  // If all endpoints failed, throw an error with helpful message
   throw Exception(
     'Failed to fetch book and pay logs: All endpoints returned errors.\n'
     'Tried endpoints: ${endpoints.join(", ")}\n'
     'Please ensure the backend endpoint is implemented.\n'
     'Expected endpoint format: /book-and-pay-log?userid=$userid or /users/book-and-pay-log?userid=$userid'
   );
+}
+
+
+// Fetch Ledger Records
+Future<Map<String, dynamic>> fetchLedger(int userid, {
+  int page = 1,
+  int limit = 10,
+  String search = '',
+  String status = '',
+  String selectedDate = '',
+  String sortOrder = 'reservation_latest',
+}) async {
+  try {
+    final uri = Uri.parse('$API_URL/ledger').replace(queryParameters: {
+      'userid': userid.toString(),
+      'page': page.toString(),
+      'limit': limit.toString(),
+      'search': search,
+      'status': status,
+      'selectedDate': selectedDate,
+      'sortOrder': sortOrder,
+    });
+    final response = await http.get(uri, headers: await _authHeaders());
+    if (response.statusCode != 200) {
+      throw Exception('Failed to fetch ledger (${response.statusCode})');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  } catch (error) {
+    print('API error fetching ledger: $error');
+    rethrow;
+  }
+}
+
+// Fetch Ledger Summary
+Future<Map<String, dynamic>> fetchLedgerSummary(int userid, {String selectedDate = ''}) async {
+  try {
+    final uri = Uri.parse('$API_URL/ledger/summary').replace(queryParameters: {
+      'userid': userid.toString(),
+      'selectedDate': selectedDate,
+    });
+    final response = await http.get(uri, headers: await _authHeaders());
+    if (response.statusCode != 200) {
+      throw Exception('Failed to fetch ledger summary (${response.statusCode})');
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return data['summary'] as Map<String, dynamic>? ?? {};
+  } catch (error) {
+    print('API error fetching ledger summary: $error');
+    rethrow;
+  }
+}
+
+// Fetch Finance Ledger Card (summary + monthly breakdown)
+Future<Map<String, dynamic>> fetchFinanceLedgerCard(int userid) async {
+  try {
+    final uri = Uri.parse('$API_URL/finance/ledger-card').replace(queryParameters: {
+      'userid': userid.toString(),
+    });
+    final response = await http.get(uri, headers: await _authHeaders());
+    if (response.statusCode != 200) {
+      print('API: Finance ledger-card returned status ${response.statusCode}');
+      return {};
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  } catch (error) {
+    print('API error fetching finance ledger card: $error');
+    return {};
+  }
+}
+
+// Fetch Finance Review Chart (summary + monthly breakdown)
+Future<Map<String, dynamic>> fetchFinanceReviewChart(int userid) async {
+  try {
+    final uri = Uri.parse('$API_URL/finance/review-chart').replace(queryParameters: {
+      'userid': userid.toString(),
+    });
+    final response = await http.get(uri, headers: await _authHeaders());
+    if (response.statusCode != 200) {
+      print('API: Finance review-chart returned status ${response.statusCode}');
+      return {};
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  } catch (error) {
+    print('API error fetching finance review chart: $error');
+    return {};
+  }
+}
+
+// Fetch Finance Chart Data
+Future<List<dynamic>> fetchFinanceChart(int userid, {
+  String chartType = 'booking_revenue',
+  String year = '',
+  String month = '',
+}) async {
+  try {
+    final params = <String, String>{
+      'userid': userid.toString(),
+      'chartType': chartType,
+    };
+    if (year.isNotEmpty) params['year'] = year;
+    if (month.isNotEmpty) params['month'] = month;
+
+    final uri = Uri.parse('$API_URL/users/finance/chart').replace(queryParameters: params);
+    final response = await http.get(uri, headers: await _authHeaders());
+    if (response.statusCode != 200) return [];
+    final data = jsonDecode(response.body);
+    if (data is List) return data;
+    if (data is Map) {
+      if (data['data'] is List) return data['data'] as List;
+      if (data['chart'] is List) return data['chart'] as List;
+    }
+    return [];
+  } catch (error) {
+    print('API error fetching finance chart: $error');
+    return [];
+  }
 }
 
 // Fetch Finance 
@@ -1901,52 +2125,85 @@ Future<Map<String, dynamic>?> fetchGoogleUserData(String accessToken) async {
 // Update user profile
 Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> userData) async {
   final creatorid = await Session.getUserId();
-  final username = 'user_${creatorid ?? 0}'; // TODO: Get actual username from session
-  final creatorUsername = username;
-    
-    try {
-        // Validate user ID
-    if (userData['userid'] == null) {
+  final creatorUsername = await Session.getUsername() ?? '';
+
+  try {
+    final safeUserid = userData['userid'] ?? creatorid;
+
+    if (safeUserid == null) {
       throw Exception('User ID is missing');
-        }
-      
-    print('API: Updating profile for userid: ${userData['userid']}');
+    }
+
+    print('API: Updating profile for userid: $safeUserid');
     print('API: Profile data: $userData');
-    
-    // Create a clean payload - only send fields that are actually provided
+
     final cleanData = <String, dynamic>{
-      'userid': userData['userid'],
+      'userid': safeUserid,
     };
-    
-    // Add all required fields from backend
-    if (userData.containsKey('username')) cleanData['username'] = userData['username'];
-    // Only send password if it's explicitly provided and not empty
-    // This prevents accidentally overwriting password when updating other fields
-    if (userData.containsKey('password') && userData['password'] != null && userData['password'].toString().isNotEmpty) {
+
+    if (userData.containsKey('username')) {
+      cleanData['username'] = userData['username'];
+    }
+
+    if (userData.containsKey('password') &&
+        userData['password'] != null &&
+        userData['password'].toString().trim().isNotEmpty) {
       cleanData['password'] = userData['password'];
     }
-    if (userData.containsKey('ufirstname')) cleanData['ufirstname'] = userData['ufirstname'];
-    if (userData.containsKey('ulastname')) cleanData['ulastname'] = userData['ulastname'];
-    if (userData.containsKey('udob')) cleanData['udob'] = userData['udob'];
-    if (userData.containsKey('utitle')) cleanData['utitle'] = userData['utitle'];
-    if (userData.containsKey('ugender')) cleanData['ugender'] = userData['ugender'];
-    if (userData.containsKey('uemail')) cleanData['uemail'] = userData['uemail'];
-    if (userData.containsKey('uphoneno')) cleanData['uphoneno'] = userData['uphoneno'];
-    if (userData.containsKey('ucountry')) cleanData['ucountry'] = userData['ucountry'];
-    if (userData.containsKey('uzipcode')) cleanData['uzipcode'] = userData['uzipcode'];
-    
-    // Add PayPal ID (backend expects 'paypalid', not 'paypal_email')
+
+    if (userData.containsKey('ufirstname')) {
+      cleanData['ufirstname'] = userData['ufirstname'];
+    }
+
+    if (userData.containsKey('ulastname')) {
+      cleanData['ulastname'] = userData['ulastname'];
+    }
+
+    if (userData.containsKey('udob')) {
+      cleanData['udob'] = userData['udob'];
+    }
+
+    if (userData.containsKey('utitle')) {
+      cleanData['utitle'] = userData['utitle'];
+    }
+
+    if (userData.containsKey('ugender')) {
+      cleanData['ugender'] = userData['ugender'];
+    }
+
+    if (userData.containsKey('uemail')) {
+      cleanData['uemail'] = userData['uemail'];
+    }
+
+    if (userData.containsKey('uphoneno')) {
+      cleanData['uphoneno'] = userData['uphoneno'];
+    }
+
+    if (userData.containsKey('ucountry')) {
+      cleanData['ucountry'] = userData['ucountry'];
+    }
+
+    if (userData.containsKey('uzipcode')) {
+      cleanData['uzipcode'] = userData['uzipcode'];
+    }
+
     if (userData.containsKey('paypalid') && userData['paypalid'] != null) {
       cleanData['paypalid'] = userData['paypalid'];
-    } else if (userData.containsKey('paypal_email') && userData['paypal_email'] != null) {
-      // Fallback: if frontend sends paypal_email, map it to paypalid
+    } else if (userData.containsKey('paypal_email') &&
+        userData['paypal_email'] != null) {
       cleanData['paypalid'] = userData['paypal_email'];
     }
-    
+
     print('API: Clean profile data being sent: $cleanData');
-    
+
+    final uri = Uri.parse(
+      '$API_URL/users/updateProfile/$safeUserid'
+      '?creatorid=${Uri.encodeComponent((creatorid ?? safeUserid).toString())}'
+      '&creatorUsername=${Uri.encodeComponent(creatorUsername)}',
+    );
+
     final response = await http.put(
-      Uri.parse('$API_URL/users/updateProfile/${userData['userid']}?creatorid=$creatorid&creatorUsername=$creatorUsername'),
+      uri,
       headers: await _authHeaders(),
       body: jsonEncode(cleanData),
     );
@@ -1954,60 +2211,95 @@ Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> userData) async 
     print('API: Update profile response status: ${response.statusCode}');
     print('API: Update profile response body: ${response.body}');
 
-    if (response.statusCode != 200) {
+    Map<String, dynamic> data = {};
+
+    if (response.body.trim().isNotEmpty) {
       try {
-        final errorData = jsonDecode(response.body);
-        final errorMessage = errorData['message'] ?? errorData['error'] ?? 'Failed to update user profile';
-        print('API: Error details: $errorData');
-        throw Exception('$errorMessage (${response.statusCode})');
-      } catch (e) {
-        if (e is Exception && e.toString().contains('500')) {
-          throw Exception('Server error: The backend encountered an error. Please check the backend logs.');
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          data = decoded;
         }
-        throw Exception('Failed to update user profile: ${response.statusCode} ${response.reasonPhrase}');
+      } catch (_) {
+        data = {};
       }
     }
 
-    try {
-      return jsonDecode(response.body);
-    } catch (e) {
-      // If response is not JSON, return success anyway
-      print('API: Response is not JSON, assuming success');
-      return {'success': true, 'message': 'Profile updated successfully'};
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        data['success'] == false) {
+      final errorMessage =
+          data['message'] ?? data['error'] ?? 'Failed to update user profile';
+
+      throw Exception('$errorMessage (${response.statusCode})');
     }
-    } catch (error) {
+
+    if (data.isEmpty) {
+      return {
+        'success': true,
+        'message': 'Profile updated successfully',
+      };
+    }
+
+    return data;
+  } catch (error) {
     print('API error updating profile: $error');
     rethrow;
   }
 }
 
-// Upload Avatar
-Future<Map<String, dynamic>> uploadAvatar(int userid, String base64String) async {
+// Upload Avatar to Firebase Storage
+Future<Map<String, dynamic>> uploadAvatar(
+  int userid,
+  String imagePath,
+) async {
   final creatorid = await Session.getUserId();
-  final username = 'user_${creatorid ?? 0}'; // TODO: Get actual username from session
-  final creatorUsername = username;
+  final creatorUsername = await Session.getUsername() ?? '';
 
   try {
     if (userid == 0) {
       throw Exception('User ID is missing');
     }
 
-    final response = await http.post(
-      Uri.parse('$API_URL/users/uploadAvatar/$userid?creatorid=$creatorid&creatorUsername=$creatorUsername'),
-      headers: await _authHeaders(),
-      body: jsonEncode({'uimage': base64String}),
+    if (imagePath.trim().isEmpty) {
+      throw Exception('Avatar image file is missing');
+    }
+
+    final uri = Uri.parse(
+      '$API_URL/users/uploadAvatar/$userid'
+      '?creatorid=${Uri.encodeComponent((creatorid ?? userid).toString())}'
+      '&creatorUsername=${Uri.encodeComponent(creatorUsername)}',
     );
 
-    final data = jsonDecode(response.body);
-    if (response.statusCode != 200) {
+    final request = http.MultipartRequest('POST', uri);
+
+    final headers = await _authHeaders();
+
+    headers.remove('Content-Type');
+    request.headers.addAll(headers);
+
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'avatar',
+        imagePath,
+      ),
+    );
+
+    final streamedResponse = await request.send();
+    final responseBody = await streamedResponse.stream.bytesToString();
+
+    final data = responseBody.isNotEmpty
+        ? jsonDecode(responseBody)
+        : <String, dynamic>{};
+
+    if (streamedResponse.statusCode != 200 || data['success'] == false) {
       throw Exception(data['message'] ?? 'Failed to upload avatar');
-      }
-  
-      return data; 
-    } catch (error) {
+    }
+
+    return Map<String, dynamic>.from(data);
+  } catch (error) {
     print('API error: $error');
     rethrow;
-    }
+  }
 }
 
 // Forgot Password
@@ -2210,6 +2502,41 @@ Future<Map<String, dynamic>> submitReview(
   }
 }
 
+// Fetch all reviews for a moderator/owner (by userid)
+Future<List<dynamic>> fetchOwnerReviews(int userid) async {
+  try {
+    final response = await http.get(
+      Uri.parse('$API_URL/owner-reviews/$userid'),
+      headers: await _authHeaders(),
+    );
+    if (response.statusCode != 200) {
+      print('API: owner-reviews returned ${response.statusCode}');
+      return [];
+    }
+    final data = jsonDecode(response.body);
+    if (data is List) return data;
+    return [];
+  } catch (error) {
+    print('API error fetching owner reviews: $error');
+    return [];
+  }
+}
+
+// Reply to a review (PUT with owner_reply text, or null to delete reply)
+Future<bool> replyToReview(int reviewId, String? reply) async {
+  try {
+    final response = await http.put(
+      Uri.parse('$API_URL/reviews/$reviewId/reply'),
+      headers: await _authHeaders(),
+      body: jsonEncode({'owner_reply': reply}),
+    );
+    return response.statusCode == 200;
+  } catch (error) {
+    print('API error replying to review: $error');
+    return false;
+  }
+}
+
 // Fetch reviews for a specific property
 Future<Map<String, dynamic>> fetchReviews(int propertyid) async {
   try {
@@ -2253,6 +2580,7 @@ Future<Map<String, dynamic>> deleteReview(dynamic reviewId, String username) asy
 Future<Map<String, dynamic>> fetchClusters() async {
   try {
     print('API: Fetching clusters... (timestamp: ${DateTime.now().millisecondsSinceEpoch})');
+
     final response = await http.get(
       Uri.parse('$API_URL/clusters?_t=${DateTime.now().millisecondsSinceEpoch}'),
       headers: await _authHeaders({
@@ -2263,6 +2591,15 @@ Future<Map<String, dynamic>> fetchClusters() async {
     );
 
     print('API: Clusters response status: ${response.statusCode}');
+    print('API: Clusters response body: ${response.body}');
+
+    if (response.statusCode == 401) {
+      print('API: Not authenticated. Token may be missing or expired.');
+      return {
+        'clusters': [],
+        'error': 'Not authenticated',
+      };
+    }
 
     if (response.statusCode != 200) {
       print('API: Clusters returned status ${response.statusCode}, returning empty');
@@ -2270,19 +2607,19 @@ Future<Map<String, dynamic>> fetchClusters() async {
     }
 
     final data = jsonDecode(response.body);
-    print('API: Clusters data keys: ${data is Map ? (data as Map).keys.toList() : "direct list"}');
-    if (data is List) return {'clusters': data};
-    if (data is Map) {
-      final m = data as Map<String, dynamic>;
-      // Normalise any of the common key names → 'clusters'
-      if (m.containsKey('clusters')) return m;
-      if (m.containsKey('data')) return {'clusters': m['data']};
-      if (m.containsKey('result')) return {'clusters': m['result']};
-      if (m.containsKey('cluster')) return {'clusters': m['cluster']};
-      // If map contains a single list value, assume that is the list
-      final firstList = m.values.whereType<List>().toList();
-      if (firstList.isNotEmpty) return {'clusters': firstList.first};
+
+    print(
+      'API: Clusters data keys: ${data is Map ? (data as Map).keys.toList() : "direct list"}',
+    );
+
+    if (data is List) {
+      return {'clusters': data};
     }
+
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+
     return {'clusters': []};
   } catch (error) {
     print('Error fetching clusters: $error');
@@ -2489,111 +2826,133 @@ Future<Map<String, dynamic>> paymentSuccess(int reservationid) async {
   }
 }
 
-// Fetch Notifications for User
-Future<List<dynamic>> fetchNotifications() async {
-  final userid = await Session.getUserId();
-  final usergroup = await Session.getUserGroup();
-  
+// Notification History Feature
+// Fetch Notification
+Future<List<dynamic>> fetchNotifications(int userid) async {
   try {
-    if (userid == null) {
-      print('API: User ID not found, returning empty notifications');
-      return [];
-    }
+    final uri = Uri.parse('$API_URL/notifications').replace(
+      queryParameters: {
+        'userid': userid.toString(),
+      },
+    );
 
-    final uri = Uri.parse('$API_URL/notifications?userid=$userid${usergroup != null ? '&usergroup=${Uri.encodeComponent(usergroup)}' : ''}');
-    print('API: Fetching notifications from: $uri');
-    print('API: User ID: $userid, User Group: $usergroup');
-    
+    print('API: Fetch notifications URL: $uri');
+
     final response = await http.get(
       uri,
       headers: await _authHeaders(),
     );
 
-    print('API: Notifications response status: ${response.statusCode}');
-    print('API: Notifications response body: ${response.body.substring(0, response.body.length > 500 ? 500 : response.body.length)}');
-
-    if (response.statusCode == 404) {
-      print('API: No notifications found (404), returning empty list');
-      return [];
-    }
+    print('API: Fetch notifications status: ${response.statusCode}');
+    print('API: Fetch notifications body: ${response.body}');
 
     if (response.statusCode != 200) {
-      print('API: Unexpected status ${response.statusCode}, returning empty list');
-      return [];
+      throw Exception('Failed to fetch notifications');
     }
 
     final data = jsonDecode(response.body);
-    
-    if (data['notifications'] != null && data['notifications'] is List) {
-      print('API: Found ${(data['notifications'] as List).length} notifications');
-      return data['notifications'];
-    } else if (data is List) {
-      print('API: Response is direct list with ${data.length} notifications');
+
+    if (data is List) {
       return data;
     }
-    
+
+    if (data is Map && data['notifications'] is List) {
+      return data['notifications'];
+    }
+
     return [];
   } catch (error) {
     print('API error fetching notifications: $error');
-    return [];
+    rethrow;
   }
 }
 
-// Mark Notification as Read
-Future<bool> markNotificationAsRead(int notificationId) async {
-  final userid = await Session.getUserId();
-  
+Future<Map<String, dynamic>> syncBookingAlertNotifications(int userid) async {
   try {
-    if (userid == null) {
-      throw Exception('User ID not found');
-    }
-
-    final response = await http.patch(
-      Uri.parse('$API_URL/notifications/$notificationId/read'),
+    final response = await http.post(
+      Uri.parse('$API_URL/notifications/sync-booking-alerts/$userid'),
       headers: await _authHeaders(),
-      body: jsonEncode({
-        'userid': userid,
-      }),
     );
 
+    print('API: Sync booking alerts status: ${response.statusCode}');
+    print('API: Sync booking alerts body: ${response.body}');
+
+    final data = jsonDecode(response.body);
+
     if (response.statusCode != 200) {
-      final errorData = jsonDecode(response.body);
-      throw Exception(errorData['message'] ?? 'Failed to mark notification as read');
+      throw Exception(data['message'] ?? 'Failed to sync booking alerts');
     }
 
-    return true;
+    return data;
+  } catch (error) {
+    print('API error syncing booking alerts: $error');
+    rethrow;
+  }
+}
+
+// Create Notification
+Future<Map<String, dynamic>> createNotification(Map<String, dynamic> data) async {
+  try {
+    final response = await http.post(
+      Uri.parse('$API_URL/notifications'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(data),
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('Failed to create notification');
+    }
+
+    return jsonDecode(response.body);
+  } catch (error) {
+    print('API error: $error');
+    rethrow;
+  }
+}
+
+// Mark a Notification as Read
+Future<Map<String, dynamic>> markNotificationAsRead(int notificationid) async {
+  try {
+    final response = await http.put(
+      Uri.parse('$API_URL/notifications/$notificationid/read'),
+      headers: await _authHeaders(),
+    );
+
+    print('API: Mark notification read status: ${response.statusCode}');
+    print('API: Mark notification read body: ${response.body}');
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to mark notification as read');
+    }
+
+    return jsonDecode(response.body);
   } catch (error) {
     print('API error marking notification as read: $error');
-    return false;
+    rethrow;
   }
 }
 
-// Mark All Notifications as Read
-Future<bool> markAllNotificationsAsRead() async {
-  final userid = await Session.getUserId();
-  
+// Mark All Notification as Read
+Future<Map<String, dynamic>> markAllNotificationsAsRead(int userid) async {
   try {
-    if (userid == null) {
-      throw Exception('User ID not found');
-    }
-
-    final response = await http.patch(
-      Uri.parse('$API_URL/notifications/read-all'),
+    final response = await http.put(
+      Uri.parse('$API_URL/notifications/read-all/$userid'),
       headers: await _authHeaders(),
-      body: jsonEncode({
-        'userid': userid,
-      }),
     );
 
+    print('API: Mark all notifications read status: ${response.statusCode}');
+    print('API: Mark all notifications read body: ${response.body}');
+
     if (response.statusCode != 200) {
-      final errorData = jsonDecode(response.body);
-      throw Exception(errorData['message'] ?? 'Failed to mark all notifications as read');
+      throw Exception('Failed to mark all notifications as read');
     }
 
-    return true;
+    return jsonDecode(response.body);
   } catch (error) {
     print('API error marking all notifications as read: $error');
-    return false;
+    rethrow;
   }
 }
 
@@ -2784,6 +3143,29 @@ Future<dynamic> fetchBlackoutDates() async {
   return jsonDecode(response.body);
 }
 
+// Fetch Blackout Dates (for moderator — filtered to own properties server-side)
+Future<List<dynamic>> fetchBlackouts(int userid, String usergroup) async {
+  try {
+    final url = '$API_URL/blackouts?userid=$userid&usergroup=${Uri.encodeComponent(usergroup)}';
+    print('API: Fetching blackouts from $url');
+    final response = await http.get(Uri.parse(url), headers: await _authHeaders());
+    print('API: fetchBlackouts status ${response.statusCode}');
+    if (response.statusCode == 404) return [];
+    if (response.statusCode != 200) {
+      print('API: fetchBlackouts unexpected status ${response.statusCode}');
+      return [];
+    }
+    final data = jsonDecode(response.body);
+    if (data is List) return data;
+    if (data['blackouts'] is List) return data['blackouts'];
+    if (data['data'] is List) return data['data'];
+    return [];
+  } catch (error) {
+    print('API error fetching blackouts: $error');
+    return [];
+  }
+}
+
 Future<dynamic> createBlackout(Map<String, dynamic> blackoutData) async {
   final userid = await Session.getUserId() ?? '';
   final username = await Session.getUsername() ?? '';
@@ -2847,13 +3229,14 @@ Future<dynamic> deleteBlackout(dynamic blackoutId) async {
   final userid = (await Session.getUserId())?.toString() ?? '';
   final userGroup = (await Session.getUserGroup())?.toString() ?? '';
 
-  final response = await http.delete(
-    Uri.parse(
-      '$API_URL/blackouts/$blackoutId'
-      '?userid=${Uri.encodeComponent(userid)}'
-      '&usergroup=${Uri.encodeComponent(userGroup)}',
-    ),
+  final uri = Uri.parse('$API_URL/blackouts/$blackoutId').replace(
+    queryParameters: {
+      'userid': userid,
+      'usergroup': userGroup,
+    },
   );
+
+  final response = await http.delete(uri);
 
   final data = jsonDecode(response.body);
 
@@ -3205,59 +3588,5 @@ Future<Map<String, dynamic>> capturePayPalOrder(String orderId) async {
   } catch (error) {
     print('API error capturing PayPal order: $error');
     rethrow;
-  }
-}
-
-/// GET /finance/review-chart?userid=<id>
-/// Returns summary.overallRating (0–5) and per-month average ratings.
-Future<Map<String, dynamic>> fetchFinanceReviewChart(int userid) async {
-  try {
-    final uri = Uri.parse('$API_URL/finance/review-chart?userid=$userid');
-    final response = await http.get(uri, headers: await _authHeaders());
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      print('fetchFinanceReviewChart: HTTP ${response.statusCode}');
-      return {'success': false, 'summary': {}, 'monthlyData': []};
-    }
-    return jsonDecode(response.body) as Map<String, dynamic>;
-  } catch (e) {
-    print('fetchFinanceReviewChart error: $e');
-    return {'success': false, 'summary': {}, 'monthlyData': []};
-  }
-}
-
-/// GET /finance/ledger-card?userid=<id>
-/// Returns overall summary + monthly breakdown used by the Owner dashboard.
-///
-/// Response shape:
-/// {
-///   success: true,
-///   summary: {
-///     totalRevenue, totalOperatorEarning, totalDepositPaid,
-///     totalExpectedBalance, totalCommission, totalTransactions,
-///     paidCount, partiallyPaidCount, cancelledCount, expiredCount
-///   },
-///   monthlyData: [
-///     { month, monthlyrevenue, monthlyearning, monthlydeposit,
-///       monthlyexpectedbalance, monthlycommission, monthlytransactions }
-///   ]
-/// }
-Future<Map<String, dynamic>> fetchFinanceLedgerCard(int userid) async {
-  try {
-    final uri = Uri.parse('$API_URL/finance/ledger-card?userid=$userid');
-    final response = await http.get(
-      uri,
-      headers: await _authHeaders(),
-    );
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      print('fetchFinanceLedgerCard: HTTP ${response.statusCode}');
-      return {'success': false, 'summary': {}, 'monthlyData': []};
-    }
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    return data;
-  } catch (e) {
-    print('fetchFinanceLedgerCard error: $e');
-    return {'success': false, 'summary': {}, 'monthlyData': []};
   }
 }

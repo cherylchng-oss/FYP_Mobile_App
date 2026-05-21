@@ -16,7 +16,7 @@ class AdminNotifications extends StatefulWidget {
 }
 
 class _AdminNotificationsState extends State<AdminNotifications> {
-  String _selectedFilter = 'Unread';
+  String _selectedFilter = 'All';
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   late Future<void> _notificationInit;
   bool _isLoading = true;
@@ -31,14 +31,44 @@ class _AdminNotificationsState extends State<AdminNotifications> {
 
   Future<void> _loadNotifications() async {
     setState(() => _isLoading = true);
+
     try {
-      final notifications = await api.fetchNotifications();
+      final userid = await Session.getUserId();
+
+      if (userid == null) {
+        setState(() {
+          _isLoading = false;
+          allNotifications = [];
+        });
+        return;
+      }
+
+      final notifications = await api.fetchNotifications(userid);
+
+      if (!mounted) return;
+
       setState(() {
-        allNotifications = notifications.map((n) => n as Map<String, dynamic>).toList();
+        allNotifications = notifications.map((n) {
+          final raw = Map<String, dynamic>.from(n as Map);
+          return <String, dynamic>{
+            'id': raw['notificationid'],
+            'title': raw['notificationtitle'] ?? '',
+            'message': raw['notificationmessage'] ?? '',
+            'type': raw['notificationtype'] ?? '',
+            'time': raw['timestamp'] ?? '',
+            'isRead': raw['isread'] ?? false,
+            'isread': raw['isread'] ?? false,
+          };
+        }).toList();
         _isLoading = false;
       });
     } catch (_) {
-      setState(() { _isLoading = false; allNotifications = []; });
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        allNotifications = [];
+      });
     }
   }
 
@@ -60,15 +90,28 @@ class _AdminNotificationsState extends State<AdminNotifications> {
     });
   }
 
-  Future<void> _markAllAsRead() async {
-    try { await api.markAllNotificationsAsRead(); } catch (_) {}
+  Future<void> markAllAsRead() async {
+    try {
+      final userid = await Session.getUserId();
+
+      if (userid == null) return;
+
+      await api.markAllNotificationsAsRead(userid);
+    } catch (_) {}
+
     setState(() {
-      for (final n in allNotifications) n['isRead'] = true;
+      for (final n in allNotifications) {
+        n['isread'] = true;
+        n['isRead'] = true;
+      }
     });
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: const Text('All notifications marked as read'),
-            backgroundColor: AdminColors.success),
+        const SnackBar(
+          content: Text('All notifications marked as read'),
+          backgroundColor: AdminColors.success,
+        ),
       );
     }
   }
@@ -306,7 +349,7 @@ class _AdminNotificationsState extends State<AdminNotifications> {
                     style: AppTextStyles.h4.copyWith(color: AdminColors.textPrimary)),
                 if (unreadCount > 0)
                   TextButton.icon(
-                    onPressed: _markAllAsRead,
+                    onPressed: markAllAsRead,
                     icon: const Icon(Icons.done_all, size: 16),
                     label: Text('Mark all read', style: AppTextStyles.bodySmall),
                     style: TextButton.styleFrom(foregroundColor: AdminColors.primary),
@@ -318,6 +361,7 @@ class _AdminNotificationsState extends State<AdminNotifications> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
+                  _buildFilterChip('All', 'All'),
                   _buildFilterChip('Unread', 'Unread'),
                   _buildFilterChip('Bookings', 'Bookings'),
                   _buildFilterChip('Payment', 'Payment'),
@@ -464,11 +508,11 @@ class _AdminNotificationsState extends State<AdminNotifications> {
     );
   }
 
-  Widget _buildNotificationIcon(String type, bool isRead) {
+  Widget _buildNotificationIcon(String? type, bool isRead) {
     IconData icon;
     Color color;
     Color bgColor;
-    switch (type) {
+    switch (type ?? '') {
       case 'payment_received':
         icon = Icons.payment; color = AdminColors.success;
         bgColor = AdminColors.success.withOpacity(0.12); break;

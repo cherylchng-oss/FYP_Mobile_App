@@ -45,6 +45,8 @@ dependencies:
   image_picker: ^1.0.8
   file_picker: ^8.1.7
   webview_flutter: ^4.8.0
+  flutter_animate: ^4.5.2
+  visibility_detector: ^0.4.0+2
   
 dev_dependencies:
   flutter_test:
@@ -77,7 +79,6 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    # images/ folder
     - images/cams_logo.png
     - images/cams_banner.png
     - images/cams_feature1.png
@@ -92,17 +93,51 @@ flutter:
     - images/cams_screenshot4.png
     - images/cams_screenshot5.png
     - images/cams_screenshot6.png
-    # assets/ folder — only files that are present on disk
     - assets/ob1.png
     - assets/ob2.png
     - assets/ob3.png
     - assets/bg_wave.png
     - assets/google_logo.png
+    - assets/stock_manager.png
+    - assets/property_listing.png
+    - assets/activity_logs.png
+    - assets/book_and_pay.png
+    - assets/audit_trails.png
+    - assets/ledger.png
+    - assets/customer_review.png
+    - assets/user_management.png
+    - assets/notification.png
+    - assets/dashboard.png
     - assets/profile.png
-    - assets/damai_beach.jpg
-    - assets/riverfront_apartment.jpg
-    - assets/santubong_homestay.jpg
-    - assets/zalema_homestay.jpg
+    - assets/customer_stay.png
+    - assets/customer_cart.png
+    - assets/about_laksa.png
+    - assets/about_stalls.png
+    - assets/about_family.png
+    - assets/about_hornbill.png
+    - assets/about_habitat.png
+    - assets/about_orangutan.png
+    - assets/about_rainforest.png
+    - assets/about_cave.png
+    - assets/about_beach.png
+    - assets/about_craft.png
+    - assets/about_culture.png
+    - assets/about_tradition.png
+    - assets/about_flag.png
+    - assets/about_waterfront.png
+    - assets/about_cat.png
+    - assets/about_header.png
+    - assets/team_photo.png
+    - assets/about_bako.png
+    - assets/about_mulu.png
+    - assets/about_damai.png
+    - assets/about_semenggoh.png
+    - assets/aboutus_waterfront.png
+    - assets/culturevil.png
+    - assets/foodfes.png
+    - assets/fam.png
+    - assets/home.png
+
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 

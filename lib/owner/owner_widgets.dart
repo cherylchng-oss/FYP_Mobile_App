@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../shared/colors.dart';
+import '../services/session.dart';
 import '../api.dart' as api;
 
 // ---------------------------------------------------------------------------
@@ -70,49 +71,96 @@ class _OwnerHeaderState extends State<OwnerHeader> {
 
   Future<void> _fetchUnreadCount() async {
     try {
+      final userid = await Session.getUserId();
+
+      if (userid == null) {
+        print('No user id found for unread count');
+        return;
+      }
+
       // Fetch both backend notifications and reservations in parallel
       final results = await Future.wait([
-        api.fetchNotifications(),
+        api.fetchNotifications(userid), // FIXED: pass userid
         api.fetchReservation(),
       ]);
+
       if (!mounted) return;
 
       final notifications = results[0] as List<dynamic>;
-      final reservations  = results[1] as List<dynamic>;
+      final reservations = results[1] as List<dynamic>;
 
       // Backend unread count
       final backendUnread = notifications.where((n) {
         final m = n is Map ? n : {};
-        return !(m['is_read'] == true || m['read'] == true || m['isRead'] == true);
+
+        return !(
+          m['isread'] == true ||
+          m['is_read'] == true ||
+          m['read'] == true ||
+          m['isRead'] == true
+        );
       }).length;
 
       // Owner-synthesised events: reservations from the last 30 days count as unread
       final cutoff = DateTime.now().subtract(const Duration(days: 30));
       int ownerUnread = 0;
+
       for (final r in reservations) {
         final m = r is Map ? Map<String, dynamic>.from(r) : <String, dynamic>{};
-        final createdRaw = (m['created_at'] ?? m['createdat'] ??
-            m['createdAt'] ?? m['checkindatetime'] ?? '').toString();
+
+        final createdRaw = (
+          m['created_at'] ??
+          m['createdat'] ??
+          m['createdAt'] ??
+          m['checkindatetime'] ??
+          ''
+        ).toString();
+
         DateTime? dt;
-        try { dt = DateTime.parse(createdRaw).toLocal(); } catch (_) {}
+
+        try {
+          dt = DateTime.parse(createdRaw).toLocal();
+        } catch (_) {}
+
         if (dt != null && dt.isAfter(cutoff)) {
-          ownerUnread += 1; // one for the booking event
-          final status = (m['reservationstatus'] ?? m['reservationStatus'] ??
-              m['status'] ?? '').toString().toLowerCase();
+          ownerUnread += 1;
+
+          final status = (
+            m['reservationstatus'] ??
+            m['reservationStatus'] ??
+            m['status'] ??
+            ''
+          ).toString().toLowerCase();
+
           final rawAmt = m['totalprice'] ?? m['totalPrice'] ?? m['total_price'];
+
           double amount = 0.0;
-          if (rawAmt is num) amount = rawAmt.toDouble();
-          else if (rawAmt is String) amount = double.tryParse(rawAmt) ?? 0.0;
-          if ((status == 'paid' || status == 'partial' || status == 'confirmed' ||
-              status == 'full') && amount > 0) {
-            ownerUnread += 1; // one for the payment event
+
+          if (rawAmt is num) {
+            amount = rawAmt.toDouble();
+          } else if (rawAmt is String) {
+            amount = double.tryParse(rawAmt) ?? 0.0;
+          }
+
+          if (
+            status == 'paid' ||
+            status == 'partially paid' ||
+            status == 'partial' ||
+            status == 'confirmed' ||
+            status == 'full'
+          ) {
+            if (amount > 0) {
+              ownerUnread += 1;
+            }
           }
         }
       }
 
-      setState(() => _unreadCount = backendUnread + ownerUnread);
-    } catch (_) {
-      // silently ignore — keep badge at 0
+      setState(() {
+        _unreadCount = backendUnread + ownerUnread;
+      });
+    } catch (error) {
+      print('Error fetching unread count: $error');
     }
   }
 
@@ -678,8 +726,16 @@ class _OwnerNotificationSheetState extends State<_OwnerNotificationSheet> {
   Future<void> _loadNotifications() async {
     try {
       // Fetch backend notifications + owner reservations in parallel
+      final userid = await Session.getUserId();
+      if (userid == null) {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+        return;
+      }
+      // Fetch backend notifications + owner reservations in parallel
       final results = await Future.wait([
-        api.fetchNotifications(),
+        api.fetchNotifications(userid),
         api.fetchReservation(),
       ]);
       if (!mounted) return;

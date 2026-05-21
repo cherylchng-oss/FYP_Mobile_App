@@ -127,10 +127,19 @@ class _ModeratorStockManagerPageState extends State<ModeratorStockManagerPage> {
 
   Future<void> _loadUnreadCount() async {
     try {
-      final notifications = await api.fetchNotifications();
+      final userid = await Session.getUserId();
+
+      if (userid == null) return;
+
+      final notifications = await api.fetchNotifications(userid);
+
       if (!mounted) return;
+
       setState(() {
-        _unreadCount = notifications.where((n) => !(n['isRead'] ?? false)).length;
+        _unreadCount = notifications.where((n) {
+          final isRead = n['isread'] ?? n['isRead'] ?? false;
+          return isRead == false;
+        }).length;
       });
     } catch (_) {}
   }
@@ -359,24 +368,43 @@ class _ModeratorStockManagerPageState extends State<ModeratorStockManagerPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Delete Blackout', style: _mts(16, FontWeight.w600, AdminColors.textPrimary)),
-        content: Text('Are you sure you want to delete this blackout date?',
-            style: _mts(14, FontWeight.w400, AdminColors.textSecond)),
+        title: Text(
+          'Delete Blackout',
+          style: _mts(16, FontWeight.w600, AdminColors.textPrimary),
+        ),
+        content: Text(
+          'Are you sure you want to delete this blackout date?',
+          style: _mts(14, FontWeight.w400, AdminColors.textSecond),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Cancel', style: _mts(13, FontWeight.w500, AdminColors.textMuted))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Delete', style: _mts(13, FontWeight.w600, AdminColors.danger))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Cancel',
+              style: _mts(13, FontWeight.w500, AdminColors.textMuted),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Delete',
+              style: _mts(13, FontWeight.w600, AdminColors.danger),
+            ),
+          ),
         ],
       ),
     );
+
     if (confirm != true) return;
+
     try {
-      await api.deleteBlackout(id, _userid!, _usergroup ?? 'moderator');
+      await api.deleteBlackout(id);
       _loadBlackouts();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to delete: $e')),
+      );
     }
   }
 

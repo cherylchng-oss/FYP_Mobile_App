@@ -45,10 +45,19 @@ class _ModeratorCustomerReviewState extends State<ModeratorCustomerReview> {
 
   Future<void> _loadUnreadCount() async {
     try {
-      final notifications = await api.fetchNotifications();
+      final userid = await Session.getUserId();
+
+      if (userid == null) return;
+
+      final notifications = await api.fetchNotifications(userid);
+
       if (!mounted) return;
+
       setState(() {
-        _unreadCount = notifications.where((n) => !(n['isRead'] ?? false)).length;
+        _unreadCount = notifications.where((n) {
+          final isRead = n['isread'] ?? n['isRead'] ?? false;
+          return isRead == false;
+        }).length;
       });
     } catch (_) {}
   }
@@ -143,12 +152,21 @@ class _ModeratorCustomerReviewState extends State<ModeratorCustomerReview> {
       'Delete Review',
       'Are you sure you want to permanently delete this customer review?',
     );
+
     if (!confirmed) return;
-    final ok = await api.deleteReview(reviewId);
-    if (ok) {
+
+    final username = await Session.getUsername();
+
+    if (username == null) {
+      _showSnack('User session not found.', isError: true);
+      return;
+    }
+
+    try {
+      await api.deleteReview(reviewId, username);
       _showSnack('Review deleted.');
       await _fetchReviews();
-    } else {
+    } catch (e) {
       _showSnack('Failed to delete review.', isError: true);
     }
   }

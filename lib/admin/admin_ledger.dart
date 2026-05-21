@@ -52,10 +52,19 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
 
   Future<void> _loadUnreadCount() async {
     try {
-      final notifications = await api.fetchNotifications();
+      final userid = await Session.getUserId();
+
+      if (userid == null) return;
+
+      final notifications = await api.fetchNotifications(userid);
+
       if (!mounted) return;
+
       setState(() {
-        _unreadCount = notifications.where((n) => !(n['isRead'] ?? false)).length;
+        _unreadCount = notifications.where((n) {
+          final isRead = n['isread'] ?? n['isRead'] ?? false;
+          return isRead == false;
+        }).length;
       });
     } catch (_) {}
   }
