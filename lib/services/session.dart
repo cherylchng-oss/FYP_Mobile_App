@@ -59,6 +59,12 @@ class Session {
     return prefs.getString(_keyUsername);
   }
 
+  // Update username only
+  static Future<void> setUsername(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyUsername, username);
+  }
+
   // Get user group
   static Future<String?> getUserGroup() async {
     final prefs = await SharedPreferences.getInstance();

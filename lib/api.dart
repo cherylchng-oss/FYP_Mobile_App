@@ -1493,7 +1493,26 @@ Future<Map<String, dynamic>> updateReservationStatus(
       );
     }
 
-    return jsonDecode(response.body);
+    if (response.body.trim().isEmpty) {
+      return {
+        'message': 'success',
+      };
+    }
+
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+
+    if (decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+
+    return {
+      'message': 'success',
+      'data': decoded,
+    };
   } catch (error) {
     print('API error: $error');
     rethrow;
@@ -2087,52 +2106,85 @@ Future<Map<String, dynamic>?> fetchGoogleUserData(String accessToken) async {
 // Update user profile
 Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> userData) async {
   final creatorid = await Session.getUserId();
-  final username = 'user_${creatorid ?? 0}'; // TODO: Get actual username from session
-  final creatorUsername = username;
-    
-    try {
-        // Validate user ID
-    if (userData['userid'] == null) {
+  final creatorUsername = await Session.getUsername() ?? '';
+
+  try {
+    final safeUserid = userData['userid'] ?? creatorid;
+
+    if (safeUserid == null) {
       throw Exception('User ID is missing');
-        }
-      
-    print('API: Updating profile for userid: ${userData['userid']}');
+    }
+
+    print('API: Updating profile for userid: $safeUserid');
     print('API: Profile data: $userData');
-    
-    // Create a clean payload - only send fields that are actually provided
+
     final cleanData = <String, dynamic>{
-      'userid': userData['userid'],
+      'userid': safeUserid,
     };
-    
-    // Add all required fields from backend
-    if (userData.containsKey('username')) cleanData['username'] = userData['username'];
-    // Only send password if it's explicitly provided and not empty
-    // This prevents accidentally overwriting password when updating other fields
-    if (userData.containsKey('password') && userData['password'] != null && userData['password'].toString().isNotEmpty) {
+
+    if (userData.containsKey('username')) {
+      cleanData['username'] = userData['username'];
+    }
+
+    if (userData.containsKey('password') &&
+        userData['password'] != null &&
+        userData['password'].toString().trim().isNotEmpty) {
       cleanData['password'] = userData['password'];
     }
-    if (userData.containsKey('ufirstname')) cleanData['ufirstname'] = userData['ufirstname'];
-    if (userData.containsKey('ulastname')) cleanData['ulastname'] = userData['ulastname'];
-    if (userData.containsKey('udob')) cleanData['udob'] = userData['udob'];
-    if (userData.containsKey('utitle')) cleanData['utitle'] = userData['utitle'];
-    if (userData.containsKey('ugender')) cleanData['ugender'] = userData['ugender'];
-    if (userData.containsKey('uemail')) cleanData['uemail'] = userData['uemail'];
-    if (userData.containsKey('uphoneno')) cleanData['uphoneno'] = userData['uphoneno'];
-    if (userData.containsKey('ucountry')) cleanData['ucountry'] = userData['ucountry'];
-    if (userData.containsKey('uzipcode')) cleanData['uzipcode'] = userData['uzipcode'];
-    
-    // Add PayPal ID (backend expects 'paypalid', not 'paypal_email')
+
+    if (userData.containsKey('ufirstname')) {
+      cleanData['ufirstname'] = userData['ufirstname'];
+    }
+
+    if (userData.containsKey('ulastname')) {
+      cleanData['ulastname'] = userData['ulastname'];
+    }
+
+    if (userData.containsKey('udob')) {
+      cleanData['udob'] = userData['udob'];
+    }
+
+    if (userData.containsKey('utitle')) {
+      cleanData['utitle'] = userData['utitle'];
+    }
+
+    if (userData.containsKey('ugender')) {
+      cleanData['ugender'] = userData['ugender'];
+    }
+
+    if (userData.containsKey('uemail')) {
+      cleanData['uemail'] = userData['uemail'];
+    }
+
+    if (userData.containsKey('uphoneno')) {
+      cleanData['uphoneno'] = userData['uphoneno'];
+    }
+
+    if (userData.containsKey('ucountry')) {
+      cleanData['ucountry'] = userData['ucountry'];
+    }
+
+    if (userData.containsKey('uzipcode')) {
+      cleanData['uzipcode'] = userData['uzipcode'];
+    }
+
     if (userData.containsKey('paypalid') && userData['paypalid'] != null) {
       cleanData['paypalid'] = userData['paypalid'];
-    } else if (userData.containsKey('paypal_email') && userData['paypal_email'] != null) {
-      // Fallback: if frontend sends paypal_email, map it to paypalid
+    } else if (userData.containsKey('paypal_email') &&
+        userData['paypal_email'] != null) {
       cleanData['paypalid'] = userData['paypal_email'];
     }
-    
+
     print('API: Clean profile data being sent: $cleanData');
-    
+
+    final uri = Uri.parse(
+      '$API_URL/users/updateProfile/$safeUserid'
+      '?creatorid=${Uri.encodeComponent((creatorid ?? safeUserid).toString())}'
+      '&creatorUsername=${Uri.encodeComponent(creatorUsername)}',
+    );
+
     final response = await http.put(
-      Uri.parse('$API_URL/users/updateProfile/${userData['userid']}?creatorid=$creatorid&creatorUsername=$creatorUsername'),
+      uri,
       headers: await _authHeaders(),
       body: jsonEncode(cleanData),
     );
@@ -2140,60 +2192,95 @@ Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> userData) async 
     print('API: Update profile response status: ${response.statusCode}');
     print('API: Update profile response body: ${response.body}');
 
-    if (response.statusCode != 200) {
+    Map<String, dynamic> data = {};
+
+    if (response.body.trim().isNotEmpty) {
       try {
-        final errorData = jsonDecode(response.body);
-        final errorMessage = errorData['message'] ?? errorData['error'] ?? 'Failed to update user profile';
-        print('API: Error details: $errorData');
-        throw Exception('$errorMessage (${response.statusCode})');
-      } catch (e) {
-        if (e is Exception && e.toString().contains('500')) {
-          throw Exception('Server error: The backend encountered an error. Please check the backend logs.');
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          data = decoded;
         }
-        throw Exception('Failed to update user profile: ${response.statusCode} ${response.reasonPhrase}');
+      } catch (_) {
+        data = {};
       }
     }
 
-    try {
-      return jsonDecode(response.body);
-    } catch (e) {
-      // If response is not JSON, return success anyway
-      print('API: Response is not JSON, assuming success');
-      return {'success': true, 'message': 'Profile updated successfully'};
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        data['success'] == false) {
+      final errorMessage =
+          data['message'] ?? data['error'] ?? 'Failed to update user profile';
+
+      throw Exception('$errorMessage (${response.statusCode})');
     }
-    } catch (error) {
+
+    if (data.isEmpty) {
+      return {
+        'success': true,
+        'message': 'Profile updated successfully',
+      };
+    }
+
+    return data;
+  } catch (error) {
     print('API error updating profile: $error');
     rethrow;
   }
 }
 
-// Upload Avatar
-Future<Map<String, dynamic>> uploadAvatar(int userid, String base64String) async {
+// Upload Avatar to Firebase Storage
+Future<Map<String, dynamic>> uploadAvatar(
+  int userid,
+  String imagePath,
+) async {
   final creatorid = await Session.getUserId();
-  final username = 'user_${creatorid ?? 0}'; // TODO: Get actual username from session
-  final creatorUsername = username;
+  final creatorUsername = await Session.getUsername() ?? '';
 
   try {
     if (userid == 0) {
       throw Exception('User ID is missing');
     }
 
-    final response = await http.post(
-      Uri.parse('$API_URL/users/uploadAvatar/$userid?creatorid=$creatorid&creatorUsername=$creatorUsername'),
-      headers: await _authHeaders(),
-      body: jsonEncode({'uimage': base64String}),
+    if (imagePath.trim().isEmpty) {
+      throw Exception('Avatar image file is missing');
+    }
+
+    final uri = Uri.parse(
+      '$API_URL/users/uploadAvatar/$userid'
+      '?creatorid=${Uri.encodeComponent((creatorid ?? userid).toString())}'
+      '&creatorUsername=${Uri.encodeComponent(creatorUsername)}',
     );
 
-    final data = jsonDecode(response.body);
-    if (response.statusCode != 200) {
+    final request = http.MultipartRequest('POST', uri);
+
+    final headers = await _authHeaders();
+
+    headers.remove('Content-Type');
+    request.headers.addAll(headers);
+
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'avatar',
+        imagePath,
+      ),
+    );
+
+    final streamedResponse = await request.send();
+    final responseBody = await streamedResponse.stream.bytesToString();
+
+    final data = responseBody.isNotEmpty
+        ? jsonDecode(responseBody)
+        : <String, dynamic>{};
+
+    if (streamedResponse.statusCode != 200 || data['success'] == false) {
       throw Exception(data['message'] ?? 'Failed to upload avatar');
-      }
-  
-      return data; 
-    } catch (error) {
+    }
+
+    return Map<String, dynamic>.from(data);
+  } catch (error) {
     print('API error: $error');
     rethrow;
-    }
+  }
 }
 
 // Forgot Password

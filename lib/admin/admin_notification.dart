@@ -16,7 +16,7 @@ class AdminNotifications extends StatefulWidget {
 }
 
 class _AdminNotificationsState extends State<AdminNotifications> {
-  String _selectedFilter = 'Unread';
+  String _selectedFilter = 'All';
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   late Future<void> _notificationInit;
   bool _isLoading = true;
@@ -361,6 +361,7 @@ class _AdminNotificationsState extends State<AdminNotifications> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
+                  _buildFilterChip('All', 'All'),
                   _buildFilterChip('Unread', 'Unread'),
                   _buildFilterChip('Bookings', 'Bookings'),
                   _buildFilterChip('Payment', 'Payment'),

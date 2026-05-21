@@ -64,6 +64,28 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
     'additionalRequests': '',
   };
 
+  final List<String> _titleOptions = const [
+    'Mr.',
+    'Mrs.',
+    'Ms.',
+    'Miss',
+    'Madam',
+  ];
+
+  String? _safeBookingTitleValue(dynamic value) {
+    final title = value?.toString().trim();
+
+    if (title == null || title.isEmpty || title == 'null') {
+      return null;
+    }
+
+    if (_titleOptions.contains(title)) {
+      return title;
+    }
+
+    return null;
+  }
+
   String paymentFormError = '';
   bool showBookingBlockedModal = false;
   String blockedBookingTitle = 'Booking Window Closed';
@@ -3887,12 +3909,12 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
                         const SizedBox(height: 12),
 
                         DropdownButtonFormField<String>(
-                          value: '${bookingForm['title']}',
-                          items: const ['Mr.', 'Mrs.', 'Ms.']
+                          value: _safeBookingTitleValue(bookingForm['title']),
+                          items: _titleOptions
                               .map(
-                                (e) => DropdownMenuItem(
-                                  value: e,
-                                  child: Text(e),
+                                (title) => DropdownMenuItem<String>(
+                                  value: title,
+                                  child: Text(title),
                                 ),
                               )
                               .toList(),
@@ -4302,30 +4324,38 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
     final secs = paymentCountdown % 60;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: bg,
         border: Border.all(color: border),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            urgent ? '⚠️ Time running out!' : '⏱️ Time to complete payment',
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w800,
-              fontSize: 13,
+          Expanded(
+            child: Text(
+              urgent ? '⚠️ Time running out!' : '⏱️ Time to complete payment',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
+              ),
             ),
           ),
-          Text(
-            '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}',
-            style: TextStyle(
-              color: color,
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              fontFamily: 'monospace',
+          const SizedBox(width: 8),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}',
+              style: TextStyle(
+                color: color,
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                fontFamily: 'monospace',
+              ),
             ),
           ),
         ],
@@ -4361,10 +4391,10 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
 
   Widget _paymentConfirmationFullScreen() {
     final paymentBlocked =
-      isSelectedRangeBlackedOut() ||
-      isBlackedOut ||
-      isSoldOut ||
-      isSelectedRoomSoldOutNow();
+        isSelectedRangeBlackedOut() ||
+        isBlackedOut ||
+        isSoldOut ||
+        isSelectedRoomSoldOutNow();
 
     return Positioned.fill(
       child: Container(
@@ -4373,283 +4403,305 @@ class _PropertyDetailPageState extends State<PropertyDetailPage> {
         padding: const EdgeInsets.all(16),
         child: Material(
           color: Colors.transparent,
-          child: Container(
-            width: 520,
-            constraints: const BoxConstraints(maxHeight: 700),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final screenWidth = MediaQuery.of(context).size.width;
+              final screenHeight = MediaQuery.of(context).size.height;
+              final isSmallPhone = screenWidth < 380;
+
+              return Container(
+                width: screenWidth < 560 ? screenWidth - 32 : 520,
+                constraints: BoxConstraints(
+                  maxHeight: screenHeight * 0.88,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.all(isSmallPhone ? 18 : 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFFBF8040), Color(0xFF6B3F1A)],
+                      Row(
+                        children: [
+                          Container(
+                            width: isSmallPhone ? 40 : 44,
+                            height: isSmallPhone ? 40 : 44,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFFBF8040), Color(0xFF6B3F1A)],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(
+                              Icons.payment_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
                           ),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: const Icon(
-                          Icons.payment_rounded,
-                          color: Colors.white,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Text(
-                          'Complete Payment',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF2C1A0E),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Complete Payment',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: isSmallPhone ? 17 : 19,
+                                fontWeight: FontWeight.w900,
+                                color: const Color(0xFF2C1A0E),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                      InkWell(
-                        onTap: paymentStatus == 'processing'
-                            ? null
-                            : () async {
-                                paymentTimer?.cancel();
+                          InkWell(
+                            onTap: paymentStatus == 'processing'
+                                ? null
+                                : () async {
+                                    paymentTimer?.cancel();
 
-                                if (currentReservationId != null) {
-                                  try {
-                                    await api.removeReservation(currentReservationId);
-                                  } catch (e) {
-                                    print('Remove reservation skipped: $e');
-                                  }
-                                }
+                                    if (currentReservationId != null) {
+                                      try {
+                                        await api.removeReservation(currentReservationId);
+                                      } catch (e) {
+                                        print('Remove reservation skipped: $e');
+                                      }
+                                    }
 
-                                if (!mounted) return;
+                                    if (!mounted) return;
 
-                                setState(() {
-                                  showPaymentConfirmationPage = false;
-                                  paymentStatus = 'idle';
-                                  paymentError = '';
-                                  selectedReservation = null;
-                                  currentReservationId = null;
-                                });
-                              },
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF5EDE0),
+                                    setState(() {
+                                      showPaymentConfirmationPage = false;
+                                      paymentStatus = 'idle';
+                                      paymentError = '';
+                                      selectedReservation = null;
+                                      currentReservationId = null;
+                                    });
+                                  },
                             borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF5EDE0),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.close_rounded,
+                                size: 18,
+                                color: Color(0xFF6B4C30),
+                              ),
+                            ),
                           ),
-                          child: const Icon(
-                            Icons.close_rounded,
-                            size: 18,
-                            color: Color(0xFF6B4C30),
+                        ],
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      _paymentCountdownBox(),
+
+                      const SizedBox(height: 16),
+
+                      Container(
+                        padding: EdgeInsets.all(isSmallPhone ? 14 : 16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5EDE0),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFE8D9C5)),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              '${propertyDetails?['propertyaddress'] ?? widget.property.name}',
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                color: const Color(0xFF2C1A0E),
+                                fontSize: isSmallPhone ? 13 : 14,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+
+                            _summaryRow('Check-in', checkIn),
+                            _summaryRow('Check-out', checkOut),
+
+                            const Divider(
+                              color: Color(0xFFE8D9C5),
+                              height: 18,
+                            ),
+
+                            _summaryRow(
+                              'Total Amount',
+                              'RM ${finalGrandTotal.toStringAsFixed(2)}',
+                            ),
+
+                            if (isInstantPayment) ...[
+                              _summaryRow(
+                                'Instant Discount',
+                                '-RM ${(finalGrandTotal - instantGrandTotal).toStringAsFixed(2)}',
+                              ),
+                              _summaryRow(
+                                'Total Due Now',
+                                'RM ${instantGrandTotal.toStringAsFixed(2)}',
+                              ),
+                            ] else ...[
+                              _summaryRow(
+                                'Deposit Due Now',
+                                'RM ${depositAmount.toStringAsFixed(2)}',
+                              ),
+                              _summaryRow(
+                                'Balance Due Later',
+                                'RM ${(finalGrandTotal - depositAmount).toStringAsFixed(2)}',
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.all(isSmallPhone ? 12 : 14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF8EC),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFE8C56A)),
+                        ),
+                        child: CheckboxListTile(
+                          value: acceptedTerms,
+                          onChanged: paymentStatus == 'processing' ||
+                                  paymentStatus == 'expired'
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    acceptedTerms = value ?? false;
+                                  });
+                                },
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          visualDensity: VisualDensity.compact,
+                          title: Text(
+                            isInstantPayment
+                                ? 'I understand that this instant payment is strictly non-refundable. Cancellation is only permitted in cases of unforeseen circumstances. Any refund disputes must be handled directly with the property owner.'
+                                : 'I understand that this deposit is strictly non-refundable. I agree to pay the remaining balance before the payment deadline.',
+                            textAlign: TextAlign.justify,
+                            softWrap: true,
+                            style: TextStyle(
+                              fontSize: isSmallPhone ? 12 : 13,
+                              height: 1.45,
+                              color: const Color(0xFF6B3F1A),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      if (paymentError.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFBECEC),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            paymentError,
+                            style: const TextStyle(
+                              color: Color(0xFFB83232),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 16),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.payment_rounded, size: 18),
+                          label: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              paymentStatus == 'processing'
+                                  ? 'Opening PayPal...'
+                                  : paymentStatus == 'expired'
+                                      ? 'Session Expired'
+                                      : 'Pay with PayPal',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6B3F1A),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            elevation: 0,
+                          ),
+                          onPressed: paymentBlocked ||
+                                  !acceptedTerms ||
+                                  paymentStatus == 'processing' ||
+                                  paymentStatus == 'expired'
+                              ? null
+                              : startPayPalPayment,
+                        ),
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: paymentStatus == 'processing'
+                              ? null
+                              : () async {
+                                  paymentTimer?.cancel();
+
+                                  if (currentReservationId != null) {
+                                    try {
+                                      await api.removeReservation(currentReservationId);
+                                    } catch (e) {
+                                      print('Remove reservation skipped: $e');
+                                    }
+                                  }
+
+                                  if (!mounted) return;
+
+                                  setState(() {
+                                    showPaymentConfirmationPage = false;
+                                    paymentStatus = 'idle';
+                                    paymentError = '';
+                                    selectedReservation = null;
+                                    currentReservationId = null;
+                                  });
+                                },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF6B3F1A),
+                            side: const BorderSide(color: Color(0xFFE8D9C5)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: const Text(
+                            'Cancel & Go Back',
+                            style: TextStyle(fontWeight: FontWeight.w800),
                           ),
                         ),
                       ),
                     ],
                   ),
-
-                  const SizedBox(height: 18),
-
-                  _paymentCountdownBox(),
-
-                  const SizedBox(height: 16),
-
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF5EDE0),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFE8D9C5)),
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          '${propertyDetails?['propertyaddress'] ?? widget.property.name}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF2C1A0E),
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        _summaryRow('Check-in', checkIn),
-                        _summaryRow('Check-out', checkOut),
-
-                        const Divider(
-                          color: Color(0xFFE8D9C5),
-                          height: 18,
-                        ),
-
-                        _summaryRow(
-                          'Total Amount',
-                          'RM ${finalGrandTotal.toStringAsFixed(2)}',
-                        ),
-
-                        if (isInstantPayment) ...[
-                          _summaryRow(
-                            'Instant Discount',
-                            '-RM ${(finalGrandTotal - instantGrandTotal).toStringAsFixed(2)}',
-                          ),
-                          _summaryRow(
-                            'Total Due Now',
-                            'RM ${instantGrandTotal.toStringAsFixed(2)}',
-                          ),
-                        ] else ...[
-                          _summaryRow(
-                            'Deposit Due Now',
-                            'RM ${depositAmount.toStringAsFixed(2)}',
-                          ),
-                          _summaryRow(
-                            'Balance Due Later',
-                            'RM ${(finalGrandTotal - depositAmount).toStringAsFixed(2)}',
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF8EC),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFE8C56A)),
-                    ),
-                    child: CheckboxListTile(
-                      value: acceptedTerms,
-                      onChanged: paymentStatus == 'processing' ||
-                              paymentStatus == 'expired'
-                          ? null
-                          : (value) {
-                              setState(() {
-                                acceptedTerms = value ?? false;
-                              });
-                            },
-                      controlAffinity: ListTileControlAffinity.leading,
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        isInstantPayment
-                            ? 'I understand that this instant payment is strictly non-refundable. Cancellation is only permitted in cases of unforeseen circumstances. Any refund disputes must be handled directly with the property owner.'
-                            : 'I understand that this deposit is strictly non-refundable. I agree to pay the remaining balance before the payment deadline.',
-                        textAlign: TextAlign.justify,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF6B3F1A),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  if (paymentError.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFBECEC),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        paymentError,
-                        style: const TextStyle(
-                          color: Color(0xFFB83232),
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 16),
-
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.payment_rounded, size: 18),
-                      label: Text(
-                        paymentStatus == 'processing'
-                            ? 'Opening PayPal...'
-                            : paymentStatus == 'expired'
-                                ? 'Session Expired'
-                                : 'Pay with PayPal',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6B3F1A),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        elevation: 0,
-                      ),
-                      onPressed: paymentBlocked ||
-                              !acceptedTerms ||
-                              paymentStatus == 'processing' ||
-                              paymentStatus == 'expired'
-                          ? null
-                          : startPayPalPayment,
-                    ),
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: paymentStatus == 'processing'
-                          ? null
-                          : () async {
-                              paymentTimer?.cancel();
-
-                              if (currentReservationId != null) {
-                                try {
-                                  await api.removeReservation(currentReservationId);
-                                } catch (e) {
-                                  print('Remove reservation skipped: $e');
-                                }
-                              }
-
-                              if (!mounted) return;
-
-                              setState(() {
-                                showPaymentConfirmationPage = false;
-                                paymentStatus = 'idle';
-                                paymentError = '';
-                                selectedReservation = null;
-                                currentReservationId = null;
-                              });
-                            },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF6B3F1A),
-                        side: const BorderSide(color: Color(0xFFE8D9C5)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      child: const Text(
-                        'Cancel & Go Back',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                ),
+              );
+            },
           ),
         ),
       ),

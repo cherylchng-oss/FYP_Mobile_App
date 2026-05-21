@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/session.dart';
 import 'colors.dart';
 
-class CustomerLayout extends StatelessWidget {
+class CustomerLayout extends StatefulWidget {
   const CustomerLayout({
     super.key,
     required this.body,
@@ -15,6 +15,13 @@ class CustomerLayout extends StatelessWidget {
   final int selectedIndex;
   final Color backgroundColor;
   final PreferredSizeWidget? appBar;
+
+  @override
+  State<CustomerLayout> createState() => _CustomerLayoutState();
+}
+
+class _CustomerLayoutState extends State<CustomerLayout> {
+  final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
 
   static const primary = AdminColors.primary;
   static const primaryLight = AdminColors.primaryLight;
@@ -30,15 +37,13 @@ class CustomerLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scaffoldKey = GlobalKey<ScaffoldState>();
-
     return Scaffold(
       key: scaffoldKey,
-      backgroundColor: backgroundColor,
-      appBar: appBar,
+      backgroundColor: widget.backgroundColor,
+      appBar: widget.appBar,
       endDrawer: _buildMoreDrawer(context),
       drawerScrimColor: Colors.black.withOpacity(0.55),
-      body: body,
+      body: widget.body,
       bottomNavigationBar: _buildBottomNav(context, scaffoldKey),
     );
   }
@@ -114,7 +119,7 @@ class CustomerLayout extends StatelessWidget {
     IconData inactiveIcon,
     String label,
   ) {
-    final selected = selectedIndex == index;
+    final selected = widget.selectedIndex == index;
     final isMore = index == 3;
 
     return Expanded(
@@ -181,7 +186,7 @@ class CustomerLayout extends StatelessWidget {
       return;
     }
 
-    if (index == selectedIndex) return;
+    if (index == widget.selectedIndex) return;
 
     if (index == 0) {
       Navigator.of(context).pushReplacementNamed('/customer-home');
@@ -412,8 +417,8 @@ class CustomerLayout extends StatelessWidget {
                     _drawerItem(
                       context,
                       Icons.person_rounded,
-                      'My Profile',
-                      '/profile',
+                      'Profile',
+                      '/customer-profile',
                     ),
                   ],
                 ),
@@ -536,31 +541,61 @@ class CustomerLayout extends StatelessWidget {
     String label,
     String route,
   ) {
+    final currentRoute = ModalRoute.of(context)?.settings.name;
+    final bool selected = currentRoute == route;
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 3),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        border: Border.all(color: Colors.white.withOpacity(0.10)),
+        gradient: selected
+            ? const LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [
+                  Color(0xFF6B3210),
+                  Color(0xFFD4952A),
+                ],
+              )
+            : null,
+        color: selected ? null : Colors.white.withOpacity(0.08),
+        border: Border.all(
+          color: selected
+              ? Colors.white.withOpacity(0.22)
+              : Colors.white.withOpacity(0.10),
+        ),
         borderRadius: BorderRadius.circular(14),
+        boxShadow: selected
+            ? [
+                BoxShadow(
+                  color: _activeFill1.withOpacity(0.25),
+                  blurRadius: 14,
+                  offset: const Offset(0, 5),
+                ),
+              ]
+            : [],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
             Navigator.pop(context);
-            Navigator.pushNamed(context, route);
+
+            if (!selected) {
+              Navigator.pushReplacementNamed(context, route);
+            }
           },
           borderRadius: BorderRadius.circular(14),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
-                Container(
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
                   width: 3,
-                  height: 0,
+                  height: selected ? 28 : 0,
                   margin: const EdgeInsets.only(right: 8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.8),
+                    color: Colors.white.withOpacity(0.9),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -569,7 +604,9 @@ class CustomerLayout extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.07),
+                    color: selected
+                        ? Colors.white.withOpacity(0.18)
+                        : Colors.white.withOpacity(0.07),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
@@ -584,18 +621,20 @@ class CustomerLayout extends StatelessWidget {
                 Expanded(
                   child: Text(
                     label,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white,
                       fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
                     ),
                   ),
                 ),
 
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: Color(0xFFD4952A),
-                  size: 18,
+                Icon(
+                  selected
+                      ? Icons.check_circle_rounded
+                      : Icons.chevron_right_rounded,
+                  color: selected ? Colors.white : const Color(0xFFD4952A),
+                  size: selected ? 17 : 18,
                 ),
               ],
             ),

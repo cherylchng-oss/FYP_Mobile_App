@@ -552,10 +552,14 @@ class _NotificationPageState extends State<NotificationPage> {
   // ── Notification card ─────────────────────────────────────────────────────
   Widget _buildNotificationCard(dynamic item) {
     final bool isUnread = item['isread'] == false;
-    final String type   = item['notificationtype']?.toString() ?? '';
-    final iconData      = _typeIcon(type);
-    final iconColor     = _typeColor(type);
-    final iconBg        = _typeBg(type);
+    final String type = item['notificationtype']?.toString() ?? '';
+    final String title = item['notificationtitle']?.toString() ?? '';
+    final String message = item['notificationmessage']?.toString() ?? '';
+    final String timeText = _timeAgo(item['timestamp']);
+
+    final iconData = _typeIcon(type);
+    final iconColor = _typeColor(type);
+    final iconBg = _typeBg(type);
 
     return InkWell(
       onTap: () => handleNotificationClick(item),
@@ -563,57 +567,177 @@ class _NotificationPageState extends State<NotificationPage> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         width: double.infinity,
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: isUnread ? _C.unreadBg : Colors.white,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: isUnread ? _C.accent.withOpacity(0.35) : _C.border, width: isUnread ? 1.5 : 1),
-          boxShadow: [BoxShadow(color: _C.primary.withOpacity(isUnread ? 0.09 : 0.05), blurRadius: isUnread ? 16 : 8, offset: const Offset(0, 4))],
-        ),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // ── Type icon ────────────────────────────────────────────────────
-          Container(
-            width: 46, height: 46,
-            decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(14)),
-            child: Icon(iconData, color: iconColor, size: 22),
+          border: Border.all(
+            color: isUnread ? _C.accent.withOpacity(0.35) : _C.border,
+            width: isUnread ? 1.5 : 1,
           ),
-          const SizedBox(width: 14),
-          // ── Content ──────────────────────────────────────────────────────
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Title row
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(child: Text(item['notificationtitle']?.toString() ?? '',
-                style: TextStyle(fontSize: 15, fontWeight: isUnread ? FontWeight.w900 : FontWeight.w700, color: _C.textPrimary, height: 1.3))),
-              const SizedBox(width: 10),
-              _buildStatusBadge(isUnread),
-            ]),
-            const SizedBox(height: 8),
-            // Message
-            Text(item['notificationmessage']?.toString() ?? '',
-              style: const TextStyle(color: _C.textSecond, height: 1.55, fontSize: 13)),
-            const SizedBox(height: 10),
-            // Footer row
-            Row(children: [
-              // Type pill
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(20)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(iconData, size: 11, color: iconColor),
-                  const SizedBox(width: 4),
-                  Text(type, style: TextStyle(color: iconColor, fontSize: 11, fontWeight: FontWeight.w700)),
-                ]),
+          boxShadow: [
+            BoxShadow(
+              color: _C.primary.withOpacity(isUnread ? 0.09 : 0.05),
+              blurRadius: isUnread ? 16 : 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 360;
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: compact ? 40 : 46,
+                  height: compact ? 40 : 46,
+                  decoration: BoxDecoration(
+                    color: iconBg,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    iconData,
+                    color: iconColor,
+                    size: compact ? 20 : 22,
+                  ),
+                ),
+
+                SizedBox(width: compact ? 10 : 14),
+
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Title + status badge
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: compact
+                                  ? constraints.maxWidth - 58
+                                  : constraints.maxWidth - 70,
+                            ),
+                            child: Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: compact ? 14 : 15,
+                                fontWeight:
+                                    isUnread ? FontWeight.w900 : FontWeight.w700,
+                                color: _C.textPrimary,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                          _buildStatusBadge(isUnread),
+                        ],
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      Text(
+                        message,
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: _C.textSecond,
+                          height: 1.5,
+                          fontSize: compact ? 12.5 : 13,
+                        ),
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // Footer: type pill + timestamp
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _buildTypePill(type, iconData, iconColor, iconBg),
+                          _buildTimePill(timeText),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTypePill(
+    String type,
+    IconData iconData,
+    Color iconColor,
+    Color iconBg,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: iconBg,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(iconData, size: 11, color: iconColor),
+          const SizedBox(width: 4),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 150),
+            child: Text(
+              type.isEmpty ? 'Notification' : type,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: iconColor,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
               ),
-              const Spacer(),
-              // Timestamp
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.access_time_rounded, size: 12, color: _C.textMuted),
-                const SizedBox(width: 4),
-                Text(_timeAgo(item['timestamp']), style: const TextStyle(color: _C.textMuted, fontSize: 11, fontWeight: FontWeight.w600)),
-              ]),
-            ]),
-          ])),
-        ]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimePill(String timeText) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: _C.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _C.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.access_time_rounded,
+            size: 12,
+            color: _C.textMuted,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            timeText,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: _C.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

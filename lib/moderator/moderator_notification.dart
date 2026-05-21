@@ -16,7 +16,7 @@ class ModeratorNotifications extends StatefulWidget {
 }
 
 class _ModeratorNotificationsState extends State<ModeratorNotifications> {
-  String _selectedFilter = 'Unread';
+  String _selectedFilter = 'All';
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   late Future<void> _notificationInit;
   bool _isLoading = true;
@@ -375,6 +375,7 @@ class _ModeratorNotificationsState extends State<ModeratorNotifications> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
+                  _buildFilterChip('All', 'All'),
                   _buildFilterChip('Unread', 'Unread'),
                   _buildFilterChip('Bookings', 'Bookings'),
                   _buildFilterChip('Payment', 'Payment'),

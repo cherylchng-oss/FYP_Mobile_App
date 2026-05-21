@@ -6,6 +6,7 @@ import 'customer/customer_rooms.dart';
 import 'customer/customer_cart.dart';
 import 'customer/customer_bookings.dart';
 import 'customer/customer_notification.dart';
+import 'customer/customer_profile.dart';
 import 'customer/about_sarawak.dart';
 import 'customer/about_us.dart';
 import 'customer/customer_faq.dart';
@@ -137,6 +138,7 @@ class CamsApp extends StatelessWidget {
         '/about-us': (context) => const AboutUsPage(),
         '/customer-faq': (context) => const CustomerFAQ(),
         '/customer-notifications': (context) => const NotificationPage(),
+        '/customer-profile': (context) => const CustomerProfilePage(),
 
         // Admin routes
         '/admin-notifications': (context) => _outfit(context, const AdminNotifications()),

@@ -662,38 +662,23 @@ class _PayPalPaymentDialogState extends State<_PayPalPaymentDialog> {
                           onConsoleMessage: (controller, consoleMessage) {
                             final level = consoleMessage.messageLevel.toString();
                             final message = consoleMessage.message;
-                            
-                            // Suppress expected errors from PayPal's pages (non-critical)
-                            if (message.contains('Content Security Policy') || 
+
+                            // Suppress expected/non-critical errors from PayPal pages
+                            if (message.contains('Content Security Policy') ||
                                 message.contains('unsafe-eval') ||
                                 message.contains('CSP directive') ||
                                 message.contains('CORS policy') ||
                                 message.contains('Access-Control-Allow-Origin') ||
-                                message.contains('XMLHttpRequest') && message.contains('blocked by CORS')) {
-                              // These are expected on PayPal's payment pages - don't show as errors
-                              print('PayPal Console [INFO]: Expected warning (CSP/CORS): ${message.substring(0, message.length > 100 ? 100 : message.length)}...');
+                                message.contains('Datadog') ||
+                                message.contains('datadog') ||
+                                message.contains('Session Replay') ||
+                                message.contains('Worker') ||
+                                (message.contains('XMLHttpRequest') && message.contains('blocked by CORS'))) {
+                              print('PayPal Console [INFO]: Expected warning ignored: $message');
                               return;
                             }
-                            
+
                             print('PayPal Console [$level]: $message');
-                            
-                            if (consoleMessage.messageLevel == ConsoleMessageLevel.ERROR) {
-                              // Only show non-expected errors
-                              if (!message.contains('Content Security Policy') && 
-                                  !message.contains('unsafe-eval') &&
-                                  !message.contains('CSP directive') &&
-                                  !message.contains('CORS policy') &&
-                                  !message.contains('Access-Control-Allow-Origin')) {
-                                print('⚠️ PayPal JavaScript Error: $message');
-                                if (mounted) {
-                                  setState(() {
-                                    if (_errorMessage == null) {
-                                      _errorMessage = 'JavaScript Error: $message';
-                                    }
-                                  });
-                                }
-                              }
-                            }
                           },
                           onReceivedError: (controller, request, error) {
                             setState(() {
