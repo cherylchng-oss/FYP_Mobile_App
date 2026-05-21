@@ -280,7 +280,6 @@ class _CustomerProfilePageState extends State<CustomerProfilePage>
 
     data['userid'] = _userid;
 
-    // NEW: Website allows customer to edit username in Security tab.
     data['username'] = _usernameController.text.trim().isNotEmpty
         ? _usernameController.text.trim()
         : (_userData['username'] ??
@@ -337,7 +336,6 @@ class _CustomerProfilePageState extends State<CustomerProfilePage>
         _isUploadingProfileImage = true;
       });
 
-      // THIS IS WHERE YOU PUT IT
       final result = await api.uploadAvatar(userid, pickedFile.path);
 
       final imageUrl = result['imageUrl'] ??
@@ -369,21 +367,71 @@ class _CustomerProfilePageState extends State<CustomerProfilePage>
     }
   }
 
+  String? _getFullProfileImageUrl(dynamic rawUrl) {
+    if (rawUrl == null) return null;
+
+    final url = rawUrl.toString().trim();
+    if (url.isEmpty) return null;
+
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+
+    if (url.startsWith('/')) {
+      return '${api.API_URL}$url';
+    }
+
+    return '${api.API_URL}/$url';
+  }
+
   ImageProvider? _profileImageProvider() {
     if (_selectedProfileImage != null) {
       return FileImage(_selectedProfileImage!);
     }
 
-    final imageUrl = _userData['uimage'] ??
+    final rawImage = _userData['uimage'] ??
         _userData['profileImage'] ??
         _userData['profile_image'] ??
         _userData['profilepicture'];
 
-    if (imageUrl != null && imageUrl.toString().trim().isNotEmpty) {
-      return NetworkImage(imageUrl.toString());
+    if (rawImage == null || rawImage.toString().trim().isEmpty) {
+      return null;
     }
 
-    return null;
+    String imageValue = rawImage.toString().trim();
+
+    try {
+      // Case 1: Full data URL
+      // Example: data:image/jpeg;base64,/9j/4AAQ...
+      if (imageValue.startsWith('data:image')) {
+        final base64String = imageValue.split(',').last;
+        return MemoryImage(base64Decode(base64String));
+      }
+
+      // Case 2: Raw base64 JPEG/PNG from database
+      // JPEG usually starts with /9j/
+      // PNG usually starts with iVBOR
+      if (imageValue.startsWith('/9j/') || imageValue.startsWith('iVBOR')) {
+        return MemoryImage(base64Decode(imageValue));
+      }
+
+      // Case 3: Full image URL
+      if (imageValue.startsWith('http://') || imageValue.startsWith('https://')) {
+        return NetworkImage(imageValue);
+      }
+
+      // Case 4: Relative backend image path
+      // Example: /uploads/profile/avatar.jpg
+      if (imageValue.startsWith('/')) {
+        return NetworkImage('${api.API_URL}$imageValue');
+      }
+
+      // Case 5: Relative path without slash
+      return NetworkImage('${api.API_URL}/$imageValue');
+    } catch (e) {
+      print('CustomerProfile: Failed to load avatar image: $e');
+      return null;
+    }
   }
 
   bool _hasPersonalInfoChanged() {

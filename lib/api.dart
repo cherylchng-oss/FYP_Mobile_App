@@ -1454,19 +1454,15 @@ Future<List<dynamic>> fetchReservationsForAdminModerator() async {
 
 // Update reservation status
 Future<Map<String, dynamic>> updateReservationStatus(
-  int reservationid,
+  dynamic reservationid,
   String status, {
   String creatorid = '',
   String creatorUsername = '',
 }) async {
-  final userid =
-      await Session.getUserId();
+  final userid = await Session.getUserId();
+  final storedUsername = await Session.getUsername();
 
-  final storedUsername =
-      await Session.getUsername();
-
-  final isExpiredStatus =
-      status.trim().toLowerCase() == 'expired';
+  final isExpiredStatus = status.trim().toLowerCase() == 'expired';
 
   final finalCreatorId = isExpiredStatus
       ? ''
@@ -1506,34 +1502,52 @@ Future<Map<String, dynamic>> updateReservationStatus(
       }),
     );
 
+    print('Update reservation status URL: $uri');
+    print('Update reservation status code: ${response.statusCode}');
+    print('Update reservation status body: ${response.body}');
+
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(
         'Failed to update reservation status (${response.statusCode}): ${response.body}',
       );
     }
 
-    if (response.body.trim().isEmpty) {
+    final body = response.body.trim();
+
+    // Backend updated successfully but returned empty body
+    if (body.isEmpty) {
       return {
-        'message': 'success',
+        'success': true,
+        'message': 'Reservation status updated successfully',
       };
     }
 
-    final decoded = jsonDecode(response.body);
+    // Try JSON only if response looks like JSON
+    if (body.startsWith('{') || body.startsWith('[')) {
+      final decoded = jsonDecode(body);
 
-    if (decoded is Map<String, dynamic>) {
-      return decoded;
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+
+      return {
+        'success': true,
+        'message': 'Reservation status updated successfully',
+        'data': decoded,
+      };
     }
 
-    if (decoded is Map) {
-      return Map<String, dynamic>.from(decoded);
-    }
-
+    // Backend returned plain text, but status code is successful
     return {
-      'message': 'success',
-      'data': decoded,
+      'success': true,
+      'message': body,
     };
   } catch (error) {
-    print('API error: $error');
+    print('API updateReservationStatus error: $error');
     rethrow;
   }
 }
@@ -2794,32 +2808,95 @@ Future<dynamic> updateCommissionRate(double newRateDecimal, dynamic userid) asyn
 }
 
 // Payment Successful Notification
-Future<Map<String, dynamic>> paymentSuccess(int reservationid) async {
+Future<Map<String, dynamic>> paymentSuccess(
+  int reservationid, {
+  String paymentType = '',
+}) async {
   final creatorid = await Session.getUserId();
-  final username = 'user_${creatorid ?? 0}'; 
-  final creatorUsername = username;
-  
+  final storedUsername = await Session.getUsername();
+
+  final creatorUsername =
+      (storedUsername != null && storedUsername.trim().isNotEmpty)
+          ? storedUsername.trim()
+          : 'user_${creatorid ?? 0}';
+
   try {
-    print('API: Sending payment success notification - reservationId: $reservationid');
-    final response = await http.post(
-      Uri.parse('$API_URL/payment_success/$reservationid?creatorid=$creatorid&creatorUsername=$creatorUsername'),
-      headers: await _authHeaders(),
-    ).timeout(
-      const Duration(seconds: 15),
-      onTimeout: () {
-        print('API: paymentSuccess timed out after 15 seconds');
-        throw TimeoutException('Request timed out after 15 seconds');
+    print(
+      'API: Sending payment success notification - reservationId: $reservationid, paymentType: $paymentType',
+    );
+
+    final uri = Uri.parse(
+      '$API_URL/payment_success/$reservationid',
+    ).replace(
+      queryParameters: {
+        'creatorid': creatorid?.toString() ?? '',
+        'creatorUsername': creatorUsername,
       },
     );
 
+    final response = await http
+        .post(
+          uri,
+          headers: {
+            ...await _authHeaders(),
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'paymentType': paymentType,
+          }),
+        )
+        .timeout(
+          const Duration(seconds: 15),
+          onTimeout: () {
+            print('API: paymentSuccess timed out after 15 seconds');
+            throw TimeoutException('Request timed out after 15 seconds');
+          },
+        );
+
+    print('API: paymentSuccess URL: $uri');
     print('API: paymentSuccess response status: ${response.statusCode}');
-    if (response.statusCode != 200) {
-      print('API: paymentSuccess failed with status ${response.statusCode}: ${response.body}');
-      final errorData = jsonDecode(response.body);
-      throw Exception(errorData['message'] ?? 'Failed to send payment successful notification');
+    print('API: paymentSuccess response body: ${response.body}');
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      print(
+        'API: paymentSuccess failed with status ${response.statusCode}: ${response.body}',
+      );
+
+      try {
+        final errorData = jsonDecode(response.body);
+        throw Exception(
+          errorData['message'] ??
+              errorData['error'] ??
+              'Failed to send payment successful notification',
+        );
+      } catch (_) {
+        throw Exception(
+          'Failed to send payment successful notification: ${response.body}',
+        );
+      }
     }
 
-    return jsonDecode(response.body);
+    if (response.body.trim().isEmpty) {
+      return {
+        'success': true,
+        'message': 'Payment success notification sent',
+      };
+    }
+
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+
+    if (decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+
+    return {
+      'success': true,
+      'data': decoded,
+    };
   } catch (error) {
     print('API error sending payment success notification: $error');
     rethrow;

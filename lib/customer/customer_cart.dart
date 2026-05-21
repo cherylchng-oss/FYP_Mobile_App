@@ -430,22 +430,55 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
     await prefs.setString('recentlyPaidReservationIds', jsonEncode(recentlyPaidReservationIds));
   }
 
-  Future<void> updateReservationStatusInBackend(dynamic reservationId, String status, {bool showToast = true}) async {
+  Future<void> updateReservationStatusInBackend(
+    dynamic reservationId,
+    String status, {
+    bool showToast = true,
+  }) async {
     try {
       await api.updateReservationStatus(reservationId, status);
-      final i = reservations.indexWhere((r) => r['reservationid'].toString() == reservationId.toString());
-      if (i != -1) reservations[i]['reservationstatus'] = status;
-      final n = normalizeStatus(status);
-      if (['canceled','cancelled','expired','paid'].contains(n)) await markReservationAsRecentlyUpdated(reservationId);
-      if (showToast && status != 'Paid' && status != 'Partially Paid') {
-        final msgs = {'Canceled':'Your reservation has been canceled.','Expired':'Your reservation has expired due to non-payment.','Pending':'Please wait for the response of the operators.'};
-        displayToast('success', msgs[status] ?? 'Status updated successfully.');
+
+      final i = reservations.indexWhere(
+        (r) => r['reservationid'].toString() == reservationId.toString(),
+      );
+
+      if (i != -1) {
+        reservations[i]['reservationstatus'] = status;
       }
+
+      final n = normalizeStatus(status);
+
+      if (['canceled', 'cancelled', 'expired', 'paid'].contains(n)) {
+        await markReservationAsRecentlyUpdated(reservationId);
+      }
+
+      if (showToast && status != 'Paid' && status != 'Partially Paid') {
+        final msgs = {
+          'Canceled': 'Your reservation has been canceled.',
+          'Expired': 'Your reservation has expired due to non-payment.',
+          'Pending': 'Please wait for the response of the operators.',
+        };
+
+        displayToast(
+          'success',
+          msgs[status] ?? 'Status updated successfully.',
+        );
+      }
+
       if (mounted) setState(() {});
-    } catch (_) {
-      displayToast('error', 'Failed to update reservation. Please try again.');
+    } catch (e) {
+      print('Cart updateReservationStatusInBackend error: $e');
+
+      if (showToast) {
+        displayToast(
+          'error',
+          'Failed to update reservation. Please try again.',
+        );
+      }
     } finally {
-      if (mounted) setState(() => isCancelProcessing = false);
+      if (mounted) {
+        setState(() => isCancelProcessing = false);
+      }
     }
   }
 
@@ -533,25 +566,79 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
   Future<void> handlePayPalApprove(String orderId) async {
     try {
       final details = await api.capturePayPalOrder(orderId);
-      if (details['error'] != null) throw Exception(details['error']);
+
+      if (details['error'] != null) {
+        throw Exception(details['error']);
+      }
+
       paymentTimer?.cancel();
+
       final paidReservationId = selectedReservation?['reservationid'];
-      final isPayingBalance = normalizeStatus(selectedReservation?['reservationstatus']) == 'partially paid';
+
+      final isPayingBalance =
+          normalizeStatus(selectedReservation?['reservationstatus']) ==
+              'partially paid';
+
       final newStatus = isPayingBalance ? 'Paid' : 'Partially Paid';
-      await api.paymentSuccess(paidReservationId);
-      await updateReservationStatusInBackend(paidReservationId, newStatus, showToast: false);
+      final paymentType = isPayingBalance ? 'balance' : 'deposit';
+
+      if (paidReservationId == null) {
+        throw Exception('Missing reservation ID');
+      }
+
+      try {
+        await api.paymentSuccess(
+          int.parse(paidReservationId.toString()),
+          paymentType: paymentType,
+        );
+      } catch (e) {
+        print('paymentSuccess email skipped: $e');
+      }
+
+      await updateReservationStatusInBackend(
+        paidReservationId,
+        newStatus,
+        showToast: false,
+      );
+
       await markReservationAsRecentlyUpdated(paidReservationId);
-      setState(() { paymentStatus = 'success'; countdownTimer = 5; });
+
+      setState(() {
+        paymentStatus = 'success';
+        countdownTimer = 5;
+      });
+
       successTimer?.cancel();
+
       successTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
         if (countdownTimer <= 1) {
           timer.cancel();
+
           await fetchCartData();
-          if (mounted) setState(() { showPaymentModal = false; paymentStatus = 'idle'; paymentError = ''; selectedReservation = null; });
-        } else { setState(() => countdownTimer--); }
+
+          if (mounted) {
+            setState(() {
+              showPaymentModal = false;
+              paymentStatus = 'idle';
+              paymentError = '';
+              selectedReservation = null;
+            });
+          }
+        } else {
+          if (mounted) {
+            setState(() => countdownTimer--);
+          }
+        }
       });
-    } catch (_) {
-      setState(() { paymentError = 'Payment could not be processed. Please try again.'; paymentStatus = 'error'; });
+    } catch (e) {
+      print('handlePayPalApprove failed: $e');
+
+      if (mounted) {
+        setState(() {
+          paymentError = 'Payment could not be processed. Please try again.';
+          paymentStatus = 'error';
+        });
+      }
     }
   }
 
@@ -590,6 +677,7 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
       checkIn: toSafeIsoDate(reservation['checkindatetime']),
       checkOut: toSafeIsoDate(reservation['checkoutdatetime']),
       isInstantPayment: false,
+      processReservationAfterPayment: false,
     );
 
     if (result == null || result['status'] != 'success') {
@@ -617,17 +705,22 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
         throw Exception('Missing reservation ID');
       }
 
+      final paymentType = isPayingBalance ? 'balance' : 'deposit';
+
+      try {
+        await api.paymentSuccess(
+          int.parse(paidReservationId.toString()),
+          paymentType: paymentType,
+        );
+      } catch (e) {
+        print('paymentSuccess email skipped: $e');
+      }
+
       await updateReservationStatusInBackend(
         paidReservationId,
         newStatus,
         showToast: false,
       );
-
-      try {
-        await api.paymentSuccess(paidReservationId);
-      } catch (e) {
-        print('paymentSuccess email skipped: $e');
-      }
 
       await markReservationAsRecentlyUpdated(paidReservationId);
 
@@ -1518,11 +1611,11 @@ class _CustomerCartState extends State<CustomerCart> with SingleTickerProviderSt
     final status = normalizeStatus(effectiveStatus);
     final buttons = <Widget>[];
 
-    if (!isHistorySection && ['payment pending','pending','booking','accepted','partially paid'].contains(status)) {
+    if (!isHistorySection && status == 'partially paid') {
       buttons.add(_actionBtn(
         icon: Icons.payment_rounded,
-        label: isPartiallyPaid ? 'Pay Balance' : 'Pay Deposit',
-        color: isPartiallyPaid ? _C.success : _C.primary,
+        label: 'Pay Balance',
+        color: _C.success,
         filled: true,
         onPressed: () => confirmAction('pay', reservation['reservationid']),
       ));

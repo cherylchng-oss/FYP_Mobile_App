@@ -18,6 +18,7 @@ class PayPalService {
     required String checkIn,
     required String checkOut,
     required bool isInstantPayment,
+    bool processReservationAfterPayment = true,
   }) async {
     try {
       // First, check if the property owner has a PayPal email set
@@ -33,6 +34,12 @@ class PayPalService {
           );
       }
         print('PayPal Service: Owner PayPal email verified: ${ownerPayPalEmail.isNotEmpty ? "Set" : "Not set"}');
+
+        print('PayPal Service: reservationId = $reservationId');
+        print('PayPal Service: propertyId = $propertyId');
+        print('PayPal Service: amount = $amount');
+        print('PayPal Service: isInstantPayment = $isInstantPayment');
+        print('PayPal Service: ownerPayPalEmail = $ownerPayPalEmail');
       } catch (e) {
         // If the error is about missing PayPal email, rethrow it
         if (e.toString().contains('PayPal payment unavailable') || 
@@ -60,6 +67,7 @@ class PayPalService {
             checkOut: checkOut,
             ownerPayPalEmail: ownerPayPalEmail ?? '',
             isInstantPayment: isInstantPayment,
+            processReservationAfterPayment: processReservationAfterPayment,
           ),
         ),
       );
@@ -435,6 +443,7 @@ class _PayPalPaymentDialog extends StatefulWidget {
   final String checkOut;
   final String ownerPayPalEmail;
   final bool isInstantPayment;
+  final bool processReservationAfterPayment;
 
   const _PayPalPaymentDialog({
     required this.reservationId,
@@ -446,6 +455,7 @@ class _PayPalPaymentDialog extends StatefulWidget {
     required this.checkOut,
     required this.ownerPayPalEmail,
     required this.isInstantPayment,
+    required this.processReservationAfterPayment,
   });
 
   @override
@@ -749,40 +759,65 @@ class _PayPalPaymentDialogState extends State<_PayPalPaymentDialog> {
 
       await api.capturePayPalOrder(orderId);
 
+      if (!widget.processReservationAfterPayment) {
+        if (mounted) {
+          Navigator.pop(context, {
+            'status': 'success',
+            'orderId': data['orderId'] ?? data['transactionId'],
+            'transactionId': data['transactionId'] ?? data['orderId'],
+          });
+        }
+        return;
+      }
+
       final newStatus = widget.isInstantPayment ? 'Paid' : 'Partially Paid';
+
+      // Instant Pay = full payment email
+      // Book & Pay = deposit payment email
+      final paymentType = widget.isInstantPayment ? 'full' : 'deposit';
+
+      print('Payment notification type: $paymentType');
       print('Updating reservation status to $newStatus...');
 
       try {
-        await api.updateReservationStatus(widget.reservationId, newStatus)
-            .timeout(
-              const Duration(seconds: 15),
-              onTimeout: () {
-                print('Warning: updateReservationStatus timed out after 15 seconds');
-                throw TimeoutException('Update reservation status timed out');
-              },
-            );
-        print('Reservation status updated successfully');
-      } catch (updateError) {
-        print('Error updating reservation status (non-critical): $updateError');
-      }
-
-      try {
         print('Sending payment success notification...');
-        await api.paymentSuccess(widget.reservationId)
-            .timeout(
-              const Duration(seconds: 15),
-              onTimeout: () {
-                print('Warning: paymentSuccess timed out after 15 seconds');
-                throw TimeoutException('Payment success notification timed out');
-              },
-            );
+
+        await api.paymentSuccess(
+          widget.reservationId,
+          paymentType: paymentType,
+        ).timeout(
+          const Duration(seconds: 15),
+          onTimeout: () {
+            print('Warning: paymentSuccess timed out after 15 seconds');
+            throw TimeoutException('Payment success notification timed out');
+          },
+        );
+
         print('Payment success notification sent');
       } catch (notificationError) {
         print('Error sending payment success notification (non-critical): $notificationError');
       }
 
+      try {
+        await api.updateReservationStatus(
+          widget.reservationId,
+          newStatus,
+        ).timeout(
+          const Duration(seconds: 15),
+          onTimeout: () {
+            print('Warning: updateReservationStatus timed out after 15 seconds');
+            throw TimeoutException('Update reservation status timed out');
+          },
+        );
+
+        print('Reservation status updated successfully');
+      } catch (updateError) {
+        print('Error updating reservation status (non-critical): $updateError');
+      }
+
       if (mounted) {
         print('Closing payment dialog with success status');
+
         Navigator.pop(context, {
           'status': 'success',
           'orderId': data['orderId'] ?? data['transactionId'],
@@ -790,26 +825,29 @@ class _PayPalPaymentDialogState extends State<_PayPalPaymentDialog> {
         });
       }
     } catch (error) {
-        print('Error processing payment success: $error');
+      print('Error processing payment success: $error');
 
-        if (mounted) {
-          Navigator.pop(context, {
-            'status': 'error',
-            'orderId': data['orderId'] ?? data['transactionId'],
-            'transactionId': data['transactionId'] ?? data['orderId'],
-            'error': 'Payment capture failed. Please contact support.',
-          });
-        }
+      if (mounted) {
+        Navigator.pop(context, {
+          'status': 'error',
+          'orderId': data['orderId'] ?? data['transactionId'],
+          'transactionId': data['transactionId'] ?? data['orderId'],
+          'error': 'Payment capture failed. Please contact support.',
+        });
       }
+    }
   }
 
   void _handlePaymentError(Map<String, dynamic> data) {
     print('PayPal payment error: $data');
-      setState(() {
-        _isLoading = false;
-      _errorMessage = 'Unable to start PayPal payment. Please try again in a moment.';
-        _paymentCompleted = false;
-      });
+
+    final realError = data['error']?.toString() ?? 'Unknown PayPal error';
+
+    setState(() {
+      _isLoading = false;
+      _errorMessage = 'Unable to start PayPal payment.\n\nDetails: $realError';
+      _paymentCompleted = false;
+    });
   }
 
   void _handlePaymentCancel() {
