@@ -817,6 +817,7 @@ class _AdminLedgerPageState extends State<AdminLedgerPage> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: AdminColors.cream,
+      endDrawerEnableOpenDragGesture: false,
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.admin,
         onItemSelected: _handleMenuSelection,

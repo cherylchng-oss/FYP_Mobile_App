@@ -146,6 +146,7 @@ class _ManageServicesPageState extends State<ManageServicesPage> {
       key: _scaffoldKey,
       backgroundColor: AdminColors.cream,
       drawerEnableOpenDragGesture: false,
+      endDrawerEnableOpenDragGesture: false,
       endDrawer: _userRole != null
           ? MoreMenuDrawer(
               role: _getUserRoleEnum(),

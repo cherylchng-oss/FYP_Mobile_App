@@ -447,6 +447,7 @@ class _AdminUserManagementPageState extends State<AdminUserManagementPage> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: AdminColors.cream,
+      endDrawerEnableOpenDragGesture: false,
       endDrawer: _buildDrawer(),
       body: Column(
         children: [

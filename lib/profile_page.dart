@@ -574,14 +574,7 @@ class _ProfilePageState extends State<ProfilePage>
       key: _scaffoldKey,
       backgroundColor: AdminColors.cream,
       drawerEnableOpenDragGesture: false,
-      endDrawer: (navRole != null && navRole != nav.UserRole.customer)
-          ? MoreMenuDrawer(
-              role: navRole,
-              onItemSelected: _handleMenuSelection,
-              onLogout: _handleLogout,
-              currentPageLabel: 'Profile',
-            )
-          : null,
+      endDrawerEnableOpenDragGesture: false,
       body: Column(
         children: [
           _buildProfileHeader(topPad, userName, userEmail, roleLower),

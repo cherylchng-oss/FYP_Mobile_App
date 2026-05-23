@@ -1107,6 +1107,7 @@ class _AdminCustomerReviewsPageState extends State<AdminCustomerReviewsPage> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: AdminColors.cream,
+      endDrawerEnableOpenDragGesture: false,
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.admin,
         onItemSelected: _handleMenuSelection,

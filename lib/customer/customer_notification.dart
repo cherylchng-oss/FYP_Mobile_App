@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'customer_rooms.dart';
 import 'customer_cart.dart';
 import 'customer_bookings.dart';
@@ -18,6 +19,38 @@ class _CustomerNotificationsState extends State<CustomerNotifications> {
   late Future<void> _notificationInit;
   bool _isLoading = true;
   List<Map<String, dynamic>> allNotifications = [];
+  Set<String> _dismissedIds = {};
+
+  static const _dismissedKey = 'customer_dismissed_notification_ids';
+
+  // ── Relative-time formatter ──────────────────────────────────────────────────
+  static String _formatTime(Map<String, dynamic> n) {
+    final raw = n['time'] ?? n['timestamp'] ?? n['createdAt']
+        ?? n['created_at'] ?? n['notificationdate'] ?? n['sentAt'] ?? n['date'];
+    if (raw != null) {
+      try {
+        final dt = DateTime.parse(raw.toString()).toLocal();
+        final diff = DateTime.now().difference(dt);
+        if (diff.inSeconds < 60) return 'Just now';
+        if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+        if (diff.inHours < 24) return '${diff.inHours} hr ago';
+        if (diff.inDays == 1) {
+          final h = dt.hour, m = dt.minute;
+          final period = h < 12 ? 'AM' : 'PM';
+          final hh = h % 12 == 0 ? 12 : h % 12;
+          return 'Yesterday at $hh:${m.toString().padLeft(2, '0')} $period';
+        }
+        if (diff.inDays < 7) return '${diff.inDays} days ago';
+        const months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                             'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        final h = dt.hour, m = dt.minute;
+        final period = h < 12 ? 'AM' : 'PM';
+        final hh = h % 12 == 0 ? 12 : h % 12;
+        return '${months[dt.month]} ${dt.day} at $hh:${m.toString().padLeft(2, '0')} $period';
+      } catch (_) {}
+    }
+    return n['time']?.toString() ?? '';
+  }
 
   @override
   void initState() {
@@ -27,22 +60,22 @@ class _CustomerNotificationsState extends State<CustomerNotifications> {
   }
 
   Future<void> _loadNotifications() async {
-    setState(() {
-      _isLoading = true;
-    });
-
+    setState(() => _isLoading = true);
     try {
+      final prefs = await SharedPreferences.getInstance();
+      _dismissedIds = (prefs.getStringList(_dismissedKey) ?? []).toSet();
+
       final notifications = await api.fetchNotifications();
       setState(() {
-        allNotifications = notifications.map((n) => n as Map<String, dynamic>).toList();
+        allNotifications = notifications
+            .map((n) => n as Map<String, dynamic>)
+            .where((n) => !_dismissedIds.contains(n['id'].toString()))
+            .toList();
         _isLoading = false;
       });
     } catch (error) {
       print('Error loading notifications: $error');
-      setState(() {
-        _isLoading = false;
-        allNotifications = [];
-      });
+      setState(() { _isLoading = false; allNotifications = []; });
     }
   }
 
@@ -114,34 +147,18 @@ class _CustomerNotificationsState extends State<CustomerNotifications> {
   }
 
   Future<void> _deleteNotification(int id) async {
-    try {
-      final success = await api.deleteNotification(id);
-      if (success) {
-        setState(() {
-          allNotifications.removeWhere((n) => n['id'] == id);
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Notification deleted'),
-              backgroundColor: Color(0xFF468FAF),
-            ),
-          );
-        }
-      }
-    } catch (error) {
-      print('Error deleting notification: $error');
-      setState(() {
-        allNotifications.removeWhere((n) => n['id'] == id);
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Notification deleted'),
-            backgroundColor: Color(0xFF468FAF),
-          ),
-        );
-      }
+    // Persist dismissal locally only — do NOT delete from backend
+    final prefs = await SharedPreferences.getInstance();
+    _dismissedIds.add(id.toString());
+    await prefs.setStringList(_dismissedKey, _dismissedIds.toList());
+    setState(() => allNotifications.removeWhere((n) => n['id'] == id));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Notification dismissed'),
+          backgroundColor: Color(0xFF468FAF),
+        ),
+      );
     }
   }
 
@@ -309,11 +326,8 @@ class _CustomerNotificationsState extends State<CustomerNotifications> {
               children: [
                 _buildFilterChip('All', 'All'),
                 _buildFilterChip('Unread', 'Unread'),
-                _buildFilterChip('payment_reminder', 'Payments'),
-                _buildFilterChip('booking_upcoming', 'Upcoming'),
-                _buildFilterChip('booking_accepted', 'Accepted'),
-                _buildFilterChip('booking_rejected', 'Rejected'),
-                _buildFilterChip('room_suggestion', 'Suggestions'),
+                _buildFilterChip('Payment Reminder', 'Payments'),
+                _buildFilterChip('Future Booking', 'Upcoming'),
               ],
             ),
           ),
@@ -366,7 +380,7 @@ class _CustomerNotificationsState extends State<CustomerNotifications> {
       },
       child: InkWell(
         onTap: () {
-          if (!notification['isRead']) {
+          if (!(notification['isRead'] ?? false)) {
             _markAsRead(notification['id']);
           }
           _showNotificationDetails(notification);
@@ -374,11 +388,11 @@ class _CustomerNotificationsState extends State<CustomerNotifications> {
         child: Container(
           margin: const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
-            color: notification['isRead'] ? Colors.white : const Color(0xFFEAF2FF),
+            color: (notification['isRead'] ?? false) ? Colors.white : const Color(0xFFEAF2FF),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: notification['isRead'] ? const Color(0xFFE2E8F0) : const Color(0xFF92BBFF),
-              width: notification['isRead'] ? 1 : 2,
+              color: (notification['isRead'] ?? false) ? const Color(0xFFE2E8F0) : const Color(0xFF92BBFF),
+              width: (notification['isRead'] ?? false) ? 1 : 2,
             ),
             boxShadow: [
               BoxShadow(
@@ -393,7 +407,7 @@ class _CustomerNotificationsState extends State<CustomerNotifications> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildNotificationIcon(notification['type'], notification['isRead']),
+                _buildNotificationIcon(notification['type'] ?? '', notification['isRead'] ?? false),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -411,7 +425,7 @@ class _CustomerNotificationsState extends State<CustomerNotifications> {
                               ),
                             ),
                           ),
-                          if (!notification['isRead'])
+                          if (!(notification['isRead'] ?? false))
                             Container(
                               width: 10,
                               height: 10,
@@ -443,7 +457,7 @@ class _CustomerNotificationsState extends State<CustomerNotifications> {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            notification['time'],
+                            _formatTime(notification),
                             style: const TextStyle(
                               fontSize: 12,
                               color: Color(0xFF94A3B8),
@@ -487,30 +501,15 @@ class _CustomerNotificationsState extends State<CustomerNotifications> {
     Color bgColor;
 
     switch (type) {
-      case 'payment_reminder':
+      case 'Payment Reminder':
         icon = Icons.payment;
         color = const Color(0xFFF59E0B);
         bgColor = const Color(0xFFFEF3C7);
         break;
-      case 'booking_upcoming':
+      case 'Future Booking':
         icon = Icons.event_available;
         color = const Color(0xFF0077B6);
         bgColor = const Color(0xFFEAF2FF);
-        break;
-      case 'booking_accepted':
-        icon = Icons.check_circle;
-        color = const Color(0xFF10B981);
-        bgColor = const Color(0xFFD1FAE5);
-        break;
-      case 'booking_rejected':
-        icon = Icons.cancel;
-        color = const Color(0xFFEF4444);
-        bgColor = const Color(0xFFFEE2E2);
-        break;
-      case 'room_suggestion':
-        icon = Icons.lightbulb;
-        color = const Color(0xFF8B5CF6);
-        bgColor = const Color(0xFFEDE9FE);
         break;
       default:
         icon = Icons.notifications;
@@ -660,7 +659,7 @@ class _CustomerNotificationsState extends State<CustomerNotifications> {
                 const Icon(Icons.access_time, size: 16, color: Color(0xFF94A3B8)),
                 const SizedBox(width: 4),
                 Text(
-                  notification['time'],
+                  _formatTime(notification),
                   style: const TextStyle(
                     fontSize: 14,
                     color: Color(0xFF94A3B8),

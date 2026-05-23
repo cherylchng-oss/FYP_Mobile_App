@@ -2490,10 +2490,29 @@ Future<Map<String, dynamic>> paymentSuccess(int reservationid) async {
 }
 
 // Fetch Notifications for User
+/// Normalises a single raw notification row from the DB into the field names
+/// the Flutter UI expects.  Works whether the backend sends DB column names
+/// (notificationid, notificationtitle …) or the older camelCase names.
+Map<String, dynamic> _normaliseNotification(Map raw) {
+  final m = Map<String, dynamic>.from(raw);
+  return <String, dynamic>{
+    ...m, // keep originals so nothing is accidentally lost
+    'id':      m['notificationid']     ?? m['id'],
+    'title':   m['notificationtitle']  ?? m['title'],
+    'message': m['notificationmessage'] ?? m['message'],
+    'type':    m['notificationtype']   ?? m['type'],
+    'isRead':  m['isread']             ?? m['isRead'] ?? false,
+    // 'time' is what the UI renders; set it to the real DB timestamp so
+    // _formatTime() can parse it correctly.
+    'time':    m['timestamp']          ?? m['time'],
+    'status':  m['notificationstatus'] ?? m['status'],
+  };
+}
+
 Future<List<dynamic>> fetchNotifications() async {
   final userid = await Session.getUserId();
   final usergroup = await Session.getUserGroup();
-  
+
   try {
     if (userid == null) {
       print('API: User ID not found, returning empty notifications');
@@ -2502,37 +2521,29 @@ Future<List<dynamic>> fetchNotifications() async {
 
     final uri = Uri.parse('$API_URL/notifications?userid=$userid${usergroup != null ? '&usergroup=${Uri.encodeComponent(usergroup)}' : ''}');
     print('API: Fetching notifications from: $uri');
-    print('API: User ID: $userid, User Group: $usergroup');
-    
-    final response = await http.get(
-      uri,
-      headers: await _authHeaders(),
-    );
+
+    final response = await http.get(uri, headers: await _authHeaders());
 
     print('API: Notifications response status: ${response.statusCode}');
-    print('API: Notifications response body: ${response.body.substring(0, response.body.length > 500 ? 500 : response.body.length)}');
 
-    if (response.statusCode == 404) {
-      print('API: No notifications found (404), returning empty list');
-      return [];
-    }
-
-    if (response.statusCode != 200) {
-      print('API: Unexpected status ${response.statusCode}, returning empty list');
-      return [];
-    }
+    if (response.statusCode == 404) return [];
+    if (response.statusCode != 200) return [];
 
     final data = jsonDecode(response.body);
-    
-    if (data['notifications'] != null && data['notifications'] is List) {
-      print('API: Found ${(data['notifications'] as List).length} notifications');
-      return data['notifications'];
-    } else if (data is List) {
-      print('API: Response is direct list with ${data.length} notifications');
-      return data;
+
+    List<dynamic> raw;
+    if (data is List) {
+      // Backend returns a plain JSON array (current backend)
+      raw = data;
+    } else if (data is Map && data['notifications'] is List) {
+      // Backend wraps in { notifications: [...] }
+      raw = data['notifications'] as List;
+    } else {
+      return [];
     }
-    
-    return [];
+
+    print('API: Found ${raw.length} notifications');
+    return raw.map((n) => _normaliseNotification(n as Map)).toList();
   } catch (error) {
     print('API error fetching notifications: $error');
     return [];
@@ -2548,12 +2559,10 @@ Future<bool> markNotificationAsRead(int notificationId) async {
       throw Exception('User ID not found');
     }
 
-    final response = await http.patch(
+    // Backend expects PUT, not PATCH
+    final response = await http.put(
       Uri.parse('$API_URL/notifications/$notificationId/read'),
       headers: await _authHeaders(),
-      body: jsonEncode({
-        'userid': userid,
-      }),
     );
 
     if (response.statusCode != 200) {
@@ -2571,18 +2580,16 @@ Future<bool> markNotificationAsRead(int notificationId) async {
 // Mark All Notifications as Read
 Future<bool> markAllNotificationsAsRead() async {
   final userid = await Session.getUserId();
-  
+
   try {
     if (userid == null) {
       throw Exception('User ID not found');
     }
 
-    final response = await http.patch(
-      Uri.parse('$API_URL/notifications/read-all'),
+    // Backend expects PUT /notifications/read-all/:userid
+    final response = await http.put(
+      Uri.parse('$API_URL/notifications/read-all/$userid'),
       headers: await _authHeaders(),
-      body: jsonEncode({
-        'userid': userid,
-      }),
     );
 
     if (response.statusCode != 200) {

@@ -238,6 +238,7 @@ class _ModeratorDashboardState extends State<ModeratorDashboard> {
           ],
         ),
       ),
+      endDrawerEnableOpenDragGesture: false,
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.moderator,
         onItemSelected: _handleMenuSelection,
