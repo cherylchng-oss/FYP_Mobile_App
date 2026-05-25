@@ -27,6 +27,9 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  // Role filter — only active on Admin/Mod tab
+  String _roleFilter = 'All';
+
   int _currentPage = 1;
   int _totalPages = 1;
 
@@ -138,8 +141,14 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
 
   List<Map<String, dynamic>> get _visibleList {
     final base = _tabIndex == 0 ? _customers : _staff;
-    if (_searchQuery.isEmpty) return base;
-    return base
+
+    // Apply role filter on Admin/Mod tab
+    final roleFiltered = (_tabIndex == 1 && _roleFilter != 'All')
+        ? base.where((u) => u['role'] == _roleFilter).toList()
+        : base;
+
+    if (_searchQuery.isEmpty) return roleFiltered;
+    return roleFiltered
         .where(
           (u) => (u['name'] ?? '')
               .toString()
@@ -239,6 +248,10 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
         children: [
           _buildSegmentedToggle(),
           SizedBox(height: isLandscape ? 6 : 12),
+          if (_tabIndex == 1) ...[
+            _buildRoleFilterChips(),
+            SizedBox(height: isLandscape ? 6 : 10),
+          ],
           _buildSearchBar(),
         ],
       ),
@@ -268,6 +281,7 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
         setState(() {
           _tabIndex = index;
           _currentPage = 1;
+          _roleFilter = 'All'; // reset role filter when switching tabs
           const pageSize = 10;
           final activeList = _tabIndex == 0 ? _customers : _staff;
           _totalPages = (activeList.length / pageSize).ceil().clamp(1, 999);
@@ -300,6 +314,50 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
+      ),
+    );
+  }
+
+  Widget _buildRoleFilterChips() {
+    const roles = ['All', 'Admin', 'Moderator'];
+    return SizedBox(
+      height: 34,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: roles.length,
+        itemBuilder: (_, i) {
+          final role = roles[i];
+          final isSelected = _roleFilter == role;
+          final Color chipColor = role == 'Admin'
+              ? AdminColors.success
+              : role == 'Moderator'
+                  ? AdminColors.secondary
+                  : AdminColors.primary;
+          return GestureDetector(
+            onTap: () => setState(() => _roleFilter = role),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              margin: EdgeInsets.only(left: i == 0 ? 0 : 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+              decoration: BoxDecoration(
+                color: isSelected ? chipColor : Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isSelected ? chipColor : AdminColors.border.withOpacity(0.5),
+                  width: 1.5,
+                ),
+              ),
+              child: Text(
+                role,
+                style: GoogleFonts.plusJakartaSans(
+                  color: isSelected ? Colors.white : AdminColors.textMuted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

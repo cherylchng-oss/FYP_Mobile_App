@@ -241,7 +241,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 ),
                 Expanded(
                   child: _isLoading
-                      ? const OwnerLoading()
+                      ? const OwnerSkeletonDashboard()
                       : RefreshIndicator(
                           onRefresh: _loadDashboard,
                           color: AdminColors.success,

@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -190,16 +191,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           children: [
             // ── Hero background photo ──────────────────────────────────────
             // Loaded from Firebase Storage (images/WaterFront.jpeg).
+            // Uses CachedNetworkImage so the JPEG is stored on disk after the
+            // first load — subsequent launches paint instantly without a network
+            // round-trip.
             Positioned.fill(
-              child: Image.network(
-                _kBgUrl,
+              child: CachedNetworkImage(
+                imageUrl: _kBgUrl,
                 fit: BoxFit.cover,
-                loadingBuilder: (_, child, progress) {
-                  if (progress == null) return child;
-                  return Container(color: const Color(0xFF2C1A0E));
-                },
-                errorBuilder: (_, __, ___) =>
-                    Container(color: const Color(0xFF2C1A0E)),
+                // Show the dark brand colour while the image loads (first run)
+                placeholder: (_, __) =>
+                    const ColoredBox(color: Color(0xFF2C1A0E)),
+                errorWidget: (_, __, ___) =>
+                    const ColoredBox(color: Color(0xFF2C1A0E)),
               ),
             ),
 
