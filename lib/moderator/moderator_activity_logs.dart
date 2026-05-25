@@ -72,6 +72,7 @@ class _ModeratorActivityLogsPageState extends State<ModeratorActivityLogsPage> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: AdminColors.cream,
+      endDrawerEnableOpenDragGesture: false,
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.moderator,
         onItemSelected: _handleMenuSelection,

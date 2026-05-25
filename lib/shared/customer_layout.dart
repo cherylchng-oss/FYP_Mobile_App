@@ -29,6 +29,7 @@ class CustomerLayout extends StatelessWidget {
       key: scaffoldKey,
       backgroundColor: backgroundColor,
       appBar: appBar,
+      endDrawerEnableOpenDragGesture: false,
       endDrawer: _buildMoreDrawer(context),
       drawerScrimColor: Colors.black.withOpacity(0.55),
       body: body,

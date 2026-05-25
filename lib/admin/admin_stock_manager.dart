@@ -472,6 +472,7 @@ class _AdminStockManagerPageState extends State<AdminStockManagerPage> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: _C.cream,
+      endDrawerEnableOpenDragGesture: false,
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.admin,
         onItemSelected: _handleMenuSelection,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/notification_service.dart';
 import '../services/session.dart';
 import '../shared/bottom_navigation_bar.dart';
@@ -21,6 +22,41 @@ class _AdminNotificationsState extends State<AdminNotifications> {
   late Future<void> _notificationInit;
   bool _isLoading = true;
   List<Map<String, dynamic>> allNotifications = [];
+  Set<String> _dismissedIds = {};
+
+  static const _dismissedKey = 'admin_dismissed_notification_ids';
+
+  // ── Relative-time formatter ──────────────────────────────────────────────────
+  static String _formatTime(Map<String, dynamic> n) {
+    // 'time' is pre-normalised to the DB timestamp column by fetchNotifications.
+    // Fall back through other possible field names just in case.
+    final raw = n['time'] ?? n['timestamp'] ?? n['createdAt']
+        ?? n['created_at'] ?? n['notificationdate'] ?? n['sentAt'] ?? n['date'];
+    if (raw != null) {
+      try {
+        final dt = DateTime.parse(raw.toString()).toLocal();
+        final diff = DateTime.now().difference(dt);
+        if (diff.inSeconds < 60) return 'Just now';
+        if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+        if (diff.inHours < 24) return '${diff.inHours} hr ago';
+        if (diff.inDays == 1) {
+          final h = dt.hour, m = dt.minute;
+          final period = h < 12 ? 'AM' : 'PM';
+          final hh = h % 12 == 0 ? 12 : h % 12;
+          return 'Yesterday at $hh:${m.toString().padLeft(2, '0')} $period';
+        }
+        if (diff.inDays < 7) return '${diff.inDays} days ago';
+        const months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                             'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        final h = dt.hour, m = dt.minute;
+        final period = h < 12 ? 'AM' : 'PM';
+        final hh = h % 12 == 0 ? 12 : h % 12;
+        return '${months[dt.month]} ${dt.day} at $hh:${m.toString().padLeft(2, '0')} $period';
+      } catch (_) {}
+    }
+    // Fall back to whatever the backend sent (may still be "Just now" if no timestamp field)
+    return n['time']?.toString() ?? '';
+  }
 
   @override
   void initState() {
@@ -32,9 +68,16 @@ class _AdminNotificationsState extends State<AdminNotifications> {
   Future<void> _loadNotifications() async {
     setState(() => _isLoading = true);
     try {
+      // Load locally dismissed IDs first
+      final prefs = await SharedPreferences.getInstance();
+      _dismissedIds = (prefs.getStringList(_dismissedKey) ?? []).toSet();
+
       final notifications = await api.fetchNotifications();
       setState(() {
-        allNotifications = notifications.map((n) => n as Map<String, dynamic>).toList();
+        allNotifications = notifications
+            .map((n) => n as Map<String, dynamic>)
+            .where((n) => !_dismissedIds.contains(n['id'].toString()))
+            .toList();
         _isLoading = false;
       });
     } catch (_) {
@@ -74,11 +117,14 @@ class _AdminNotificationsState extends State<AdminNotifications> {
   }
 
   Future<void> _deleteNotification(int id) async {
-    try { await api.deleteNotification(id); } catch (_) {}
+    // Persist dismissal locally only — do NOT delete from backend
+    final prefs = await SharedPreferences.getInstance();
+    _dismissedIds.add(id.toString());
+    await prefs.setStringList(_dismissedKey, _dismissedIds.toList());
     setState(() => allNotifications.removeWhere((n) => n['id'] == id));
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: const Text('Notification deleted'),
+        SnackBar(content: const Text('Notification dismissed'),
             backgroundColor: AdminColors.danger),
       );
     }
@@ -232,6 +278,7 @@ class _AdminNotificationsState extends State<AdminNotifications> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: AdminColors.cream,
+      endDrawerEnableOpenDragGesture: false,
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.admin,
         onItemSelected: _handleMenuSelection,
@@ -319,9 +366,8 @@ class _AdminNotificationsState extends State<AdminNotifications> {
               child: Row(
                 children: [
                   _buildFilterChip('Unread', 'Unread'),
-                  _buildFilterChip('Bookings', 'Bookings'),
-                  _buildFilterChip('Payment', 'Payment'),
-                  _buildFilterChip('Cancellation', 'Cancellation'),
+                  _buildFilterChip('Future Booking', 'Bookings'),
+                  _buildFilterChip('Payment Reminder', 'Payments'),
                 ],
               ),
             ),
@@ -430,7 +476,7 @@ class _AdminNotificationsState extends State<AdminNotifications> {
                           Row(children: [
                             const Icon(Icons.access_time, size: 13, color: AdminColors.textMuted),
                             const SizedBox(width: 4),
-                            Text(notification['time'] ?? '',
+                            Text(_formatTime(notification),
                                 style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted)),
                           ]),
                         ],
@@ -438,25 +484,7 @@ class _AdminNotificationsState extends State<AdminNotifications> {
                     ),
                   ],
                 ),
-                if (notification['type'] == 'broadcast_suggestion' &&
-                    notification['canPickup'] == true) ...[
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _pickupSuggestion(notification),
-                      icon: const Icon(Icons.check_circle, size: 16),
-                      label: const Text('Pick Up Suggestion'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AdminColors.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 11),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ),
                 ],
-              ],
             ),
           ),
         ),
@@ -469,15 +497,12 @@ class _AdminNotificationsState extends State<AdminNotifications> {
     Color color;
     Color bgColor;
     switch (type) {
-      case 'payment_received':
+      case 'Payment Reminder':
         icon = Icons.payment; color = AdminColors.success;
         bgColor = AdminColors.success.withOpacity(0.12); break;
-      case 'room_enquiry':
-        icon = Icons.help_outline; color = AdminColors.accent;
+      case 'Future Booking':
+        icon = Icons.event_available; color = AdminColors.accent;
         bgColor = AdminColors.accent.withOpacity(0.12); break;
-      case 'broadcast_suggestion':
-        icon = Icons.campaign; color = const Color(0xFF7C3AED);
-        bgColor = const Color(0xFFEDE9FE); break;
       default:
         icon = Icons.notifications; color = AdminColors.textMuted;
         bgColor = AdminColors.surface;
@@ -596,32 +621,10 @@ class _AdminNotificationsState extends State<AdminNotifications> {
             Row(children: [
               const Icon(Icons.access_time, size: 14, color: AdminColors.textMuted),
               const SizedBox(width: 4),
-              Text(notification['time'] ?? '',
+              Text(_formatTime(notification),
                   style: AppTextStyles.caption.copyWith(color: AdminColors.textMuted)),
             ]),
             const SizedBox(height: 20),
-            if (notification['type'] == 'broadcast_suggestion' &&
-                notification['canPickup'] == true) ...[
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    _pickupSuggestion(notification);
-                  },
-                  icon: const Icon(Icons.check_circle, size: 18),
-                  label: Text('Pick Up Suggestion',
-                      style: AppTextStyles.label.copyWith(color: Colors.white, fontWeight: FontWeight.w600)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AdminColors.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
             Row(
               children: [
                 Expanded(

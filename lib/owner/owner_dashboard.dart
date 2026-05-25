@@ -69,9 +69,13 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
   }
 
   List<String> get _availableMonths {
+    final now = DateTime.now();
+    // Build "YYYY-MM" ceiling so future months are never shown
+    final currentYM =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}';
     final months = _monthlyData
         .map((m) => (m['month'] ?? '').toString())
-        .where((m) => m.isNotEmpty)
+        .where((m) => m.isNotEmpty && m.compareTo(currentYM) <= 0)
         .toList()
       ..sort((a, b) => b.compareTo(a));
     return months;
@@ -158,11 +162,20 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
 
+      // Cap at the current calendar month so future reservations
+      // (e.g. Sep 2026 check-ins already in the DB) never become the default.
+      final _now = DateTime.now();
+      final _currentYM =
+          '${_now.year}-${_now.month.toString().padLeft(2, '0')}';
+
       String? defaultMonth;
       if (monthly.isNotEmpty) {
-        final sorted = monthly.map((m) => m['month'].toString()).toList()
+        final sorted = monthly
+            .map((m) => m['month'].toString())
+            .where((m) => m.isNotEmpty && m.compareTo(_currentYM) <= 0)
+            .toList()
           ..sort((a, b) => b.compareTo(a));
-        defaultMonth = sorted.first;
+        defaultMonth = sorted.isNotEmpty ? sorted.first : null;
       }
 
       // ── Rating from review-chart ───────────────────────────────────────────

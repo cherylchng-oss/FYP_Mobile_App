@@ -241,6 +241,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ],
         ),
       ),
+      endDrawerEnableOpenDragGesture: false,
       endDrawer: MoreMenuDrawer(
         role: nav.UserRole.admin,
         onItemSelected: _handleMenuSelection,
