@@ -20,48 +20,59 @@ class SharedBottomNavigationBar extends StatelessWidget {
   Color get _selectedColor {
     switch (role) {
       case UserRole.admin:
-        return AdminColors.primary;
       case UserRole.moderator:
-        return AdminColors.primary;
       case UserRole.owner:
-        return const Color(0xFF4188FF);
       case UserRole.customer:
-        return const Color(0xFF92BBFF);
+        return AdminColors.primary;
     }
+  }
+
+  Color get _inactiveColor {
+    return AdminColors.textMuted;
+  }
+
+  List<Color> get _activeGradient {
+    return const [
+      Color(0xFF6B3210),
+      Color(0xFFD4952A),
+    ];
   }
 
   List<BottomNavItem> get _navItems {
     switch (role) {
       case UserRole.admin:
         return const [
-          BottomNavItem(Icons.admin_panel_settings, 'Dashboard'),
-          BottomNavItem(Icons.apartment, 'Properties'),
-          BottomNavItem(Icons.inventory_2, 'Stock'),
-          BottomNavItem(Icons.person, 'Profile'),
-          BottomNavItem(Icons.more_horiz, 'More'),
+          BottomNavItem(Icons.dashboard_rounded, 'Dashboard'),
+          BottomNavItem(Icons.apartment_rounded, 'Properties'),
+          BottomNavItem(Icons.inventory_2_rounded, 'Stock'),
+          BottomNavItem(Icons.person_rounded, 'Profile'),
+          BottomNavItem(Icons.more_horiz_rounded, 'More'),
         ];
+
       case UserRole.moderator:
         return const [
-          BottomNavItem(Icons.manage_accounts, 'Dashboard'),
-          BottomNavItem(Icons.apartment, 'Properties'),
-          BottomNavItem(Icons.inventory_2, 'Stock'),
-          BottomNavItem(Icons.person, 'Profile'),
-          BottomNavItem(Icons.more_horiz, 'More'),
+          BottomNavItem(Icons.dashboard_rounded, 'Dashboard'),
+          BottomNavItem(Icons.apartment_rounded, 'Properties'),
+          BottomNavItem(Icons.inventory_2_rounded, 'Stock'),
+          BottomNavItem(Icons.person_rounded, 'Profile'),
+          BottomNavItem(Icons.more_horiz_rounded, 'More'),
         ];
+
       case UserRole.owner:
         return const [
-          BottomNavItem(Icons.dashboard_outlined, 'Dashboard'),
-          BottomNavItem(Icons.people_outline, 'Users'),
-          BottomNavItem(Icons.location_city_outlined, 'Clusters'),
-          BottomNavItem(Icons.receipt_long_outlined, 'Logs'),
-          BottomNavItem(Icons.person_outline, 'Profile'),
+          BottomNavItem(Icons.dashboard_rounded, 'Dashboard'),
+          BottomNavItem(Icons.people_rounded, 'Users'),
+          BottomNavItem(Icons.location_city_rounded, 'Clusters'),
+          BottomNavItem(Icons.receipt_long_rounded, 'Logs'),
+          BottomNavItem(Icons.person_rounded, 'Profile'),
         ];
+
       case UserRole.customer:
         return const [
-          BottomNavItem(Icons.home, 'Rooms'),
-          BottomNavItem(Icons.shopping_cart, 'Cart'),
-          BottomNavItem(Icons.calendar_today, 'Bookings'),
-          BottomNavItem(Icons.person, 'Profile'),
+          BottomNavItem(Icons.home_rounded, 'Rooms'),
+          BottomNavItem(Icons.shopping_cart_rounded, 'Cart'),
+          BottomNavItem(Icons.calendar_today_rounded, 'Bookings'),
+          BottomNavItem(Icons.person_rounded, 'Profile'),
         ];
     }
   }
@@ -71,27 +82,35 @@ class SharedBottomNavigationBar extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
+        border: const Border(
+          top: BorderSide(
+            color: AdminColors.border,
+            width: 1,
+          ),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
+            color: AdminColors.primary.withOpacity(0.12),
+            blurRadius: 18,
+            offset: const Offset(0, -4),
           ),
         ],
       ),
       child: SafeArea(
+        top: false,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: _navItems
                 .asMap()
                 .entries
-                .map((entry) => _buildBottomNavItem(
-                      entry.value.icon,
-                      entry.value.label,
-                      entry.key,
-                    ))
+                .map(
+                  (entry) => _buildBottomNavItem(
+                    entry.value.icon,
+                    entry.value.label,
+                    entry.key,
+                  ),
+                )
                 .toList(),
           ),
         ),
@@ -101,35 +120,60 @@ class SharedBottomNavigationBar extends StatelessWidget {
 
   Widget _buildBottomNavItem(IconData icon, String label, int index) {
     final isSelected = selectedIndex == index;
-    final isMoreButton = index == 4 && (role == UserRole.admin || role == UserRole.moderator);
+    final isMoreButton =
+        index == 4 && (role == UserRole.admin || role == UserRole.moderator);
+
     return Expanded(
       child: InkWell(
         onTap: () {
           if (isMoreButton) {
-            // More button - show drawer menu (only for non-customer roles)
             scaffoldKey?.currentState?.openEndDrawer();
           } else {
             onTap(index);
           }
         },
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+        borderRadius: BorderRadius.circular(14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          decoration: BoxDecoration(
+            color: isSelected && !isMoreButton
+                ? _selectedColor.withOpacity(0.08)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                icon,
-                color: isSelected ? _selectedColor : const Color(0xFF94A3B8),
-                size: 24,
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  gradient: isSelected && !isMoreButton
+                      ? LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: _activeGradient,
+                        )
+                      : null,
+                  color: isSelected && !isMoreButton
+                      ? null
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  icon,
+                  color:
+                      isSelected && !isMoreButton ? Colors.white : _inactiveColor,
+                  size: 22,
+                ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 3),
               Text(
                 label,
-                style: TextStyle(
-                  color: isSelected ? _selectedColor : const Color(0xFF94A3B8),
-                  fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                style: AppTextStyles.caption.copyWith(
+                  color: isSelected ? _selectedColor : _inactiveColor,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
             ],
