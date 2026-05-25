@@ -209,6 +209,9 @@ class MoreMenuDrawer extends StatelessWidget {
     this.userEmail,
   });
 
+  static const Color _activeFill1 = Color(0xFFB8752A);
+  static const Color _activeFill2 = Color(0xFF6B3210);
+
   String get _headerTitle {
     switch (role) {
       case UserRole.admin:
@@ -225,54 +228,13 @@ class MoreMenuDrawer extends StatelessWidget {
   IconData get _headerIcon {
     switch (role) {
       case UserRole.admin:
-        return Icons.admin_panel_settings;
       case UserRole.moderator:
-        return Icons.manage_accounts;
       case UserRole.owner:
-        return Icons.supervised_user_circle;
+        return Icons.dashboard_rounded;
       case UserRole.customer:
-        return Icons.supervised_user_circle;
+        return Icons.home_work_rounded;
     }
   }
-
-  List<Color> get _gradientColors {
-    switch (role) {
-      case UserRole.admin:
-        return const [AdminColors.primary, AdminColors.primaryLight];
-      case UserRole.moderator:
-        return const [AdminColors.primary, AdminColors.primaryLight];
-      case UserRole.owner:
-        return const [Color(0xFF6366F1), Color(0xFF4188FF)];
-      case UserRole.customer:
-        return const [Color(0xFF6366F1), Color(0xFF92BBFF)];
-    }
-  }
-
-  Color get _borderColor {
-    switch (role) {
-      case UserRole.admin:
-        return AdminColors.accent;
-      case UserRole.moderator:
-        return AdminColors.accent;
-      case UserRole.owner:
-        return const Color(0xFF4188FF);
-      case UserRole.customer:
-        return const Color(0xFF92BBFF);
-    }
-  }
-
-  Color get _drawerBg {
-    switch (role) {
-      case UserRole.admin:
-      case UserRole.moderator:
-        return AdminColors.drawerBg;
-      default:
-        return const Color(0xFF1E293B);
-    }
-  }
-
-  bool get _isAdminOrMod =>
-      role == UserRole.admin || role == UserRole.moderator;
 
   String get _defaultEmail {
     switch (role) {
@@ -280,32 +242,38 @@ class MoreMenuDrawer extends StatelessWidget {
         return 'admin@hellosarawak.com';
       case UserRole.moderator:
         return 'moderator@hellosarawak.com';
-      default:
-        return '';
+      case UserRole.owner:
+        return 'owner@hellosarawak.com';
+      case UserRole.customer:
+        return 'customer@hellosarawak.com';
     }
   }
-
-  static const Color _activeFill1 = Color(0xFFB8752A);
-  static const Color _activeFill2 = Color(0xFF6B3210);
-  static const Color _inactiveFill = Color(0xFF3A1E0A);
-  static const Color _headerCardBg = Color(0xFF3D200E);
 
   @override
   Widget build(BuildContext context) {
     final items = drawerMenuItemsForRole(role);
     final topPad = MediaQuery.of(context).padding.top;
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    final drawerWidth = screenWidth < 480
+        ? screenWidth * 0.82
+        : screenWidth < 768
+            ? screenWidth * 0.65
+            : 310.0;
+
     final displayName = userName ?? _headerTitle;
     final displayEmail = (userEmail != null && userEmail!.isNotEmpty)
         ? userEmail!
         : _defaultEmail;
-    final bg = _isAdminOrMod ? AdminColors.drawerBg : const Color(0xFF1E293B);
 
     return Drawer(
-      backgroundColor: bg,
+      width: drawerWidth,
+      backgroundColor: AdminColors.drawerBg,
+      elevation: 0,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Soft white light exposure at the top
+          // Soft white glow at top
           Positioned(
             left: -80,
             right: -80,
@@ -324,7 +292,8 @@ class MoreMenuDrawer extends StatelessWidget {
               ),
             ),
           ),
-          // Subtle warm radial glow in the middle
+
+          // Warm brown glow in middle
           Positioned(
             left: -60,
             right: -60,
@@ -343,7 +312,8 @@ class MoreMenuDrawer extends StatelessWidget {
               ),
             ),
           ),
-          // Decorative circle outline — top-left
+
+          // Circle outline
           Positioned(
             left: -40,
             top: -90,
@@ -359,7 +329,8 @@ class MoreMenuDrawer extends StatelessWidget {
               ),
             ),
           ),
-          // Decorative gradient filled circle — top-right
+
+          // Gradient circle
           Positioned(
             right: -22,
             top: topPad - 20,
@@ -379,7 +350,7 @@ class MoreMenuDrawer extends StatelessWidget {
               ),
             ),
           ),
-          // Main content column
+
           Column(
             children: [
               // Header card
@@ -387,12 +358,15 @@ class MoreMenuDrawer extends StatelessWidget {
                 padding: EdgeInsets.fromLTRB(16, topPad + 80, 16, 16),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 16),
+                    horizontal: 16,
+                    vertical: 16,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.10),
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(
-                        color: Colors.white.withOpacity(0.18)),
+                      color: Colors.white.withOpacity(0.18),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -402,10 +376,15 @@ class MoreMenuDrawer extends StatelessWidget {
                           color: AdminColors.primary.withOpacity(0.55),
                           borderRadius: BorderRadius.circular(13),
                         ),
-                        child: Icon(_headerIcon,
-                            color: Colors.white, size: 26),
+                        child: Icon(
+                          _headerIcon,
+                          color: Colors.white,
+                          size: 26,
+                        ),
                       ),
+
                       const SizedBox(width: 14),
+
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -413,46 +392,62 @@ class MoreMenuDrawer extends StatelessWidget {
                             Text(
                               displayName,
                               style: AppTextStyles.h4.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700),
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               displayEmail,
                               style: AppTextStyles.caption.copyWith(
-                                  color: Colors.white.withOpacity(0.55)),
+                                color: Colors.white.withOpacity(0.55),
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 7),
-                            Row(children: [
-                              Container(
-                                width: 7,
-                                height: 7,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF4CAF50),
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0xFF4CAF50)
-                                          .withOpacity(0.5),
-                                      blurRadius: 4,
-                                    )
-                                  ],
+                            Row(
+                              children: [
+                                Container(
+                                  width: 7,
+                                  height: 7,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF4CAF50),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(0xFF4CAF50)
+                                            .withOpacity(0.5),
+                                        blurRadius: 4,
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 5),
-                              Text('Online',
+                                const SizedBox(width: 5),
+                                Text(
+                                  'Online',
                                   style: AppTextStyles.caption.copyWith(
-                                      color: const Color(0xFF4CAF50),
-                                      fontWeight: FontWeight.w500)),
-                            ]),
+                                    color: const Color(0xFF4CAF50),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
+                      ),
+
+                      IconButton(
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Color(0xFFB99B82),
+                        ),
+                        onPressed: () => Navigator.pop(context),
                       ),
                     ],
                   ),
                 ),
               ),
+
               // Menu items
               Expanded(
                 child: ListView(
@@ -467,15 +462,18 @@ class MoreMenuDrawer extends StatelessWidget {
                   ],
                 ),
               ),
-              // Accent separator
+
+              // Separator
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 6,
+                ),
                 child: SizedBox(
                   height: 10,
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      // Full-width line, bright in the middle
                       Container(
                         height: 1,
                         decoration: BoxDecoration(
@@ -489,7 +487,6 @@ class MoreMenuDrawer extends StatelessWidget {
                           ),
                         ),
                       ),
-                      // Subtle dot centered on the line
                       Container(
                         width: 4,
                         height: 4,
@@ -508,23 +505,21 @@ class MoreMenuDrawer extends StatelessWidget {
                   ),
                 ),
               ),
-              // Logout
+
+              // Logout button
               if (onLogout != null)
                 Padding(
-                  padding:
-                      const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
                   child: Container(
                     decoration: BoxDecoration(
-                      gradient: _isAdminOrMod
-                          ? const LinearGradient(
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                              colors: [Color(0xFF6B3210), Color(0xFFD4952A)],
-                            )
-                          : null,
-                      color: _isAdminOrMod
-                          ? null
-                          : const Color(0xFF0077B6),
+                      gradient: const LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [
+                          Color(0xFF6B3210),
+                          Color(0xFFD4952A),
+                        ],
+                      ),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Material(
@@ -537,20 +532,25 @@ class MoreMenuDrawer extends StatelessWidget {
                         borderRadius: BorderRadius.circular(14),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
-                              vertical: 14, horizontal: 20),
+                            vertical: 14,
+                            horizontal: 20,
+                          ),
                           child: Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.center,
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Icon(Icons.logout,
-                                  color: Colors.white, size: 18),
+                              const Icon(
+                                Icons.logout_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
                               const SizedBox(width: 10),
-                              Text('Logout',
-                                  style: AppTextStyles.label
-                                      .copyWith(
-                                          color: Colors.white,
-                                          fontWeight:
-                                              FontWeight.w600)),
+                              Text(
+                                'Logout',
+                                style: AppTextStyles.label.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -558,13 +558,14 @@ class MoreMenuDrawer extends StatelessWidget {
                     ),
                   ),
                 ),
+
               Padding(
-                padding:
-                    const EdgeInsets.only(bottom: 20, top: 12),
+                padding: const EdgeInsets.only(bottom: 20, top: 12),
                 child: Text(
                   '© 2025 Hello Sarawak',
                   style: AppTextStyles.caption.copyWith(
-                      color: Colors.white.withOpacity(0.28)),
+                    color: Colors.white.withOpacity(0.28),
+                  ),
                 ),
               ),
             ],
@@ -574,8 +575,10 @@ class MoreMenuDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildDrawerItem(DrawerMenuItem item,
-      {required bool isSelected}) {
+  Widget _buildDrawerItem(
+    DrawerMenuItem item, {
+    required bool isSelected,
+  }) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 3),
       decoration: BoxDecoration(
@@ -583,14 +586,28 @@ class MoreMenuDrawer extends StatelessWidget {
             ? const LinearGradient(
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
-                colors: [Color(0xFF6B3210), Color(0xFFD4952A)],
+                colors: [
+                  Color(0xFF6B3210),
+                  Color(0xFFD4952A),
+                ],
               )
             : null,
         color: isSelected ? null : Colors.white.withOpacity(0.08),
-        border: isSelected
-            ? null
-            : Border.all(color: Colors.white.withOpacity(0.10)),
+        border: Border.all(
+          color: isSelected
+              ? Colors.white.withOpacity(0.22)
+              : Colors.white.withOpacity(0.10),
+        ),
         borderRadius: BorderRadius.circular(14),
+        boxShadow: isSelected
+            ? [
+                BoxShadow(
+                  color: _activeFill1.withOpacity(0.25),
+                  blurRadius: 14,
+                  offset: const Offset(0, 5),
+                ),
+              ]
+            : [],
       ),
       child: Material(
         color: Colors.transparent,
@@ -599,46 +616,63 @@ class MoreMenuDrawer extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           child: Padding(
             padding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 10),
-            child: Row(children: [
-              // Left accent bar
-              Container(
-                width: 3,
-                height: isSelected ? 36 : 0,
-                margin: const EdgeInsets.only(right: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.8),
-                  borderRadius: BorderRadius.circular(4),
+              horizontal: 12,
+              vertical: 10,
+            ),
+            child: Row(
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 3,
+                  height: isSelected ? 28 : 0,
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                 ),
-              ),
-              // Icon box
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? Colors.white.withOpacity(0.18)
-                      : Colors.white.withOpacity(0.07),
-                  borderRadius: BorderRadius.circular(10),
+
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Colors.white.withOpacity(0.18)
+                        : Colors.white.withOpacity(0.07),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    item.icon,
+                    color: Colors.white,
+                    size: 18,
+                  ),
                 ),
-                child:
-                    Icon(item.icon, color: Colors.white, size: 18),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                item.label,
-                style: AppTextStyles.label.copyWith(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: isSelected
-                      ? FontWeight.w600
-                      : FontWeight.w400,
+
+                const SizedBox(width: 12),
+
+                Expanded(
+                  child: Text(
+                    item.label,
+                    style: AppTextStyles.label.copyWith(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight:
+                          isSelected ? FontWeight.w800 : FontWeight.w500,
+                    ),
+                  ),
                 ),
-              ),
-            ]),
+
+                Icon(
+                  isSelected
+                      ? Icons.check_circle_rounded
+                      : Icons.chevron_right_rounded,
+                  color: isSelected ? Colors.white : const Color(0xFFD4952A),
+                  size: isSelected ? 17 : 18,
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 }
-
