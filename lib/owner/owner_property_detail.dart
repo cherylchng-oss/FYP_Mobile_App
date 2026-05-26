@@ -100,7 +100,7 @@ class _OwnerPropertyDetailPageState
                     count: _recentBookings.length,
                   ),
                   if (_loadingBookings)
-                    const OwnerLoading()
+                    const OwnerSkeletonBookings()
                   else if (_recentBookings.isEmpty)
                     const OwnerEmptyState(message: 'No recent bookings')
                   else

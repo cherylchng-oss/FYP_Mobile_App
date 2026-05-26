@@ -135,7 +135,7 @@ class _OwnerClusterPageState extends State<OwnerClusterPage> {
                 ),
                 Expanded(
                   child: _isLoading
-                      ? const OwnerLoading()
+                      ? const OwnerSkeletonClusters()
                       : _visibleClusters.isEmpty
                           ? const OwnerEmptyState(
                               message: 'No clusters found.')

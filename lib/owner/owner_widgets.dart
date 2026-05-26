@@ -134,8 +134,8 @@ class _OwnerHeaderState extends State<OwnerHeader> {
           color: AdminColors.drawerBg,
           image: const DecorationImage(
             image: NetworkImage(
-              'https://images.unsplash.com/photo-1596401057633-54a8fe8ef647'
-              '?q=80&w=1000&auto=format&fit=crop',
+              'https://firebasestorage.googleapis.com/v0/b/fypcams2026.firebasestorage.app'
+              '/o/images%2FOwnermobileheader.jpg?alt=media',
             ),
             fit: BoxFit.cover,
             colorFilter: ColorFilter.mode(
@@ -631,6 +631,550 @@ class OwnerEmptyState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton shimmer — pure Flutter, zero external packages
+// ---------------------------------------------------------------------------
+// _OwnerShimmerWrap holds ONE AnimationController and passes the current
+// animation value (t ∈ 0→1, repeating) to its entire subtree through a
+// single builder callback.  Every _shimBox() call in that tree uses the same
+// 't' value within the same frame → all boxes sweep in perfect sync.
+// ---------------------------------------------------------------------------
+class _OwnerShimmerWrap extends StatefulWidget {
+  final Widget Function(double t) builder;
+  const _OwnerShimmerWrap({required this.builder});
+
+  @override
+  State<_OwnerShimmerWrap> createState() => _OwnerShimmerWrapState();
+}
+
+class _OwnerShimmerWrapState extends State<_OwnerShimmerWrap>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1300),
+    )..repeat();
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _anim,
+        builder: (_, __) => widget.builder(_anim.value),
+      );
+}
+
+/// Renders one shimmer-animated rounded rectangle.
+/// [width] null → fills parent constraints (use inside Expanded / Column stretch).
+Widget _shimBox(
+  double t, {
+  double? width,
+  required double height,
+  double radius = 10.0,
+}) {
+  final sweep = t * 2.8 - 0.9; // light sweep moves left → right
+  return Container(
+    width: width,
+    height: height,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(radius),
+      gradient: LinearGradient(
+        begin: Alignment(sweep - 1.0, 0),
+        end: Alignment(sweep + 1.0, 0),
+        colors: const [
+          Color(0xFFE4DDD6),
+          Color(0xFFF0EBE5),
+          Color(0xFFFAF8F6),
+          Color(0xFFF0EBE5),
+          Color(0xFFE4DDD6),
+        ],
+      ),
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton — Dashboard
+// ---------------------------------------------------------------------------
+class OwnerSkeletonDashboard extends StatelessWidget {
+  const OwnerSkeletonDashboard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _OwnerShimmerWrap(
+      builder: (t) => ListView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 60),
+        children: [
+          _revenueCard(t),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+            child: Row(children: [
+              _shimBox(t, width: 90, height: 20, radius: 8),
+            ]),
+          ),
+          _statsGrid(t),
+        ],
+      ),
+    );
+  }
+
+  Widget _revenueCard(double t) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _shimBox(t, width: 130, height: 11, radius: 5),
+              _shimBox(t, width: 84, height: 28, radius: 14),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _shimBox(t, width: 170, height: 40, radius: 10),
+          const SizedBox(height: 16),
+          Row(children: [
+            _shimBox(t, width: 108, height: 50, radius: 14),
+            const SizedBox(width: 8),
+            _shimBox(t, width: 124, height: 50, radius: 14),
+            const SizedBox(width: 8),
+            Expanded(child: _shimBox(t, height: 50, radius: 14)),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _statsGrid(double t) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        children: [
+          Row(children: [
+            Expanded(child: _statCard(t)),
+            const SizedBox(width: 16),
+            Expanded(child: _statCard(t)),
+          ]),
+          const SizedBox(height: 16),
+          Row(children: [
+            Expanded(child: _statCard(t)),
+            const SizedBox(width: 16),
+            Expanded(child: _statCard(t)),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _statCard(double t) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _shimBox(t, width: 38, height: 38, radius: 12),
+          const SizedBox(height: 12),
+          _shimBox(t, width: 52, height: 22, radius: 6),
+          const SizedBox(height: 6),
+          _shimBox(t, width: 72, height: 10, radius: 5),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton — Users Page  (6 user-card rows)
+// ---------------------------------------------------------------------------
+class OwnerSkeletonUsers extends StatelessWidget {
+  const OwnerSkeletonUsers({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _OwnerShimmerWrap(
+      builder: (t) => ListView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(top: 4, bottom: 40),
+        children: List.generate(6, (_) => _card(t)),
+      ),
+    );
+  }
+
+  Widget _card(double t) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Avatar circle
+          _shimBox(t, width: 48, height: 48, radius: 24),
+          const SizedBox(width: 16),
+          // Name + email lines
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                FractionallySizedBox(
+                  widthFactor: 0.60,
+                  alignment: Alignment.centerLeft,
+                  child: _shimBox(t, height: 14, radius: 7),
+                ),
+                const SizedBox(height: 8),
+                FractionallySizedBox(
+                  widthFactor: 0.80,
+                  alignment: Alignment.centerLeft,
+                  child: _shimBox(t, height: 11, radius: 5),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Status badge
+          _shimBox(t, width: 64, height: 28, radius: 20),
+          const SizedBox(width: 8),
+          // Menu button
+          _shimBox(t, width: 34, height: 34, radius: 10),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton — Clusters Page  (4 cluster-card rows)
+// ---------------------------------------------------------------------------
+class OwnerSkeletonClusters extends StatelessWidget {
+  const OwnerSkeletonClusters({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _OwnerShimmerWrap(
+      builder: (t) => ListView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(top: 4, bottom: 100),
+        children: List.generate(4, (_) => _card(t)),
+      ),
+    );
+  }
+
+  Widget _card(double t) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Icon box
+          _shimBox(t, width: 54, height: 54, radius: 18),
+          const SizedBox(width: 16),
+          // Name + location lines
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                FractionallySizedBox(
+                  widthFactor: 0.70,
+                  alignment: Alignment.centerLeft,
+                  child: _shimBox(t, height: 16, radius: 7),
+                ),
+                const SizedBox(height: 6),
+                FractionallySizedBox(
+                  widthFactor: 0.48,
+                  alignment: Alignment.centerLeft,
+                  child: _shimBox(t, height: 12, radius: 5),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          // Count pill
+          _shimBox(t, width: 44, height: 36, radius: 14),
+          const SizedBox(width: 8),
+          // Chevron
+          _shimBox(t, width: 20, height: 20, radius: 6),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton — Logs Page  (5 log-card rows)
+// ---------------------------------------------------------------------------
+class OwnerSkeletonLogs extends StatelessWidget {
+  const OwnerSkeletonLogs({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _OwnerShimmerWrap(
+      builder: (t) => ListView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(top: 4, bottom: 40),
+        children: List.generate(5, (_) => _card(t)),
+      ),
+    );
+  }
+
+  Widget _card(double t) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Accent strip (static tinted bar — no shimmer needed here)
+          Container(
+            height: 3,
+            decoration: const BoxDecoration(
+              color: Color(0xFFE4DDD6),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Icon box
+                _shimBox(t, width: 42, height: 42, radius: 13),
+                const SizedBox(width: 12),
+                // Body
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Type badge + timestamp
+                      Row(children: [
+                        _shimBox(t, width: 52, height: 18, radius: 8),
+                        const Spacer(),
+                        _shimBox(t, width: 74, height: 11, radius: 5),
+                      ]),
+                      const SizedBox(height: 7),
+                      // Action text — line 1 (full width)
+                      _shimBox(t, height: 13, radius: 6),
+                      const SizedBox(height: 5),
+                      // Action text — line 2 (shorter)
+                      FractionallySizedBox(
+                        widthFactor: 0.72,
+                        alignment: Alignment.centerLeft,
+                        child: _shimBox(t, height: 13, radius: 6),
+                      ),
+                      const SizedBox(height: 8),
+                      // Footer: user + month badge
+                      Row(children: [
+                        _shimBox(t, width: 80, height: 11, radius: 5),
+                        const Spacer(),
+                        _shimBox(t, width: 54, height: 16, radius: 6),
+                      ]),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton — Cluster Detail / Property List  (4 property-card rows)
+// ---------------------------------------------------------------------------
+class OwnerSkeletonPropertyList extends StatelessWidget {
+  const OwnerSkeletonPropertyList({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _OwnerShimmerWrap(
+      builder: (t) => ListView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(top: 4, bottom: 40),
+        children: List.generate(4, (_) => _card(t)),
+      ),
+    );
+  }
+
+  Widget _card(double t) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Image thumbnail placeholder
+          _shimBox(t, width: 72, height: 72, radius: 16),
+          const SizedBox(width: 14),
+          // Name + type + status
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                FractionallySizedBox(
+                  widthFactor: 0.75,
+                  alignment: Alignment.centerLeft,
+                  child: _shimBox(t, height: 15, radius: 7),
+                ),
+                const SizedBox(height: 6),
+                FractionallySizedBox(
+                  widthFactor: 0.50,
+                  alignment: Alignment.centerLeft,
+                  child: _shimBox(t, height: 12, radius: 5),
+                ),
+                const SizedBox(height: 10),
+                // Status badge
+                _shimBox(t, width: 68, height: 26, radius: 20),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          // Chevron
+          _shimBox(t, width: 20, height: 20, radius: 6),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton — Property Detail / Recent Bookings  (3 booking-tile rows)
+// ---------------------------------------------------------------------------
+class OwnerSkeletonBookings extends StatelessWidget {
+  const OwnerSkeletonBookings({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _OwnerShimmerWrap(
+      builder: (t) => Column(
+        children: List.generate(3, (_) => _tile(t)),
+      ),
+    );
+  }
+
+  Widget _tile(double t) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Icon box
+          _shimBox(t, width: 37, height: 37, radius: 14),
+          const SizedBox(width: 14),
+          // Guest name + status
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                FractionallySizedBox(
+                  widthFactor: 0.65,
+                  alignment: Alignment.centerLeft,
+                  child: _shimBox(t, height: 14, radius: 7),
+                ),
+                const SizedBox(height: 6),
+                FractionallySizedBox(
+                  widthFactor: 0.45,
+                  alignment: Alignment.centerLeft,
+                  child: _shimBox(t, height: 11, radius: 5),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Price
+          _shimBox(t, width: 56, height: 18, radius: 6),
+        ],
       ),
     );
   }

@@ -38,9 +38,6 @@ class _OwnerLogsPageState extends State<OwnerLogsPage> {
   List<Map<String, dynamic>> _bookLogs  = [];
   List<Map<String, dynamic>> _auditLogs = [];
 
-  // IDs of entries dismissed in this session (client-side clear)
-  final Set<String> _dismissedIds = {};
-
   @override
   void initState() {
     super.initState();
@@ -106,7 +103,6 @@ class _OwnerLogsPageState extends State<OwnerLogsPage> {
       setState(() {
         _bookLogs  = bookLogsRaw.map(mapBookLog).toList();
         _auditLogs = auditLogsRaw.map(mapAuditLog).toList();
-        _dismissedIds.clear();
         _isLoading = false;
       });
     } catch (e) {
@@ -159,9 +155,7 @@ class _OwnerLogsPageState extends State<OwnerLogsPage> {
 
   // ── Filtered visible list ──────────────────────────────────────────────────
   List<Map<String, dynamic>> get _visibleList {
-    final base = (_tabIndex == 0 ? _bookLogs : _auditLogs)
-        .where((l) => !_dismissedIds.contains(l['id']))
-        .toList();
+    final base = _tabIndex == 0 ? _bookLogs : _auditLogs;
 
     List<Map<String, dynamic>> filtered = base;
     if (_monthFilter != null) {
@@ -215,7 +209,7 @@ class _OwnerLogsPageState extends State<OwnerLogsPage> {
                 _buildSectionHeader(),
                 Expanded(
                   child: _isLoading
-                      ? const OwnerLoading()
+                      ? const OwnerSkeletonLogs()
                       : _visibleList.isEmpty
                           ? const OwnerEmptyState(message: 'No log entries found.')
                           : ListView.builder(
@@ -278,125 +272,7 @@ class _OwnerLogsPageState extends State<OwnerLogsPage> {
             ),
           ),
           const Spacer(),
-          // Clear visible entries (client-side dismissal)
-          if (_visibleList.isNotEmpty)
-            GestureDetector(
-              onTap: _confirmClear,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AdminColors.danger.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AdminColors.danger.withOpacity(0.25)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.delete_sweep_rounded, size: 14, color: AdminColors.danger),
-                    const SizedBox(width: 5),
-                    Text('Clear View',
-                      style: GoogleFonts.plusJakartaSans(
-                        color: AdminColors.danger, fontSize: 11, fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
         ],
-      ),
-    );
-  }
-
-  void _confirmClear() {
-    showDialog(
-      context: context,
-      barrierColor: Colors.black.withOpacity(0.5),
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 36),
-        child: Container(
-          decoration: BoxDecoration(
-            color: AdminColors.cream,
-            borderRadius: BorderRadius.circular(24),
-          ),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 52, height: 52,
-                decoration: BoxDecoration(
-                  color: AdminColors.danger.withOpacity(0.10), shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.delete_sweep_rounded, color: AdminColors.danger, size: 24),
-              ),
-              const SizedBox(height: 16),
-              Text('Clear View',
-                style: GoogleFonts.plusJakartaSans(
-                  color: AdminColors.textPrimary, fontSize: 17, fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'This hides the currently visible entries from your view. The data is not deleted from the server.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.plusJakartaSans(
-                  color: AdminColors.textMuted, fontSize: 13, fontWeight: FontWeight.w500, height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 22),
-              Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => Navigator.pop(ctx),
-                      child: Container(
-                        height: 46,
-                        decoration: BoxDecoration(
-                          color: Colors.white, borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: AdminColors.border),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text('Cancel',
-                          style: GoogleFonts.plusJakartaSans(
-                            color: AdminColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        setState(() {
-                          for (final log in _visibleList) {
-                            final id = log['id']?.toString() ?? '';
-                            if (id.isNotEmpty) _dismissedIds.add(id);
-                          }
-                        });
-                      },
-                      child: Container(
-                        height: 46,
-                        decoration: BoxDecoration(
-                          color: AdminColors.danger, borderRadius: BorderRadius.circular(14),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text('Clear',
-                          style: GoogleFonts.plusJakartaSans(
-                            color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
