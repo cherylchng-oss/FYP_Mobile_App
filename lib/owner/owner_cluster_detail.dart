@@ -122,7 +122,7 @@ class _OwnerClusterDetailPageState extends State<OwnerClusterDetailPage> {
                 ),
                 Expanded(
                   child: _isLoading
-                      ? const OwnerLoading()
+                      ? const OwnerSkeletonPropertyList()
                       : RefreshIndicator(
                           onRefresh: _loadProperties,
                           color: AdminColors.success,
