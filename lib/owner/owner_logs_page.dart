@@ -209,7 +209,7 @@ class _OwnerLogsPageState extends State<OwnerLogsPage> {
                 _buildSectionHeader(),
                 Expanded(
                   child: _isLoading
-                      ? const OwnerLoading()
+                      ? const OwnerSkeletonLogs()
                       : _visibleList.isEmpty
                           ? const OwnerEmptyState(message: 'No log entries found.')
                           : ListView.builder(

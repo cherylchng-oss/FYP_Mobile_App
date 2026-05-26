@@ -189,7 +189,7 @@ class _OwnerUsersPageState extends State<OwnerUsersPage> {
                 ),
                 Expanded(
                   child: _isLoading
-                      ? const OwnerLoading()
+                      ? const OwnerSkeletonUsers()
                       : ListView.builder(
                           physics: const BouncingScrollPhysics(),
                           padding: const EdgeInsets.only(top: 4, bottom: 40),

@@ -1050,6 +1050,137 @@ class OwnerSkeletonLogs extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
+// Skeleton — Cluster Detail / Property List  (4 property-card rows)
+// ---------------------------------------------------------------------------
+class OwnerSkeletonPropertyList extends StatelessWidget {
+  const OwnerSkeletonPropertyList({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _OwnerShimmerWrap(
+      builder: (t) => ListView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(top: 4, bottom: 40),
+        children: List.generate(4, (_) => _card(t)),
+      ),
+    );
+  }
+
+  Widget _card(double t) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Image thumbnail placeholder
+          _shimBox(t, width: 72, height: 72, radius: 16),
+          const SizedBox(width: 14),
+          // Name + type + status
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                FractionallySizedBox(
+                  widthFactor: 0.75,
+                  alignment: Alignment.centerLeft,
+                  child: _shimBox(t, height: 15, radius: 7),
+                ),
+                const SizedBox(height: 6),
+                FractionallySizedBox(
+                  widthFactor: 0.50,
+                  alignment: Alignment.centerLeft,
+                  child: _shimBox(t, height: 12, radius: 5),
+                ),
+                const SizedBox(height: 10),
+                // Status badge
+                _shimBox(t, width: 68, height: 26, radius: 20),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          // Chevron
+          _shimBox(t, width: 20, height: 20, radius: 6),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton — Property Detail / Recent Bookings  (3 booking-tile rows)
+// ---------------------------------------------------------------------------
+class OwnerSkeletonBookings extends StatelessWidget {
+  const OwnerSkeletonBookings({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _OwnerShimmerWrap(
+      builder: (t) => Column(
+        children: List.generate(3, (_) => _tile(t)),
+      ),
+    );
+  }
+
+  Widget _tile(double t) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Icon box
+          _shimBox(t, width: 37, height: 37, radius: 14),
+          const SizedBox(width: 14),
+          // Guest name + status
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                FractionallySizedBox(
+                  widthFactor: 0.65,
+                  alignment: Alignment.centerLeft,
+                  child: _shimBox(t, height: 14, radius: 7),
+                ),
+                const SizedBox(height: 6),
+                FractionallySizedBox(
+                  widthFactor: 0.45,
+                  alignment: Alignment.centerLeft,
+                  child: _shimBox(t, height: 11, radius: 5),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Price
+          _shimBox(t, width: 56, height: 18, radius: 6),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Notification Sheet
 // ---------------------------------------------------------------------------
 void _showOwnerNotifications(BuildContext context) {
